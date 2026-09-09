@@ -15,46 +15,79 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout conductor-plugins
+      - name: Checkout conductor-plugins (the plugin sources)
         uses: actions/checkout@v4
         with:
           path: conductor-plugins
 
-      - name: Checkout conductor (plugin sources + SDK)
+      # Only the SDK comes from conductor now — pkg/plugin, pkg/sourcekit,
+      # pkg/githubkit. It is checked out as a sibling because go.mod's replace
+      # is a LOCAL path (see the README: temporary, until conductor tags a
+      # release containing pkg/githubkit), so there is nothing for the module
+      # proxy to fetch. Once the replace is gone this whole step goes with it.
+      - name: Checkout conductor (SDK only)
         uses: actions/checkout@v4
         with:
           repository: NodeSpy/conductor
-          # Build against the conductor version this repo requires. Override by
-          # pushing the tag from a branch that bumps the require + this ref.
+          # Must name a ref that HAS pkg/githubkit. Until the plugin
+          # extraction lands on main, set the CONDUCTOR_REF repo variable to
+          # the extraction branch or this build fails at `go build`.
           ref: ${{ vars.CONDUCTOR_REF || 'main' }}
           path: conductor
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version-file: conductor-plugins/go.mod
 
       - name: Resolve component + version from tag
         id: ref
+        working-directory: conductor-plugins
         run: |
+          set -euo pipefail
           tag="${GITHUB_REF_NAME}"           # e.g. sentry/v1.0.0
           comp="${tag%%/*}"                  # sentry
           ver="${tag##*/}"                   # v1.0.0
           echo "component=$comp" >> "$GITHUB_OUTPUT"
           echo "version=$ver"   >> "$GITHUB_OUTPUT"
-          if [ ! -d "conductor/plugins/conductor-$comp" ]; then
-            echo "::error::no plugin source at conductor/plugins/conductor-$comp for tag $tag"
+          # The plugin source lives HERE now, not in the conductor checkout.
+          if [ ! -d "cmd/conductor-$comp" ]; then
+            echo "::error::no plugin source at cmd/conductor-$comp for tag $tag"
             exit 1
           fi
+
+      - name: Point the replace at the sibling conductor checkout
+        working-directory: conductor-plugins
+        run: |
+          set -euo pipefail
+          # go.mod's replace is the developer's local path; rewrite it to the
+          # checkout above so the build is reproducible in CI.
+          go mod edit -replace github.com/NodeSpy/conductor=../conductor
+          go mod tidy
+          git --no-pager diff --stat go.mod go.sum || true
+
+      - name: Verify the plugin uses no conductor internals
+        working-directory: conductor-plugins
+        run: |
+          set -euo pipefail
+          # A plugin is out-of-process, sandboxed, third-party-shaped code. If it
+          # ever reaches into conductor's internals the extraction is a lie, so
+          # fail the release rather than ship it.
+          if go list -deps ./... | grep 'NodeSpy/conductor/internal'; then
+            echo "::error::plugin sources depend on conductor internals"
+            exit 1
+          fi
+
+      - name: Test
+        working-directory: conductor-plugins
+        run: go test ./...
 
       - name: Cross-build + checksum
         working-directory: conductor-plugins
         run: |
+          set -euo pipefail
           comp="${{ steps.ref.outputs.component }}"
-          pkg="github.com/NodeSpy/conductor/plugins/conductor-$comp"
+          pkg="./cmd/conductor-$comp"
           mkdir -p dist
-          # Build against the checked-out sibling conductor.
-          go mod edit -replace github.com/NodeSpy/conductor=../conductor
-          go mod tidy
           platforms="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64"
           for p in $platforms; do
             os="${p%/*}"; arch="${p#*/}"
@@ -74,4 +107,4 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" dist/* \
             --repo "${GITHUB_REPOSITORY}" \
             --title "${{ steps.ref.outputs.component }} ${{ steps.ref.outputs.version }}" \
-            --notes "conductor ${{ steps.ref.outputs.component }} plugin ${{ steps.ref.outputs.version }} — per-platform binaries + checksums. Install: add \`plugins: { ${{ steps.ref.outputs.component }}: { source: github.com/NodeSpy/conductor-plugins//${{ steps.ref.outputs.component }}, kind: connector, version: \"${{ steps.ref.outputs.version }}\" } }\` and run \`conductor init\`."
+            --notes "conductor ${{ steps.ref.outputs.component }} plugin ${{ steps.ref.outputs.version }} — per-platform binaries + checksums. Install: add \`plugins: { ${{ steps.ref.outputs.component }}: { source: github.com/NodeSpy/conductor-plugins//${{ steps.ref.outputs.component }}, kind: connector, version: \"${{ steps.ref.outputs.version }}\", isolation: { mode: namespace } } }\` and run \`conductor init\`."
