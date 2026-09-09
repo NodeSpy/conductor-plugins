@@ -40,8 +40,9 @@ records it in `conductor.lock.yaml`. Boot is offline. Gate sources with
 |--------|------|----------|-------|
 | `sentry` | connector (source) | `sentry` | Sentry Integration-Platform webhooks → `issue_alert`/`error_alert`/`event_alert` events. HMAC-verified. |
 | `pagerduty` | connector (source) | `pagerduty` | PagerDuty V3 incident webhooks → `incident` events. Multi-signature (`v1=…`) verified. |
+| `github` | connector (verbs + source) | `github` | Full GitHub connector: ~45 verbs (comment, submit_review, pr_diff, merge_pr, create_issue, checks, releases, gists, …) over token or GitHub-App auth, plus webhook source events (`new_comment`, `review_requested`, `release`, …). Built on the shared `pkg/githubkit` client. |
 
-More are extracted from conductor's core over time (github, the paseo runtime, …).
+More are extracted from conductor's core over time (the paseo runtime, …).
 
 ## How releases are built
 
