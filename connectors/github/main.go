@@ -92,6 +92,7 @@ type githubPlugin struct {
 
 func (g *githubPlugin) Describe() plugin.Decl {
 	return plugin.Decl{
+		Kind: plugin.KindConnector,
 		Type: "github",
 		Desc: "GitHub: PR/issue/release/deployment/alert events in (webhook-derived subset); comments, reviews, and review requests out. External-plugin counterpart of the bundled github connector (#59).",
 		Connection: plugin.Schema{
@@ -544,7 +545,10 @@ func (g *githubPlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{"ok": {Type: "boolean"}},
 			},
 		},
-		Capabilities: plugin.Capabilities{Egress: []string{"api.github.com", "*.ghe.com"}},
+		// The permission manifest conductor records at install and confines
+		// this plugin to: the GitHub API hosts it calls, and nothing else. It
+		// spawns no commands.
+		Capabilities: plugin.Capabilities{Egress: []string{"api.github.com:443", "*.ghe.com:443"}},
 	}
 }
 

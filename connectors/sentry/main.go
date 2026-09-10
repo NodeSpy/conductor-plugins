@@ -43,6 +43,7 @@ func (sentry) Describe() plugin.Decl {
 		}}
 	}
 	return plugin.Decl{
+		Kind: plugin.KindConnector,
 		Type: "sentry",
 		Desc: "Sentry issue/error alerts via Integration-Platform webhooks (source only).",
 		Connection: plugin.Schema{
@@ -55,7 +56,9 @@ func (sentry) Describe() plugin.Decl {
 			ev("error_alert", "a Sentry error alert fired"),
 			ev("event_alert", "a Sentry metric/event alert fired"),
 		},
-		Capabilities: plugin.Capabilities{}, // inbound only; egress is the operator's listener
+		// Inbound only: it LISTENS for Sentry webhooks, never dials out, and
+		// spawns nothing. An empty manifest is the strongest claim available.
+		Capabilities: plugin.Capabilities{},
 	}
 }
 

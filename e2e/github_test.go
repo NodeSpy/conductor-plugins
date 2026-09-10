@@ -27,7 +27,7 @@ import (
 // falling through to `gh auth token`, which a plugin subprocess in a real
 // environment could otherwise reach).
 func TestGithubPluginVerbTokenAuth(t *testing.T) {
-	bin := rpctest.Build(t, "github")
+	bin := rpctest.BuildConnector(t, "github")
 
 	var gotAuth string
 	var gotBody map[string]any
@@ -98,7 +98,7 @@ func TestGithubPluginVerbTokenAuth(t *testing.T) {
 // installation, mints an installation token, and uses THAT (not the JWT) to
 // perform the verb call.
 func TestGithubPluginVerbAppAuth(t *testing.T) {
-	bin := rpctest.Build(t, "github")
+	bin := rpctest.BuildConnector(t, "github")
 
 	var installAuth, mintAuth, commentAuth string
 	var gotBody map[string]any
@@ -179,7 +179,7 @@ func writeTestRSAKey(t *testing.T) string {
 // target/context shape; a bad-signature delivery is rejected and produces no
 // event.
 func TestGithubPluginSourceWebhook(t *testing.T) {
-	bin := rpctest.Build(t, "github")
+	bin := rpctest.BuildConnector(t, "github")
 	c := rpctest.Start(t, bin)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

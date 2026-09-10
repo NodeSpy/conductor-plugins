@@ -29,6 +29,7 @@ type pagerduty struct{}
 
 func (pagerduty) Describe() plugin.Decl {
 	return plugin.Decl{
+		Kind: plugin.KindConnector,
 		Type: "pagerduty",
 		Desc: "PagerDuty incident webhooks (V3 subscriptions; source only).",
 		Connection: plugin.Schema{
@@ -46,6 +47,8 @@ func (pagerduty) Describe() plugin.Decl {
 				"priorities":  {Type: "list", Desc: "P1, P2, … (empty = any)"},
 			},
 		}},
+		// Inbound only: it LISTENS, it never dials out, and it spawns nothing.
+		// An empty manifest is the strongest thing this plugin can say.
 		Capabilities: plugin.Capabilities{},
 	}
 }

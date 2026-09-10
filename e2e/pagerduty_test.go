@@ -13,7 +13,7 @@ import (
 // including the multi-value X-PagerDuty-Signature (v1=…,v1=…) that sourcekit
 // verifies ANY-match, as PagerDuty sends during signing-key rotation.
 func TestPagerDutyPluginEndToEnd(t *testing.T) {
-	bin := rpctest.Build(t, "pagerduty")
+	bin := rpctest.BuildConnector(t, "pagerduty")
 	c := rpctest.Start(t, bin)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

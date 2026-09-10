@@ -1,12 +1,18 @@
 name: release-plugin
 
-# Publishes one plugin's per-platform binaries when a component tag is pushed.
-# Tag shape: <component>/vX.Y.Z  (e.g. sentry/v1.0.0) — the same shape
-# `conductor init` resolves for `source: github.com/NodeSpy/conductor-plugins//<component>`.
+# Publishes one plugin's per-platform binaries when a tag is pushed.
+#
+# Tag shape: <kind>/<name>/vX.Y.Z  — connectors/sentry/v1.0.0, runtimes/paseo/v1.0.0.
+# The kind prefix is not decoration: it is the directory the source lives in AND
+# the prefix conductor's `use:` resolver prefix-matches when it resolves a bare
+# name (`use: sentry` under connectors: -> connectors/sentry/*). A connector and
+# a runtime of the same name therefore never collide, in this repo or in a
+# release-tag list.
 on:
   push:
     tags:
-      - "*/v*"
+      - "connectors/*/v*"
+      - "runtimes/*/v*"
 
 permissions:
   contents: write
@@ -39,19 +45,26 @@ jobs:
         with:
           go-version-file: conductor-plugins/go.mod
 
-      - name: Resolve component + version from tag
+      - name: Resolve kind + name + version from tag
         id: ref
         working-directory: conductor-plugins
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"           # e.g. sentry/v1.0.0
-          comp="${tag%%/*}"                  # sentry
-          ver="${tag##*/}"                   # v1.0.0
-          echo "component=$comp" >> "$GITHUB_OUTPUT"
-          echo "version=$ver"   >> "$GITHUB_OUTPUT"
-          # The plugin source lives HERE now, not in the conductor checkout.
-          if [ ! -d "cmd/conductor-$comp" ]; then
-            echo "::error::no plugin source at cmd/conductor-$comp for tag $tag"
+          tag="${GITHUB_REF_NAME}"           # e.g. connectors/sentry/v1.0.0
+          kind="${tag%%/*}"                  # connectors
+          rest="${tag#*/}"                   # sentry/v1.0.0
+          name="${rest%%/*}"                 # sentry
+          ver="${rest#*/}"                   # v1.0.0
+          case "$kind" in
+            connectors|runtimes) ;;
+            *) echo "::error::tag $tag: kind must be connectors or runtimes"; exit 1 ;;
+          esac
+          echo "kind=$kind"       >> "$GITHUB_OUTPUT"
+          echo "name=$name"       >> "$GITHUB_OUTPUT"
+          echo "component=$name"  >> "$GITHUB_OUTPUT"
+          echo "version=$ver"     >> "$GITHUB_OUTPUT"
+          if [ ! -d "$kind/$name" ]; then
+            echo "::error::no plugin source at $kind/$name for tag $tag"
             exit 1
           fi
 
@@ -85,8 +98,8 @@ jobs:
         working-directory: conductor-plugins
         run: |
           set -euo pipefail
-          comp="${{ steps.ref.outputs.component }}"
-          pkg="./cmd/conductor-$comp"
+          comp="${{ steps.ref.outputs.name }}"
+          pkg="./${{ steps.ref.outputs.kind }}/$comp"
           mkdir -p dist
           platforms="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64"
           for p in $platforms; do
@@ -106,5 +119,5 @@ jobs:
         run: |
           gh release create "${GITHUB_REF_NAME}" dist/* \
             --repo "${GITHUB_REPOSITORY}" \
-            --title "${{ steps.ref.outputs.component }} ${{ steps.ref.outputs.version }}" \
-            --notes "conductor ${{ steps.ref.outputs.component }} plugin ${{ steps.ref.outputs.version }} — per-platform binaries + checksums. Install: add \`plugins: { ${{ steps.ref.outputs.component }}: { source: github.com/NodeSpy/conductor-plugins//${{ steps.ref.outputs.component }}, kind: connector, version: \"${{ steps.ref.outputs.version }}\", isolation: { mode: namespace } } }\` and run \`conductor init\`."
+            --title "${{ steps.ref.outputs.kind }}/${{ steps.ref.outputs.name }} ${{ steps.ref.outputs.version }}" \
+            --notes "conductor ${{ steps.ref.outputs.name }} ${{ steps.ref.outputs.kind == 'runtimes' && 'runtime' || 'connector' }} plugin ${{ steps.ref.outputs.version }} — per-platform binaries + checksums. Install: add \`${{ steps.ref.outputs.kind }}: { ${{ steps.ref.outputs.name }}: { use: ${{ steps.ref.outputs.name }} } }\` to your config and run \`conductor init\`."

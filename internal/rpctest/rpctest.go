@@ -33,21 +33,31 @@ import (
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
 )
 
-// Build compiles one plugin component of this repo into a temp dir and returns
-// the binary path. Skips the test when there is no go toolchain.
-func Build(t *testing.T, component string) string {
+// Build compiles one plugin of this repo into a temp dir and returns the binary
+// path. Skips the test when there is no go toolchain.
+//
+// kind is "connectors" or "runtimes" — the same directory conductor's `use:`
+// resolver looks under for a bare name (`use: sentry` -> connectors/sentry),
+// and the same prefix this component's release tags carry.
+func Build(t *testing.T, kind, name string) string {
 	t.Helper()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go toolchain not available")
 	}
-	bin := filepath.Join(t.TempDir(), "conductor-"+component)
-	cmd := exec.Command("go", "build", "-o", bin, "github.com/NodeSpy/conductor-plugins/cmd/conductor-"+component)
+	bin := filepath.Join(t.TempDir(), "conductor-"+name)
+	pkg := "github.com/NodeSpy/conductor-plugins/" + kind + "/" + name
+	cmd := exec.Command("go", "build", "-o", bin, pkg)
 	cmd.Env = os.Environ()
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build conductor-%s: %v\n%s", component, err, out)
+		t.Fatalf("build %s: %v\n%s", pkg, err, out)
 	}
 	return bin
 }
+
+// BuildConnector and BuildRuntime name the kind at the call site, so an e2e
+// test reads as what it is.
+func BuildConnector(t *testing.T, name string) string { return Build(t, "connectors", name) }
+func BuildRuntime(t *testing.T, name string) string   { return Build(t, "runtimes", name) }
 
 // wireMessage is the JSON-RPC 2.0 envelope the SDK's Serve loop reads/writes.
 type wireMessage struct {

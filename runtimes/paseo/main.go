@@ -59,6 +59,7 @@ type paseoPlugin struct{}
 func (paseoPlugin) Describe() plugin.Decl {
 	strArg := func(desc string) plugin.Field { return plugin.Field{Type: "string", Desc: desc} }
 	return plugin.Decl{
+		Kind: plugin.KindRuntime,
 		Type: "paseo",
 		Desc: "paseo runtime: the daemon operations internal/dispatch.Backend needs, over the plugin RPC instead of a direct CLI shell-out (#59).",
 		Connection: plugin.Schema{
@@ -145,6 +146,11 @@ func (paseoPlugin) Describe() plugin.Decl {
 				Options: plugin.Schema{"id": {Type: "string", Required: true}},
 			},
 		},
+		// Every verb above is a `paseo ...` shell-out, so `paseo` is the one
+		// command this plugin spawns and the one conductor confines its PATH
+		// to. Egress is paseo's own business, not this plugin's: it talks to
+		// the local CLI over stdio and dials nothing itself.
+		Capabilities: plugin.Capabilities{Commands: []string{"paseo"}},
 	}
 }
 

@@ -22,7 +22,7 @@ import (
 // Serve + SourceHandler, sourcekit HMAC + listener, and the StartSource
 // protocol.
 func TestSentryPluginEndToEnd(t *testing.T) {
-	bin := rpctest.Build(t, "sentry")
+	bin := rpctest.BuildConnector(t, "sentry")
 	c := rpctest.Start(t, bin)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

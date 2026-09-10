@@ -25,7 +25,7 @@ import (
 // output parsing) stays in conductor, where it now drives an in-repo stub
 // plugin instead — see conductor's test/plugins/acme-paseo.
 func TestPaseoPluginVerbRoundTrip(t *testing.T) {
-	bin := rpctest.Build(t, "paseo")
+	bin := rpctest.BuildRuntime(t, "paseo")
 
 	stubDir := t.TempDir()
 	stubBin := filepath.Join(stubDir, "paseo")
@@ -113,7 +113,7 @@ esac
 // JSON-RPC error (not a crash or a silent empty result) for a verb it does not
 // implement — the shape the daemon surfaces to the operator.
 func TestPaseoPluginUnknownVerbErrors(t *testing.T) {
-	bin := rpctest.Build(t, "paseo")
+	bin := rpctest.BuildRuntime(t, "paseo")
 	c := rpctest.Start(t, bin)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
