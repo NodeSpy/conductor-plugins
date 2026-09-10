@@ -88,6 +88,7 @@ func (paseoPlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{
 					"cwd": {Type: "string"}, "lastUsage": {Type: "string"},
 					"updatedAt": {Type: "string"}, "createdAt": {Type: "string"},
+					"pendingPermissions": {Type: "list", Desc: "outstanding permission prompts (empty = not waiting on the user)"},
 				},
 			},
 			{
@@ -219,6 +220,10 @@ func (p paseoPlugin) inspect(bin string, opts map[string]any) (plugin.InvokeResu
 	}
 	return plugin.InvokeResult{Outputs: map[string]any{
 		"cwd": m["Cwd"], "lastUsage": m["LastUsage"], "updatedAt": m["UpdatedAt"], "createdAt": m["CreatedAt"],
+		// The reaper spares an agent with outstanding permission prompts, so it
+		// must survive the RPC hop rather than arrive empty (which would reap a
+		// live agent). Mirrors the daemon's cliBackend Inspect parsing.
+		"pendingPermissions": m["PendingPermissions"],
 	}}, nil
 }
 

@@ -21,4 +21,4 @@ require github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 // `go build ./...` only works with a conductor checkout at this path (CI
 // rewrites the replace to its own sibling checkout — see
 // .github/workflows/release.yml).
-replace github.com/NodeSpy/conductor => /home/daniel/.paseo/worktrees/2ccqu2oy/feat-plugin-extraction
+replace github.com/NodeSpy/conductor => /home/daniel/Projects/conductor
