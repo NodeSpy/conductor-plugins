@@ -29,12 +29,15 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
 )
@@ -215,7 +218,10 @@ func (p paseoPlugin) listAgents(bin string, opts map[string]any) (plugin.InvokeR
 }
 
 func (p paseoPlugin) inspect(bin string, opts map[string]any) (plugin.InvokeResult, error) {
-	id := asString(opts["id"])
+	id, aerr := argOf(opts, "id")
+	if aerr != nil {
+		return plugin.InvokeResult{}, aerr
+	}
 	out, stderr, err := runCmd(bin, "inspect", id, "--json")
 	if err != nil {
 		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, cliErrDetail(out, stderr, err))
@@ -234,7 +240,11 @@ func (p paseoPlugin) inspect(bin string, opts map[string]any) (plugin.InvokeResu
 }
 
 func (p paseoPlugin) archiveAgent(bin string, opts map[string]any) (plugin.InvokeResult, error) {
-	_, stderr, err := runCmd(bin, "archive", asString(opts["id"]))
+	id, aerr := argOf(opts, "id")
+	if aerr != nil {
+		return plugin.InvokeResult{}, aerr
+	}
+	_, stderr, err := runCmd(bin, "archive", id)
 	if err != nil {
 		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, cliErrDetail(nil, stderr, err))
 	}
@@ -242,7 +252,11 @@ func (p paseoPlugin) archiveAgent(bin string, opts map[string]any) (plugin.Invok
 }
 
 func (p paseoPlugin) archiveWorkspace(bin string, opts map[string]any) (plugin.InvokeResult, error) {
-	_, stderr, err := runCmd(bin, "workspace", "archive", asString(opts["id"]))
+	id, aerr := argOf(opts, "id")
+	if aerr != nil {
+		return plugin.InvokeResult{}, aerr
+	}
+	_, stderr, err := runCmd(bin, "workspace", "archive", id)
 	if err != nil {
 		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, cliErrDetail(nil, stderr, err))
 	}
@@ -251,14 +265,34 @@ func (p paseoPlugin) archiveWorkspace(bin string, opts map[string]any) (plugin.I
 
 func (p paseoPlugin) createWorktree(bin string, opts map[string]any) (plugin.InvokeResult, error) {
 	strat := asString(opts["strategy"])
-	args := []string{"workspace", "create", "--isolation", asString(opts["isolation"]),
-		"--path", asString(opts["path"]), "--mode", strat, "--json"}
+	iso, aerr := argOf(opts, "isolation")
+	if aerr != nil {
+		return plugin.InvokeResult{}, aerr
+	}
+	wpath, aerr := argOf(opts, "path")
+	if aerr != nil {
+		return plugin.InvokeResult{}, aerr
+	}
+	args := []string{"workspace", "create", "--isolation", iso,
+		"--path", wpath, "--mode", strat, "--json"}
 	switch strat {
 	case "checkout-pr":
-		args = append(args, "--pr-number", fmt.Sprintf("%d", asInt(opts["prNumber"])), "--forge", asString(opts["forge"]))
+		forge, ferr := argOf(opts, "forge")
+		if ferr != nil {
+			return plugin.InvokeResult{}, ferr
+		}
+		args = append(args, "--pr-number", fmt.Sprintf("%d", asInt(opts["prNumber"])), "--forge", forge)
 	case "branch-off":
-		args = append(args, "--new-branch", asString(opts["newBranch"]))
-		if base := asString(opts["baseRef"]); base != "" {
+		nb, nerr := argOf(opts, "newBranch")
+		if nerr != nil {
+			return plugin.InvokeResult{}, nerr
+		}
+		args = append(args, "--new-branch", nb)
+		base, berr := argOf(opts, "baseRef")
+		if berr != nil {
+			return plugin.InvokeResult{}, berr
+		}
+		if base != "" {
 			args = append(args, "--base", base)
 		}
 	default:
@@ -279,8 +313,20 @@ func (p paseoPlugin) createWorktree(bin string, opts map[string]any) (plugin.Inv
 }
 
 func (p paseoPlugin) createWorkspace(bin string, opts map[string]any) (plugin.InvokeResult, error) {
-	args := []string{"workspace", "create", "--isolation", asString(opts["isolation"]), "--path", asString(opts["path"])}
-	if title := asString(opts["title"]); title != "" {
+	iso2, aerr := argOf(opts, "isolation")
+	if aerr != nil {
+		return plugin.InvokeResult{}, aerr
+	}
+	wpath2, aerr := argOf(opts, "path")
+	if aerr != nil {
+		return plugin.InvokeResult{}, aerr
+	}
+	args := []string{"workspace", "create", "--isolation", iso2, "--path", wpath2}
+	title, terr := argOf(opts, "title")
+	if terr != nil {
+		return plugin.InvokeResult{}, terr
+	}
+	if title != "" {
 		args = append(args, "--title", title)
 	}
 	args = append(args, "--json")
@@ -319,7 +365,15 @@ func (p paseoPlugin) clone(bin string, opts map[string]any) (plugin.InvokeResult
 	if proto == "" {
 		proto = "ssh"
 	}
-	out, stderr, err := runCmd(bin, "clone", asString(opts["repo"]), "--dir", asString(opts["dir"]), "--protocol", proto, "--json")
+	repo, aerr := argOf(opts, "repo")
+	if aerr != nil {
+		return plugin.InvokeResult{}, aerr
+	}
+	dir, aerr := argOf(opts, "dir")
+	if aerr != nil {
+		return plugin.InvokeResult{}, aerr
+	}
+	out, stderr, err := runCmd(bin, "clone", repo, "--dir", dir, "--protocol", proto, "--json")
 	if err != nil {
 		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, cliErrDetail(out, stderr, err))
 	}
@@ -327,7 +381,15 @@ func (p paseoPlugin) clone(bin string, opts map[string]any) (plugin.InvokeResult
 }
 
 func (p paseoPlugin) send(bin string, opts map[string]any) (plugin.InvokeResult, error) {
-	args := []string{"send", asString(opts["id"]), asString(opts["prompt"])}
+	id, aerr := argOf(opts, "id")
+	if aerr != nil {
+		return plugin.InvokeResult{}, aerr
+	}
+	prompt, aerr := argOf(opts, "prompt")
+	if aerr != nil {
+		return plugin.InvokeResult{}, aerr
+	}
+	args := []string{"send", id, prompt}
 	if b, _ := opts["json"].(bool); b {
 		args = append(args, "--json")
 	}
@@ -339,7 +401,11 @@ func (p paseoPlugin) send(bin string, opts map[string]any) (plugin.InvokeResult,
 }
 
 func (p paseoPlugin) wait(bin string, opts map[string]any) (plugin.InvokeResult, error) {
-	_, stderr, err := runCmd(bin, "wait", asString(opts["id"]))
+	id, aerr := argOf(opts, "id")
+	if aerr != nil {
+		return plugin.InvokeResult{}, aerr
+	}
+	_, stderr, err := runCmdCtx(context.Background(), waitTimeout, bin, "wait", id)
 	if err != nil {
 		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, cliErrDetail(nil, stderr, err))
 	}
@@ -348,14 +414,56 @@ func (p paseoPlugin) wait(bin string, opts map[string]any) (plugin.InvokeResult,
 
 // --- exec + coercion helpers ---
 
+// argOf reads a string option that will become an argv VALUE, refusing one
+// that starts with "-".
+//
+// Every one of these is user content — an id, a repo, a directory, a
+// branch, a prompt — and it reaches the paseo CLI as the word after a
+// flag or as a positional. A value like "--json" or "-C" is not read as
+// that value; the CLI reads it as the next FLAG, so caller content chooses
+// paseo's options. Rejecting the shape is cheaper than reasoning about
+// which flags each subcommand would honour.
+func argOf(opts map[string]any, key string) (string, error) {
+	v := asString(opts[key])
+	if strings.HasPrefix(v, "-") {
+		return "", plugin.Errorf(plugin.CodeInvalidParams,
+			key+": a value starting with \"-\" would be read by the paseo CLI as a flag, not as this value — refusing "+strconv.Quote(v))
+	}
+	return v, nil
+}
+
 // runCmd runs the paseo CLI and returns (stdout, stderr, error) — err is the
 // raw *exec.ExitError (or launch error), never wrapped, so cliErrDetail can
 // extract the same structured/stderr detail cliBackend's paseoErrDetail does.
 func runCmd(bin string, args ...string) (stdout, stderr []byte, err error) {
-	cmd := exec.Command(bin, args...)
+	return runCmdCtx(context.Background(), cliTimeout, bin, args...)
+}
+
+// cliTimeout bounds an ordinary paseo CLI call. Every one of these used to
+// run unbounded: a paseo that hangs — a wedged agent, a stuck git
+// operation, a filesystem that stops answering — held the plugin's
+// goroutine forever, and before the serve loop became concurrent it held
+// the whole plugin with it. A deadline turns that into an error the daemon
+// can act on.
+const cliTimeout = 2 * time.Minute
+
+// waitTimeout bounds `paseo wait`, which legitimately blocks until an agent
+// finishes and so needs far more room than a normal call — but still not
+// unbounded, or a never-finishing agent leaks a goroutine per event.
+const waitTimeout = 6 * time.Hour
+
+func runCmdCtx(ctx context.Context, d time.Duration, bin string, args ...string) (stdout, stderr []byte, err error) {
+	ctx, cancel := context.WithTimeout(ctx, d)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, args...)
 	var errBuf bytes.Buffer
 	cmd.Stderr = &errBuf
 	out, runErr := cmd.Output()
+	if ctx.Err() != nil {
+		// Name the deadline: an exec killed by the context otherwise
+		// surfaces as a bare "signal: killed" with nothing to act on.
+		return out, errBuf.Bytes(), fmt.Errorf("paseo %s timed out after %s: %w", args[0], d, ctx.Err())
+	}
 	return out, errBuf.Bytes(), runErr
 }
 
