@@ -1,2 +1,4 @@
+github.com/NodeSpy/conductor v0.9.0 h1:ASV+bCogvtEzw561nUwH5R8kumXNjG2MvgFEOtLm+eQ=
+github.com/NodeSpy/conductor v0.9.0/go.mod h1:op8bkgt4h1KB9rwcGuAwcmWd03i34BxeSU/mHcYpBTo=
 github.com/golang-jwt/jwt/v5 v5.3.1 h1:kYf81DTWFe7t+1VvL7eS+jKFVWaUnK9cB1qbwn63YCY=
 github.com/golang-jwt/jwt/v5 v5.3.1/go.mod h1:fxCRLWMO43lRc8nhHWY6LGqRcf+1gQWArsqaEUEa5bE=
