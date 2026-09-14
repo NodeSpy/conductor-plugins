@@ -452,10 +452,20 @@ const cliTimeout = 2 * time.Minute
 // unbounded, or a never-finishing agent leaks a goroutine per event.
 const waitTimeout = 6 * time.Hour
 
+// killGrace bounds how long runCmdCtx waits for stdout/stderr to drain after
+// the deadline kills the direct child. Killing the child does not guarantee
+// its own children release the same pipe: a shell that forks rather than
+// execs a hung grandchild leaves that grandchild holding the write end open,
+// and without a WaitDelay, cmd.Output() blocks on that pipe until the
+// grandchild itself exits — silently turning a bounded call unbounded again,
+// exactly the failure mode this deadline exists to prevent.
+const killGrace = 2 * time.Second
+
 func runCmdCtx(ctx context.Context, d time.Duration, bin string, args ...string) (stdout, stderr []byte, err error) {
 	ctx, cancel := context.WithTimeout(ctx, d)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.WaitDelay = killGrace
 	var errBuf bytes.Buffer
 	cmd.Stderr = &errBuf
 	out, runErr := cmd.Output()
