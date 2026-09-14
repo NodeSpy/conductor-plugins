@@ -26,21 +26,6 @@ jobs:
         with:
           path: conductor-plugins
 
-      # Only the SDK comes from conductor now — pkg/plugin, pkg/sourcekit,
-      # pkg/githubkit. It is checked out as a sibling because go.mod's replace
-      # is a LOCAL path (see the README: temporary, until conductor tags a
-      # release containing pkg/githubkit), so there is nothing for the module
-      # proxy to fetch. Once the replace is gone this whole step goes with it.
-      - name: Checkout conductor (SDK only)
-        uses: actions/checkout@v4
-        with:
-          repository: NodeSpy/conductor
-          # Must name a ref that HAS pkg/githubkit. Until the plugin
-          # extraction lands on main, set the CONDUCTOR_REF repo variable to
-          # the extraction branch or this build fails at `go build`.
-          ref: ${{ vars.CONDUCTOR_REF || 'main' }}
-          path: conductor
-
       - uses: actions/setup-go@v5
         with:
           go-version-file: conductor-plugins/go.mod
@@ -67,16 +52,6 @@ jobs:
             echo "::error::no plugin source at $kind/$name for tag $tag"
             exit 1
           fi
-
-      - name: Point the replace at the sibling conductor checkout
-        working-directory: conductor-plugins
-        run: |
-          set -euo pipefail
-          # go.mod's replace is the developer's local path; rewrite it to the
-          # checkout above so the build is reproducible in CI.
-          go mod edit -replace github.com/NodeSpy/conductor=../conductor
-          go mod tidy
-          git --no-pager diff --stat go.mod go.sum || true
 
       - name: Verify the plugin uses no conductor internals
         working-directory: conductor-plugins

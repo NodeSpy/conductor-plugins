@@ -623,6 +623,9 @@ func (g *githubPlugin) StartSource(ctx context.Context, req plugin.StartSourceRe
 	if ln.Addr == "" {
 		return fmt.Errorf("github: no webhook.listen address configured")
 	}
+	if err := requireWebhookSecret("github", ln.Secret, cfg, "app.webhook_secret / webhook.secret"); err != nil {
+		return err
+	}
 	dedup := sourcekit.NewDedup(4096)
 	fmt.Fprintf(os.Stderr, "github[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
 	return ln.Serve(ctx, func(h http.Header, body []byte) {
@@ -987,4 +990,25 @@ func main() {
 		fmt.Fprintln(os.Stderr, "conductor-github:", err)
 		os.Exit(1)
 	}
+}
+
+// requireWebhookSecret refuses to start an unauthenticated webhook
+// listener.
+//
+// sourcekit.VerifyHMAC returns true when the secret is empty — it leaves
+// the policy to the caller — and no caller had one. The result was that
+// omitting the secret silently accepted ANY unsigned POST on the listen
+// address as a real event from the provider, which is remote trigger
+// injection with no signal that it happened. A missing secret is far more
+// often a mistake than a choice, so it fails closed; `allow_unsigned:
+// true` is the explicit, greppable way to say you meant it.
+func requireWebhookSecret(who, secret string, cfg map[string]any, allowKey string) error {
+	if strings.TrimSpace(secret) != "" {
+		return nil
+	}
+	if b, _ := cfg["allow_unsigned"].(bool); b {
+		fmt.Fprintf(os.Stderr, "%s: allow_unsigned is set — accepting UNSIGNED webhooks; anyone who can reach the listen address can fire triggers\n", who)
+		return nil
+	}
+	return fmt.Errorf("%s: no webhook secret configured (%s) — an unsigned listener accepts any POST on the listen address as a real event. Set it, or set `allow_unsigned: true` if you genuinely front this with something else that authenticates", who, allowKey)
 }

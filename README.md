@@ -29,21 +29,10 @@ github.com/NodeSpy/conductor-plugins/runtimes/paseo
 
 ## Status — read this first
 
-**No release has been published yet, so `conductor init` cannot fetch any of
-these.** The repo has zero tags. Tagging is a deliberate human step (see
-[Releasing](#releasing)).
-
-`go.mod` carries a **temporary** `replace github.com/NodeSpy/conductor => …`
-pointing at a local conductor checkout. It is there because `pkg/githubkit` —
-and the `plugin.SourceHandler`/`start_source` surface these plugins need — exist
-only on conductor's unmerged plugin-extraction branch. No tagged conductor
-release contains them, so the `require github.com/NodeSpy/conductor v0.9.0`
-above the replace cannot resolve them from the module proxy.
-
-**Remove the replace and bump the require as soon as conductor tags a release
-containing `pkg/githubkit`.** Until then, building here needs a conductor
-checkout at the replace path; CI rewrites the replace to its own sibling
-checkout.
+`go.mod` requires `github.com/NodeSpy/conductor v0.9.0` — the tagged release
+that carries `pkg/githubkit` and the `plugin.SourceHandler`/`start_source`
+surface these plugins need — resolved straight from the public module proxy.
+No `replace` directive.
 
 ## Available plugins
 
@@ -157,8 +146,8 @@ that over-declares quietly widens what the operator is asked to accept.
 
 ## Releasing
 
-Not automated on merge, and not done yet — pushing a tag publishes binaries, so
-it is a human decision.
+Not automated on merge — pushing a tag publishes binaries, so it is a human
+decision.
 
 Tag shape is `<kind>/<name>/vX.Y.Z` — `connectors/sentry/v1.0.0`,
 `runtimes/paseo/v1.0.0`. The kind prefix matches the source directory AND the
@@ -171,12 +160,8 @@ checksums the set, and publishes `conductor-<name>_<os>_<arch>` +
 `checksums.txt` to the release. Note the ASSET name is flat — the kind lives in
 the tag, not in the filename.
 
-The workflow checks conductor out as a sibling and rewrites the `replace` to
-point at it, so it builds against a real conductor tree rather than the
-developer's local path. Set the `CONDUCTOR_REF` repository variable to pin which
-conductor ref that is; it defaults to `main`. **Until conductor's plugin
-extraction lands on `main`, `CONDUCTOR_REF` must name the branch that carries
-`pkg/githubkit`, or the build will fail.**
+The workflow builds straight against `github.com/NodeSpy/conductor v0.9.0` from
+the public module proxy — no sibling checkout, no `replace` rewrite.
 
 ## Build your own plugin
 
