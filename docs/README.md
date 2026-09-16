@@ -144,6 +144,10 @@ binaries + `checksums.txt`.
 | `aws-sns` | connector (source) | [connectors/aws-sns.md](connectors/aws-sns.md) |
 | `cloudflare` | connector (verbs) | [connectors/cloudflare.md](connectors/cloudflare.md) |
 | `docker` | connector (verbs) | [connectors/docker.md](connectors/docker.md) |
+| `plex` | connector (verbs + source) | [connectors/plex.md](connectors/plex.md) |
+| `sonarr` | connector (verbs + source) | [connectors/sonarr.md](connectors/sonarr.md) |
+| `radarr` | connector (verbs + source) | [connectors/radarr.md](connectors/radarr.md) |
+| `audiobookshelf` | connector (verbs) | [connectors/audiobookshelf.md](connectors/audiobookshelf.md) |
 | `datadog` | connector (verbs + source) | [connectors/datadog.md](connectors/datadog.md) |
 | `jira` | connector (verbs + source) | [connectors/jira.md](connectors/jira.md) |
 | `telegram` | connector (verbs + source) | [connectors/telegram.md](connectors/telegram.md) |
