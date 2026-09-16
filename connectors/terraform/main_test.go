@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
@@ -214,6 +216,120 @@ func TestChdirPrecedesSubcommand(t *testing.T) {
 	want := []string{"-chdir=/infra/prod", "plan", "-input=false"}
 	if !reflect.DeepEqual(full, want) {
 		t.Fatalf("full argv:\n got: %#v\nwant: %#v", full, want)
+	}
+}
+
+// TestEngineTofu proves OpenTofu is a 100% drop-in: engine=tofu resolves the
+// "tofu" binary and builds byte-identical argv (including -chdir placement)
+// to plain terraform.
+func TestEngineTofu(t *testing.T) {
+	conn, err := parseConn(map[string]any{"engine": "tofu", "chdir": "/infra/prod"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conn.binary != "tofu" {
+		t.Errorf("tofu binary: got %q", conn.binary)
+	}
+	args, err := verbArgs("apply", map[string]any{"var": map[string]any{"x": "1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	full := append(conn.connFlags(), args...)
+	want := []string{"-chdir=/infra/prod", "apply", "-auto-approve", "-var", "x=1", "-input=false"}
+	if !reflect.DeepEqual(full, want) {
+		t.Fatalf("tofu full argv:\n got: %#v\nwant: %#v", full, want)
+	}
+}
+
+// TestEngineTerragruntChdirAndRunAll proves terragrunt has no -chdir flag —
+// chdir must instead become the spawned process's working directory — and
+// that run_all prefixes the subcommand with run-all.
+func TestEngineTerragruntChdirAndRunAll(t *testing.T) {
+	conn, err := parseConn(map[string]any{"engine": "terragrunt", "chdir": "/infra/prod"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conn.binary != "terragrunt" {
+		t.Errorf("terragrunt binary: got %q", conn.binary)
+	}
+	if got := conn.connFlags(); got != nil {
+		t.Errorf("terragrunt connFlags should never emit -chdir: %#v", got)
+	}
+
+	args, err := verbArgs("apply", map[string]any{"run_all": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	full := append(conn.connFlags(), args...)
+	want := []string{"run-all", "apply", "-auto-approve", "-input=false"}
+	if !reflect.DeepEqual(full, want) {
+		t.Fatalf("terragrunt run-all argv:\n got: %#v\nwant: %#v", full, want)
+	}
+}
+
+// TestTerragruntCwd proves runTerraform sets cmd.Dir (not -chdir) for the
+// terragrunt engine, by spawning a fake binary that prints its own working
+// directory.
+func TestTerragruntCwd(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell shim is POSIX")
+	}
+	dir := t.TempDir()
+	shim := filepath.Join(dir, "faketerragrunt")
+	script := "#!/bin/sh\npwd\n"
+	if err := os.WriteFile(shim, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	workdir := t.TempDir()
+	conn, err := parseConn(map[string]any{"engine": "terragrunt", "binary": shim, "chdir": workdir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	args, err := verbArgs("plan", map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasChdirFlag(append(conn.connFlags(), args...)) {
+		t.Fatalf("terragrunt argv must not contain -chdir: %#v", append(conn.connFlags(), args...))
+	}
+	res, err := runTerraform(context.Background(), conn, args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.TrimSpace(res["stdout"].(string))
+	// resolve symlinks (e.g. /tmp -> /private/tmp on macOS) before comparing.
+	wantDir, _ := filepath.EvalSymlinks(workdir)
+	gotDir, _ := filepath.EvalSymlinks(got)
+	if gotDir != wantDir {
+		t.Fatalf("terragrunt cwd: got %q want %q", got, workdir)
+	}
+}
+
+func hasChdirFlag(args []string) bool {
+	for _, a := range args {
+		if strings.HasPrefix(a, "-chdir=") {
+			return true
+		}
+	}
+	return false
+}
+
+// TestParseConnEngine validates the engine enum.
+func TestParseConnEngine(t *testing.T) {
+	for _, e := range []string{"terraform", "tofu", "terragrunt"} {
+		c, err := parseConn(map[string]any{"engine": e})
+		if err != nil {
+			t.Fatalf("engine %q: unexpected error: %v", e, err)
+		}
+		if c.binary != e {
+			t.Errorf("engine %q: default binary got %q", e, c.binary)
+		}
+	}
+	if _, err := parseConn(map[string]any{"engine": "opentofu"}); err == nil {
+		t.Errorf("engine \"opentofu\": expected validation error, got nil")
+	}
+	if c, err := parseConn(map[string]any{}); err != nil || c.engine != "terraform" {
+		t.Errorf("default engine: got %q, err %v", c.engine, err)
 	}
 }
 
