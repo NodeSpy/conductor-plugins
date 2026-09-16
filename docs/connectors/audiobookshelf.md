@@ -1,9 +1,9 @@
 # `audiobookshelf` connector
 
 Audiobookshelf (ABS) as a connector: libraries, items, search, scanning,
-series/collections, the "me" user profile, and playback progress/listening
-sessions over the ABS REST API, plus a raw `api` escape hatch. Built on the
-standard library's `net/http` only.
+series/collections, the "me" user profile, playback progress/listening
+sessions, and multipart file `upload` over the ABS REST API, plus a raw `api`
+escape hatch. Built on the standard library's `net/http` only.
 
 - **Kind:** connector (verbs only — no source)
 - **Source:** [`connectors/audiobookshelf/main.go`](../../connectors/audiobookshelf/main.go)
@@ -61,7 +61,45 @@ either `result` (a single object) or `items` (a list).
 | `update_progress` | `PATCH /api/me/progress/{item_id}` (`progress`, `current_time`, `is_finished`) | `status_code` (+ `result` if the body is non-empty) |
 | `playback_sessions` | `GET /api/me/listening-sessions` | `result` |
 | `authorize` | `POST /api/authorize` | `result` |
+| `upload` | `POST /api/upload` (`library`\*, `folder`\*, `title`\*, `author`, `series`, `files`\*) | `status_code` (+ `result` if the body is non-empty) |
 | `api` | `method` + `path` (under `/api`) + `query` + `body` — escape hatch for anything without a first-class verb | `result` (object response) or `items` (array response) |
+
+The `upload` verb reads each path in `files` from the local filesystem and
+sends them as `multipart/form-data` parts (ABS keys on the filename, not the
+form field name). `library` and `folder` are ABS IDs; `title` is required.
+`.m4b`, `.mp3`, `.flac`, `.opus`, `.epub`, `.pdf`, cover images, and more are
+accepted (see the ABS upload docs for the full list).
+
+## Full Audible → Audiobookshelf pipeline
+
+The `upload` verb is the import half of an end-to-end pipeline that mirrors
+[`NodeSpy/audiobookshelf-import`](https://github.com/NodeSpy/audiobookshelf-import):
+the [`libation`](./libation.md) connector downloads DRM-free books from Audible,
+and this connector imports them into ABS. Composed in a conductor workflow:
+
+```yaml
+connectors:
+  lib:
+    use: libation
+  abs:
+    use: audiobookshelf
+    base_url: https://abs.example.com
+    token: ${ABS_TOKEN}
+    network: ["abs.example.com:443"]
+
+steps:
+  # 1. pull any newly-available books out of Audible (DRM-free)
+  - uses: lib.liberate
+  # 2. import a finished download into an ABS library folder
+  - uses: abs.upload
+    with:
+      library: ${ABS_LIBRARY_ID}
+      folder: ${ABS_FOLDER_ID}
+      title: "Dune"
+      author: "Frank Herbert"
+      files:
+        - /downloads/libation/Dune.m4b
+```
 
 ## Capabilities & security
 
