@@ -5,7 +5,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
@@ -352,6 +355,94 @@ func TestAuthorize(t *testing.T) {
 	}
 }
 
+func TestUpload(t *testing.T) {
+	dir := t.TempDir()
+	bookPath := filepath.Join(dir, "dune.m4b")
+	if err := os.WriteFile(bookPath, []byte("audio-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var gotFields map[string]string
+	var gotFileName, gotFileContent string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		checkBearer(t, r)
+		if r.Method != http.MethodPost || r.URL.Path != "/api/upload" {
+			t.Errorf("request: %s %s", r.Method, r.URL.Path)
+		}
+		if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "multipart/form-data") {
+			t.Errorf("content-type: got %q", ct)
+		}
+		if err := r.ParseMultipartForm(8 << 20); err != nil {
+			t.Fatalf("parse multipart: %v", err)
+		}
+		gotFields = map[string]string{}
+		for _, k := range []string{"title", "library", "folder", "author", "series"} {
+			if v := r.FormValue(k); v != "" {
+				gotFields[k] = v
+			}
+		}
+		// Exactly one file part, under a numeric key, carrying the base name.
+		var parts int
+		for _, fhs := range r.MultipartForm.File {
+			for _, fh := range fhs {
+				parts++
+				gotFileName = fh.Filename
+				f, _ := fh.Open()
+				b, _ := io.ReadAll(f)
+				f.Close()
+				gotFileContent = string(b)
+			}
+		}
+		if parts != 1 {
+			t.Errorf("expected 1 file part, got %d", parts)
+		}
+		writeJSON(w, 200, map[string]any{"id": "item-new"})
+	}))
+	defer srv.Close()
+
+	p := newAudiobookshelfPlugin()
+	res, err := p.Invoke(plugin.InvokeRequest{
+		Verb: "upload", Connection: testConn(srv),
+		Options: map[string]any{
+			"library": "lib1", "folder": "fold1", "title": "Dune",
+			"author": "Frank Herbert", "files": []any{bookPath},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"title": "Dune", "library": "lib1", "folder": "fold1", "author": "Frank Herbert"}
+	if !reflect.DeepEqual(gotFields, want) {
+		t.Errorf("form fields: got %#v want %#v", gotFields, want)
+	}
+	if gotFileName != "dune.m4b" {
+		t.Errorf("uploaded filename: got %q want %q", gotFileName, "dune.m4b")
+	}
+	if gotFileContent != "audio-bytes" {
+		t.Errorf("uploaded content: got %q", gotFileContent)
+	}
+	if res.Outputs["status_code"] != 200 {
+		t.Errorf("status_code: %#v", res.Outputs["status_code"])
+	}
+	result, ok := res.Outputs["result"].(map[string]any)
+	if !ok || result["id"] != "item-new" {
+		t.Errorf("result: %#v", res.Outputs["result"])
+	}
+}
+
+func TestUploadMissingFile(t *testing.T) {
+	// A file path that does not exist is a CodeInvalidParams error, no request made.
+	p := newAudiobookshelfPlugin()
+	_, err := p.Invoke(plugin.InvokeRequest{
+		Verb: "upload", Connection: map[string]any{"base_url": "http://example.invalid", "token": "t"},
+		Options: map[string]any{"library": "l", "folder": "f", "title": "T", "files": []any{"/no/such/file.m4b"}},
+	})
+	pe, ok := err.(*plugin.Error)
+	if !ok || pe.Code != plugin.CodeInvalidParams {
+		t.Fatalf("expected CodeInvalidParams for missing file, got %v", err)
+	}
+}
+
 func TestAPIEscapeHatch(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		checkBearer(t, r)
@@ -434,6 +525,10 @@ func TestMissingRequiredOptions(t *testing.T) {
 		{"collections", map[string]any{}},
 		{"get_progress", map[string]any{}},
 		{"update_progress", map[string]any{}},
+		{"upload", map[string]any{"folder": "f", "title": "T", "files": []any{"/x"}}},   // missing library
+		{"upload", map[string]any{"library": "l", "title": "T", "files": []any{"/x"}}},  // missing folder
+		{"upload", map[string]any{"library": "l", "folder": "f", "files": []any{"/x"}}}, // missing title
+		{"upload", map[string]any{"library": "l", "folder": "f", "title": "T"}},         // missing files
 		{"api", map[string]any{}},
 	}
 	for _, tc := range cases {
@@ -488,7 +583,7 @@ func TestDescribe(t *testing.T) {
 	want := []string{
 		"libraries", "library_get", "library_items", "get_item", "search", "scan",
 		"series", "collections", "me", "get_progress", "update_progress",
-		"playback_sessions", "authorize", "api",
+		"playback_sessions", "authorize", "upload", "api",
 	}
 	got := map[string]bool{}
 	for _, v := range d.Verbs {

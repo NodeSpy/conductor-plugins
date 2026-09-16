@@ -33,9 +33,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -170,6 +172,19 @@ func (p *audiobookshelfPlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{"result": {Type: "any"}, "status_code": {Type: "integer"}},
 			},
 			{
+				Name: "upload", Desc: "upload local audio/ebook/cover files into a library folder (multipart)",
+				Usage: "POST /api/upload",
+				Options: plugin.Schema{
+					"library": {Type: "string", Required: true, Scope: "library", Desc: "target library ID"},
+					"folder":  {Type: "string", Required: true, Desc: "target folder ID within the library"},
+					"title":   {Type: "string", Required: true, Desc: "item title"},
+					"author":  {Type: "string", Desc: "item author"},
+					"series":  {Type: "string", Desc: "item series"},
+					"files":   {Type: "list", Required: true, Desc: "local file paths to upload (e.g. .m4b/.mp3/.flac/.epub/.pdf/cover images); read from disk and sent as multipart parts"},
+				},
+				Outputs: plugin.Schema{"result": {Type: "any"}, "status_code": {Type: "integer"}},
+			},
+			{
 				Name: "api", Desc: "raw escape hatch: any ABS API endpoint",
 				Usage: "method + path under /api, for anything without a first-class verb",
 				Options: plugin.Schema{
@@ -225,6 +240,8 @@ func (p *audiobookshelfPlugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeRe
 		return p.playbackSessions(conn)
 	case "authorize":
 		return p.authorize(conn)
+	case "upload":
+		return p.upload(conn, o)
 	case "api":
 		return p.api(conn, o)
 	default:
@@ -525,6 +542,46 @@ func (p *audiobookshelfPlugin) api(conn absConn, o map[string]any) (plugin.Invok
 	return plugin.InvokeResult{Outputs: out}, nil
 }
 
+// upload sends one or more local files to POST /api/upload as multipart/form-data,
+// creating a new library item. ABS requires title/library/folder; author and
+// series are optional metadata. The multipart file field keys are ignored by
+// ABS (it keys on the filename), so files are added under numeric keys "0","1",…
+func (p *audiobookshelfPlugin) upload(conn absConn, o map[string]any) (plugin.InvokeResult, error) {
+	library := str(o["library"])
+	if library == "" {
+		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, "library is required")
+	}
+	folder := str(o["folder"])
+	if folder == "" {
+		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, "folder is required")
+	}
+	title := str(o["title"])
+	if title == "" {
+		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, "title is required")
+	}
+	files := strList(o["files"])
+	if len(files) == 0 {
+		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, "files is required (one or more local file paths)")
+	}
+	fields := map[string]string{"title": title, "library": library, "folder": folder}
+	if v := str(o["author"]); v != "" {
+		fields["author"] = v
+	}
+	if v := str(o["series"]); v != "" {
+		fields["series"] = v
+	}
+
+	status, body, err := p.doMultipart(conn, conn.apiBase()+"/upload", fields, files)
+	if err != nil {
+		return plugin.InvokeResult{}, err
+	}
+	out := map[string]any{"status_code": status}
+	if decoded, derr := decodeJSON(body); derr == nil && decoded != nil {
+		out["result"] = decoded
+	}
+	return plugin.InvokeResult{Outputs: out}, nil
+}
+
 // --- HTTP plumbing ---
 
 // do performs one HTTP request against the ABS API, attaching the Bearer
@@ -564,6 +621,62 @@ func (p *audiobookshelfPlugin) do(conn absConn, method, endpoint string, query u
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return resp.StatusCode, respBody, plugin.Errorf(plugin.CodeInternalError,
 			fmt.Sprintf("%s %s: %d %s", method, endpoint, resp.StatusCode, strings.TrimSpace(string(respBody))))
+	}
+	return resp.StatusCode, respBody, nil
+}
+
+// doMultipart performs a multipart/form-data POST against the ABS API,
+// streaming each named file from disk. Like do(), it attaches the Bearer token
+// and translates a non-2xx status into a CodeInternalError carrying the status
+// and body. A file that cannot be opened is a CodeInvalidParams error.
+func (p *audiobookshelfPlugin) doMultipart(conn absConn, endpoint string, fields map[string]string, files []string) (int, []byte, error) {
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		if err := mw.WriteField(k, v); err != nil {
+			return 0, nil, plugin.Errorf(plugin.CodeInternalError, err.Error())
+		}
+	}
+	for i, path := range files {
+		f, err := os.Open(path)
+		if err != nil {
+			return 0, nil, plugin.Errorf(plugin.CodeInvalidParams, err.Error())
+		}
+		// ABS ignores the form field name and keys on the filename, so the
+		// field key is just the file's index; the base name carries identity.
+		fw, err := mw.CreateFormFile(strconv.Itoa(i), filepath.Base(path))
+		if err != nil {
+			f.Close()
+			return 0, nil, plugin.Errorf(plugin.CodeInternalError, err.Error())
+		}
+		if _, err := io.Copy(fw, f); err != nil {
+			f.Close()
+			return 0, nil, plugin.Errorf(plugin.CodeInternalError, err.Error())
+		}
+		f.Close()
+	}
+	if err := mw.Close(); err != nil {
+		return 0, nil, plugin.Errorf(plugin.CodeInternalError, err.Error())
+	}
+
+	req, err := http.NewRequest(http.MethodPost, endpoint, &buf)
+	if err != nil {
+		return 0, nil, plugin.Errorf(plugin.CodeInternalError, err.Error())
+	}
+	req.Header.Set("Authorization", "Bearer "+conn.token)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return 0, nil, plugin.Errorf(plugin.CodeInternalError, err.Error())
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, nil, plugin.Errorf(plugin.CodeInternalError, err.Error())
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return resp.StatusCode, respBody, plugin.Errorf(plugin.CodeInternalError,
+			fmt.Sprintf("POST %s: %d %s", endpoint, resp.StatusCode, strings.TrimSpace(string(respBody))))
 	}
 	return resp.StatusCode, respBody, nil
 }
@@ -628,6 +741,29 @@ func boolv(v any) bool {
 		return x == "true" || x == "1" || x == "yes"
 	}
 	return false
+}
+
+// strList reads a list-of-strings option: a []any of strings (the wire shape),
+// a []string, or a single string. Empty entries are dropped.
+func strList(v any) []string {
+	switch x := v.(type) {
+	case []any:
+		out := make([]string, 0, len(x))
+		for _, e := range x {
+			if s, ok := e.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	case []string:
+		return x
+	case string:
+		if x == "" {
+			return nil
+		}
+		return []string{x}
+	}
+	return nil
 }
 
 // intStr renders an integer-ish option as a string ("" if absent).
