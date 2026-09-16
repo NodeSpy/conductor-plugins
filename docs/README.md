@@ -139,6 +139,7 @@ binaries + `checksums.txt`.
 
 | Plugin | Kind | Page |
 |--------|------|------|
+| `aws` | connector (verbs) | [connectors/aws.md](connectors/aws.md) |
 | `docker` | connector (verbs) | [connectors/docker.md](connectors/docker.md) |
 | `helm` | connector (verbs) | [connectors/helm.md](connectors/helm.md) |
 | `kubernetes` | connector (verbs) | [connectors/kubernetes.md](connectors/kubernetes.md) |

@@ -21,6 +21,7 @@ $ go list -deps ./... | grep NodeSpy
 github.com/NodeSpy/conductor/pkg/githubkit
 github.com/NodeSpy/conductor/pkg/plugin
 github.com/NodeSpy/conductor/pkg/sourcekit
+github.com/NodeSpy/conductor-plugins/connectors/aws
 github.com/NodeSpy/conductor-plugins/connectors/docker
 github.com/NodeSpy/conductor-plugins/connectors/github
 github.com/NodeSpy/conductor-plugins/connectors/helm
@@ -50,6 +51,7 @@ No `replace` directive.
 | [`pagerduty`](docs/connectors/pagerduty.md) | connector (source) | `pagerduty` | **No — removed from core.** This is the only way to get it. | PagerDuty V3 incident webhooks → `incident`. Multi-signature (`v1=…,v1=…`) verified, so key rotation works. |
 | [`github`](docs/connectors/github.md) | connector (verbs + source) | `github` | **Yes — still bundled.** This is additive. | Full verb surface (comment, submit_review, pr_diff, merge_pr, create_issue, checks, releases, gists, …) over token or GitHub-App auth, plus the webhook events derivable from a single delivery. Built on `pkg/githubkit`. |
 | [`paseo`](docs/runtimes/paseo.md) | runtime | `paseo` | **Yes — still bundled.** This is additive, opt-in. | The paseo-daemon operations `internal/dispatch.Backend` needs, by shelling to the `paseo` CLI. Driven by conductor's `rpcBackend`. |
+| [`aws`](docs/connectors/aws.md) | connector (verbs) | `aws` | **No — never in core.** Add it here. | AWS via the `aws` CLI: a generic `run` (any service/operation, params → flags, JSON parsed into `result`), plus `s3` (cp/sync/mv/rm/ls/mb/rb), `lambda_invoke`, `sts_identity`, and a `cli` escape hatch. `profile`/`region` select the target; credentials come from the ambient AWS environment. |
 | [`docker`](docs/connectors/docker.md) | connector (verbs) | `docker` | **No — never in core.** Add it here. | The container-engine lifecycle as verbs (`run`, `exec`, `build`, `pull`, `push`, `ps`, `images`, `logs`, `stop`, `start`, `rm`, `inspect`, `compose`, `buildx`, `bake`, `cli`) by shelling to the `docker` (or `podman`) CLI. Local by default; `docker_host: ssh://…` / `context:` reach a remote engine. `buildx`/`bake` are docker-only. |
 | [`terraform`](docs/connectors/terraform.md) | connector (verbs) | `terraform` | **No — never in core.** Add it here. | Terraform/OpenTofu as verbs (`init`, `validate`, `plan`, `apply`, `destroy`, `output`, `show`, `fmt`, `workspace`, `state`, `import`, `refresh`, `providers`, `version`, `cli`) by shelling to `terraform`. `-chdir` + non-interactive defaults (`-input=false`, auto-approve); `output`/`show` parse `-json`. |
 | [`helm`](docs/connectors/helm.md) | connector (verbs) | `helm` | **No — never in core.** Add it here. | Helm releases as verbs (`install`, `upgrade`, `uninstall`, `rollback`, `list`, `status`, `history`, `get_values`, `template`, `pull`, `repo_add`, `repo_update`, `test`, `lint`, `cli`) by shelling to `helm`. `list`/`status`/`history`/`get_values` parse JSON into structured outputs. |
