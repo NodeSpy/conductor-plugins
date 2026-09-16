@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
 
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
+	"github.com/NodeSpy/conductor/pkg/sourcekit"
 )
 
 // --- TestDescribe ---
@@ -179,34 +181,36 @@ func TestParseWebhookMalformedJSON(t *testing.T) {
 // --- secret verification ---
 
 func TestVerifyJiraSecret(t *testing.T) {
-	mustReq := func(t *testing.T, url string, headerToken string) *http.Request {
+	mustReq := func(t *testing.T, queryToken, headerToken string) *sourcekit.Request {
 		t.Helper()
-		r := httptest.NewRequest(http.MethodPost, url, nil)
-		if headerToken != "" {
-			r.Header.Set("X-Conductor-Token", headerToken)
+		rq := &sourcekit.Request{Header: http.Header{}, Query: url.Values{}}
+		if queryToken != "" {
+			rq.Query.Set("secret", queryToken)
 		}
-		return r
+		if headerToken != "" {
+			rq.Header.Set("X-Conductor-Token", headerToken)
+		}
+		return rq
 	}
 	cases := []struct {
-		name        string
-		secret      string
-		url         string
-		headerToken string
-		want        bool
+		name                    string
+		secret                  string
+		queryToken, headerToken string
+		want                    bool
 	}{
-		{"empty secret always passes", "", "/jira", "", true},
-		{"query match", "s3cr3t", "/jira?secret=s3cr3t", "", true},
-		{"query mismatch", "s3cr3t", "/jira?secret=wrong", "", false},
-		{"header match", "s3cr3t", "/jira", "s3cr3t", true},
-		{"header mismatch", "s3cr3t", "/jira", "wrong", false},
-		{"neither provided", "s3cr3t", "/jira", "", false},
-		{"query takes precedence over header", "s3cr3t", "/jira?secret=s3cr3t", "wrong", true},
+		{"empty secret always passes", "", "", "", true},
+		{"query match", "s3cr3t", "s3cr3t", "", true},
+		{"query mismatch", "s3cr3t", "wrong", "", false},
+		{"header match", "s3cr3t", "", "s3cr3t", true},
+		{"header mismatch", "s3cr3t", "", "wrong", false},
+		{"neither provided", "s3cr3t", "", "", false},
+		{"query takes precedence over header", "s3cr3t", "s3cr3t", "wrong", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			r := mustReq(t, tc.url, tc.headerToken)
-			if got := verifyJiraSecret(tc.secret, r); got != tc.want {
-				t.Errorf("verifyJiraSecret(%q, %s) = %v, want %v", tc.secret, tc.url, got, tc.want)
+			rq := mustReq(t, tc.queryToken, tc.headerToken)
+			if got := verifyJiraSecret(tc.secret, rq); got != tc.want {
+				t.Errorf("verifyJiraSecret(%q, query=%q, header=%q) = %v, want %v", tc.secret, tc.queryToken, tc.headerToken, got, tc.want)
 			}
 		})
 	}

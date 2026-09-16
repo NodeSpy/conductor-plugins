@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"sort"
 	"testing"
 	"time"
 
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
+	"github.com/NodeSpy/conductor/pkg/sourcekit"
 )
 
 // TestDescribe asserts the declared surface: kind, type, capabilities, verbs,
@@ -149,12 +151,11 @@ func TestDedupKey(t *testing.T) {
 
 func TestVerifyToken(t *testing.T) {
 	secret := "s3cr3t-token"
-	mk := func(withHeader, withQuery string) *http.Request {
-		u := "http://example.test/datadog"
+	mk := func(withHeader, withQuery string) *sourcekit.Request {
+		r := &sourcekit.Request{Header: http.Header{}, Query: url.Values{}}
 		if withQuery != "" {
-			u += "?token=" + withQuery
+			r.Query.Set("token", withQuery)
 		}
-		r := httptest.NewRequest(http.MethodPost, u, nil)
 		if withHeader != "" {
 			r.Header.Set("X-Conductor-Token", withHeader)
 		}

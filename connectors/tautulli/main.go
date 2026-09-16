@@ -26,7 +26,10 @@
 // webhook.secret with a constant-time comparison — and fails closed exactly
 // like the HMAC-verified sources do: a webhook with no secret configured
 // refuses to start unless webhook.allow_unsigned: true says the operator
-// means it.
+// means it. The shared sourcekit.Listener.ServeReq hands the callback the
+// full request (headers, query, body), so the ?token= query case is checked
+// directly — and the same Listener transparently accepts deliveries over a
+// smee.io-style relay (webhook.smee) for endpoints with no public URL.
 //
 // Connection:
 //
@@ -37,6 +40,7 @@
 //	  path: "/tautulli"                # request path (default /tautulli)
 //	  secret: "<shared token>"         # compared against X-Conductor-Token / ?token=
 //	  allow_unsigned: false            # explicit opt-in to run with no shared token
+//	  smee: "<smee.io channel URL>"    # optional relay for endpoints with no public URL
 //
 // The Tautulli host is operator-specific and self-hosted, so this plugin
 // declares NO egress in its capability manifest — the operator is expected to
@@ -53,7 +57,6 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -75,7 +78,7 @@ func (tautulliPlugin) Describe() plugin.Decl {
 		Connection: plugin.Schema{
 			"base_url": {Type: "string", Required: true, Desc: "base URL of the Tautulli instance, e.g. http://tautulli:8181 (no trailing /api/v2)"},
 			"api_key":  {Type: "string", Required: true, Desc: "Tautulli API key (Settings > Web Interface > API)"},
-			"webhook":  {Type: "map", Desc: "source transport: listen, path (default /tautulli), secret, allow_unsigned"},
+			"webhook":  {Type: "map", Desc: "source transport: listen, path (default /tautulli), secret, allow_unsigned, smee"},
 		},
 		Events: []plugin.Event{tautulliEvent()},
 		Verbs:  tautulliVerbs(),
@@ -498,6 +501,16 @@ func tokenEqual(got, want string) bool {
 	return subtle.ConstantTimeCompare(g[:], w[:]) == 1
 }
 
+// verifyToken compares the request's X-Conductor-Token header, or (when the
+// header is absent) its ?token= query parameter, against secret.
+func verifyToken(secret string, rq *sourcekit.Request) bool {
+	tok := rq.Header.Get("X-Conductor-Token")
+	if tok == "" {
+		tok = rq.Query.Get("token")
+	}
+	return tokenEqual(tok, secret)
+}
+
 func (tautulliPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest, emit func(any) error) error {
 	cfg := req.Config
 	wh, _ := cfg["webhook"].(map[string]any)
@@ -508,51 +521,29 @@ func (tautulliPlugin) StartSource(ctx context.Context, req plugin.StartSourceReq
 	path := strOr(wh["path"], "/tautulli")
 	secret := str(wh["secret"])
 	allowUnsigned := boolv(wh["allow_unsigned"])
+	smeeURL := str(wh["smee"])
 
-	if addr == "" {
-		return fmt.Errorf("tautulli: no webhook.listen address configured")
+	if addr == "" && smeeURL == "" {
+		return fmt.Errorf("tautulli: no webhook.listen address or webhook.smee relay configured")
 	}
 	if err := requireToken(secret, allowUnsigned); err != nil {
 		return err
 	}
 
 	dedup := sourcekit.NewDedup(2048)
-	mux := http.NewServeMux()
-	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		if secret != "" {
-			tok := r.Header.Get("X-Conductor-Token")
-			if tok == "" {
-				tok = r.URL.Query().Get("token")
-			}
-			if !tokenEqual(tok, secret) {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
-			}
-		}
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 8<<20))
-		if err != nil {
-			http.Error(w, "read body", http.StatusBadRequest)
-			return
-		}
-		handleWebhookBody(body, dedup, emit)
-		w.WriteHeader(http.StatusAccepted)
-	})
-
-	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	go func() {
-		<-ctx.Done()
-		_ = srv.Close()
-	}()
-	fmt.Fprintf(os.Stderr, "tautulli[%s]: listening on %s%s\n", req.Instance, addr, path)
-	err := srv.ListenAndServe()
-	if err == http.ErrServerClosed {
-		return nil
+	if addr != "" {
+		fmt.Fprintf(os.Stderr, "tautulli[%s]: listening on %s%s\n", req.Instance, addr, path)
 	}
-	return err
+	if smeeURL != "" {
+		fmt.Fprintf(os.Stderr, "tautulli[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
+	}
+	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smeeURL}
+	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
+		if secret != "" && !verifyToken(secret, rq) {
+			return
+		}
+		handleWebhookBody(rq.Body, dedup, emit)
+	})
 }
 
 // handleWebhookBody parses one Tautulli Webhook delivery and emits a

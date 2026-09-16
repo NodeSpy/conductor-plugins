@@ -26,7 +26,7 @@ connectors:
 |-----|------|---------|
 | `url` | string | GitLab instance base URL (default `https://gitlab.com`); the API base is `url` + `/api/v4` |
 | `token` | string | personal/project access token, sent as `PRIVATE-TOKEN` |
-| `webhook` | map | source transport: `listen`, `path` (default `/gitlab`), `secret`, `allow_unsigned` |
+| `webhook` | map | source transport: `listen` (optional if `smee` is set), `path` (default `/gitlab`), `secret`, `allow_unsigned`, `smee` (smee.io-style SSE relay URL, e.g. `https://smee.io/AbC123` — also (or instead) receive forwarded deliveries over SSE when the endpoint has no public URL) |
 
 ## Source events
 

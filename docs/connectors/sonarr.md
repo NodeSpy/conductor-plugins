@@ -41,7 +41,7 @@ triggers:
 |-----|------|---------|
 | `base_url` | string | **required.** Base URL of the Sonarr instance, e.g. `http://sonarr:8989` (no trailing `/api/v3`) |
 | `api_key` | string | **required.** Sonarr API key (Settings > General > Security) |
-| `webhook` | map | source transport: `listen`, `path` (default `/sonarr`), `secret`, `allow_unsigned` |
+| `webhook` | map | source transport: `listen`, `path` (default `/sonarr`), `secret`, `allow_unsigned`, `smee` (smee.io-style SSE relay URL — receive forwarded deliveries when the endpoint has no public URL; the shared token is still checked) |
 
 Every verb is a plain HTTP call to `{base_url}/api/v3/<resource>`,
 authenticated with the `X-Api-Key` header. A non-2xx response is surfaced as

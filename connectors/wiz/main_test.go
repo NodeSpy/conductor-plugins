@@ -444,24 +444,30 @@ func TestRequireWebhookSecret(t *testing.T) {
 func TestCheckTokenHeaderAndQuery(t *testing.T) {
 	wc := wizWebhookConfig{secret: "s3cr3t", header: defaultTokenHeader}
 
-	reqHeader := httptest.NewRequest(http.MethodPost, "/wiz", nil)
-	reqHeader.Header.Set(defaultTokenHeader, "s3cr3t")
-	if !checkToken(wc, reqHeader) {
+	mk := func(header, query string) *sourcekit.Request {
+		r := &sourcekit.Request{Header: http.Header{}, Query: url.Values{}}
+		if header != "" {
+			r.Header.Set(defaultTokenHeader, header)
+		}
+		if query != "" {
+			r.Query.Set("token", query)
+		}
+		return r
+	}
+
+	if !checkToken(wc, mk("s3cr3t", "")) {
 		t.Error("expected header token to be accepted")
 	}
 
-	reqQuery := httptest.NewRequest(http.MethodPost, "/wiz?token=s3cr3t", nil)
-	if !checkToken(wc, reqQuery) {
+	if !checkToken(wc, mk("", "s3cr3t")) {
 		t.Error("expected query token to be accepted")
 	}
 
-	reqWrong := httptest.NewRequest(http.MethodPost, "/wiz?token=nope", nil)
-	if checkToken(wc, reqWrong) {
+	if checkToken(wc, mk("", "nope")) {
 		t.Error("expected wrong token to be rejected")
 	}
 
-	reqMissing := httptest.NewRequest(http.MethodPost, "/wiz", nil)
-	if checkToken(wc, reqMissing) {
+	if checkToken(wc, mk("", "")) {
 		t.Error("expected missing token to be rejected")
 	}
 }

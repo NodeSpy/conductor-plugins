@@ -17,6 +17,8 @@
 //	  path: "/uptimerobot"             # request path (default /uptimerobot)
 //	  secret: "<shared token>"         # compared to X-Conductor-Token / ?token=
 //	  allow_unsigned: false            # true = accept unauthenticated POSTs
+//	  smee: "https://smee.io/xyz"      # optional smee.io-style SSE relay, for
+//	                                   # when the listener has no public URL
 //
 // UptimeRobot's REST API takes application/x-www-form-urlencoded request
 // bodies (api_key + format=json + the verb's own fields) and always answers
@@ -27,14 +29,14 @@
 //
 // UptimeRobot alert contacts of type "Web-Hook" are entirely operator
 // templated: there is no signature scheme at all, only whatever the operator
-// pastes into the POST value/URL. So, like the datadog/alertmanager
-// connectors, sourcekit.Listener.Secret is left EMPTY (its HMAC check does
-// not apply) and a shared token — from either the X-Conductor-Token header or
-// a ?token= query parameter — is checked by hand. Because a query parameter
-// is part of the request, not the header+body pair sourcekit.Listener.Serve
-// hands to its callback, this connector runs its own small bounded listener
-// (mirroring Listener.Serve's shape: method check, size-capped body read,
-// context-cancellable shutdown) instead of Listener.Serve itself.
+// pastes into the POST value/URL. So, like the datadog connector,
+// sourcekit.Listener.Secret is left EMPTY (its HMAC check does not apply) and
+// a shared token — from either the X-Conductor-Token header or a ?token=
+// query parameter — is checked by hand. The shared sourcekit.Listener.ServeReq
+// hands the callback the full request (headers, query, body), so the ?token=
+// query case is checked directly — and the same Listener transparently
+// accepts deliveries relayed over webhook.smee for endpoints with no public
+// URL.
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -50,7 +52,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
 	"github.com/NodeSpy/conductor/pkg/sourcekit"
@@ -80,7 +81,7 @@ func (uptimerobotPlugin) Describe() plugin.Decl {
 		Connection: plugin.Schema{
 			"api_key":  {Type: "string", Required: true, Desc: "UptimeRobot API key (main, or monitor-specific)"},
 			"api_base": {Type: "string", Desc: "override the API base URL (tests, or a private gateway)"},
-			"webhook":  {Type: "map", Desc: "source transport: listen, path, secret, allow_unsigned"},
+			"webhook":  {Type: "map", Desc: "source transport: listen, path, secret, allow_unsigned, smee"},
 		},
 		Events: []plugin.Event{{
 			Name: "alert", Desc: "an UptimeRobot monitor alert fired (Web-Hook alert contact delivery)",
@@ -419,7 +420,7 @@ func (c *client) doResult(method string, form url.Values) (plugin.InvokeResult, 
 func (uptimerobotPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest, emit func(any) error) error {
 	cfg := req.Config
 	webhook, _ := cfg["webhook"].(map[string]any)
-	addr, path, secret, allowUnsigned := "", "/uptimerobot", "", false
+	addr, path, secret, smeeURL, allowUnsigned := "", "/uptimerobot", "", "", false
 	if webhook != nil {
 		addr = str(webhook["listen"])
 		if p := str(webhook["path"]); p != "" {
@@ -427,20 +428,27 @@ func (uptimerobotPlugin) StartSource(ctx context.Context, req plugin.StartSource
 		}
 		secret = str(webhook["secret"])
 		allowUnsigned = boolv(webhook["allow_unsigned"])
+		smeeURL = str(webhook["smee"])
 	}
-	if addr == "" {
-		return fmt.Errorf("uptimerobot: no webhook.listen address configured")
+	if addr == "" && smeeURL == "" {
+		return fmt.Errorf("uptimerobot: no webhook.listen address or webhook.smee relay configured")
 	}
 	if err := requireWebhookSecret("uptimerobot", secret, allowUnsigned); err != nil {
 		return err
 	}
 	dedup := sourcekit.NewDedup(2048)
-	fmt.Fprintf(os.Stderr, "uptimerobot[%s]: listening on %s%s\n", req.Instance, addr, path)
-	return serveWebhook(ctx, addr, path, func(r *http.Request, body []byte) {
-		if secret != "" && !verifyTokenFromRequest(secret, r) {
+	if addr != "" {
+		fmt.Fprintf(os.Stderr, "uptimerobot[%s]: listening on %s%s\n", req.Instance, addr, path)
+	}
+	if smeeURL != "" {
+		fmt.Fprintf(os.Stderr, "uptimerobot[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
+	}
+	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smeeURL}
+	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
+		if secret != "" && !verifyTokenFromRequest(secret, rq) {
 			return
 		}
-		f, ok := parseAlert(r.Header, body)
+		f, ok := parseAlert(rq.Header, rq.Body)
 		if !ok {
 			return
 		}
@@ -559,41 +567,7 @@ func nonEmpty(ss ...string) string {
 	return ""
 }
 
-// --- webhook transport: bounded listener with header+query token auth ---
-
-// serveWebhook is a minimal bounded HTTP webhook receiver, deliberately not
-// sourcekit.Listener.Serve: UptimeRobot's shared-token auth can arrive as a
-// ?token= query parameter, and Listener.Serve hands its callback only the
-// request headers and body, with no access to the URL. Its shape otherwise
-// mirrors Listener.Serve exactly: POST-only, size-capped body read,
-// context-cancellable shutdown.
-func serveWebhook(ctx context.Context, addr, path string, handler func(*http.Request, []byte)) error {
-	const maxBytes = 8 << 20
-	mux := http.NewServeMux()
-	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBytes))
-		if err != nil {
-			http.Error(w, "read body", http.StatusBadRequest)
-			return
-		}
-		handler(r, body)
-		w.WriteHeader(http.StatusAccepted)
-	})
-	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	go func() {
-		<-ctx.Done()
-		_ = srv.Close()
-	}()
-	err := srv.ListenAndServe()
-	if err == http.ErrServerClosed {
-		return nil
-	}
-	return err
-}
+// --- webhook transport: header+query token auth ---
 
 // verifyTokenFromRequest compares a shared token — from the X-Conductor-Token
 // header, or failing that a ?token= query parameter — against secret in
@@ -601,10 +575,10 @@ func serveWebhook(ctx context.Context, addr, path string, handler func(*http.Req
 // deliveries, so this shared-token check is the only authentication
 // available; requireWebhookSecret ensures a token is always configured unless
 // the operator explicitly opts out with allow_unsigned.
-func verifyTokenFromRequest(secret string, r *http.Request) bool {
-	got := r.Header.Get("X-Conductor-Token")
+func verifyTokenFromRequest(secret string, rq *sourcekit.Request) bool {
+	got := rq.Header.Get("X-Conductor-Token")
 	if got == "" {
-		got = r.URL.Query().Get("token")
+		got = rq.Query.Get("token")
 	}
 	if got == "" {
 		return false

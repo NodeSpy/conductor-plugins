@@ -510,6 +510,41 @@ func TestRequireToken(t *testing.T) {
 	}
 }
 
+// TestVerifyToken proves the header/query precedence (header wins) and that
+// only a matching token passes.
+func TestVerifyToken(t *testing.T) {
+	secret := "s3cret"
+	mk := func(header, query string) *sourcekit.Request {
+		r := &sourcekit.Request{Header: http.Header{}, Query: url.Values{}}
+		if query != "" {
+			r.Query.Set("token", query)
+		}
+		if header != "" {
+			r.Header.Set("X-Conductor-Token", header)
+		}
+		return r
+	}
+	cases := []struct {
+		name          string
+		header, query string
+		want          bool
+	}{
+		{"valid header", secret, "", true},
+		{"valid query", "", secret, true},
+		{"header wins over query", secret, "wrong", true},
+		{"wrong header", "nope", "", false},
+		{"wrong query", "", "nope", false},
+		{"neither present", "", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := verifyToken(secret, mk(tc.header, tc.query)); got != tc.want {
+				t.Errorf("verifyToken(%q, %q): got %v want %v", tc.header, tc.query, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestStartSourceTokenAuth(t *testing.T) {
 	events := make(chan map[string]any, 4)
 	emit := func(payload any) error {
@@ -536,15 +571,17 @@ func TestStartSourceTokenAuth(t *testing.T) {
 	go func() { done <- p.StartSource(ctx, req, emit) }()
 	waitForListener(t, addr)
 
-	// Wrong token: rejected.
+	// Wrong token: nothing emitted.
 	resp, err := http.Post("http://"+addr+"/radarr?token=wrong", "application/json",
 		bytes.NewReader([]byte(`{"eventType":"Test"}`)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("wrong token: got status %d want 401", resp.StatusCode)
+	select {
+	case ev := <-events:
+		t.Fatalf("wrong token should not emit, got %#v", ev)
+	case <-time.After(150 * time.Millisecond):
 	}
 
 	// Correct token via query param: accepted.
@@ -554,9 +591,6 @@ func TestStartSourceTokenAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("correct token: got status %d want 202", resp.StatusCode)
-	}
 
 	select {
 	case ev := <-events:

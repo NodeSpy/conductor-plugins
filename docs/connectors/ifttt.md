@@ -34,7 +34,7 @@ triggers:
 |-----|------|---------|
 | `key` | string (required) | your IFTTT Maker Webhooks key |
 | `base_url` | string | override the Maker Webhooks base URL (default `https://maker.ifttt.com`; for tests) |
-| `webhook` | map | source transport: `listen`, `path` (default `/ifttt`), `secret`, `allow_unsigned` |
+| `webhook` | map | source transport: `listen`, `path` (default `/ifttt`), `secret`, `allow_unsigned`, `smee` (smee.io-style SSE relay URL — receive forwarded deliveries when the endpoint has no public URL; the shared token is still checked) |
 
 ## Verbs
 

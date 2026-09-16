@@ -19,6 +19,12 @@
 //	  path:          "/homeassistant" # request path (default /homeassistant)
 //	  secret:        "<shared token>" # compared against X-Conductor-Token / ?token=
 //	  allow_unsigned: false           # explicitly accept unverified deliveries
+//	  smee:          "https://smee.io/abc123" # optional smee.io-style SSE relay channel
+//
+// The shared sourcekit.Listener.ServeReq hands the callback the full request
+// (headers, query, body), so the ?token= query case is checked directly —
+// and the same Listener transparently accepts deliveries over the smee relay
+// for endpoints with no public URL.
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -50,7 +56,7 @@ func (haPlugin) Describe() plugin.Decl {
 		Connection: plugin.Schema{
 			"base_url": {Type: "string", Required: true, Desc: "Home Assistant base URL, e.g. http://homeassistant.local:8123 (the REST API is served at base_url + /api)"},
 			"token":    {Type: "string", Required: true, Desc: "long-lived access token, sent as Authorization: Bearer <token>"},
-			"webhook":  {Type: "map", Desc: "source transport: listen, path (default /homeassistant), secret, allow_unsigned"},
+			"webhook":  {Type: "map", Desc: "source transport: listen, path (default /homeassistant), secret, allow_unsigned, smee"},
 		},
 		Events: []plugin.Event{
 			{
@@ -380,6 +386,7 @@ func (haPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest, 
 
 	addr, path, secret := "", "/homeassistant", ""
 	allowUnsigned := false
+	smeeURL := ""
 	if webhook != nil {
 		addr = str(webhook["listen"])
 		if p := str(webhook["path"]); p != "" {
@@ -387,71 +394,50 @@ func (haPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest, 
 		}
 		secret = str(webhook["secret"])
 		allowUnsigned = boolv(webhook["allow_unsigned"])
+		smeeURL = str(webhook["smee"])
 	}
-	if addr == "" {
-		return fmt.Errorf("homeassistant: no webhook.listen address configured")
+	if addr == "" && smeeURL == "" {
+		return fmt.Errorf("homeassistant: no webhook.listen address or webhook.smee relay configured")
 	}
 	if err := requireWebhookSecret(secret, allowUnsigned); err != nil {
 		return err
 	}
 
 	dedup := sourcekit.NewDedup(2048)
-	fmt.Fprintf(os.Stderr, "homeassistant[%s]: listening on %s%s\n", req.Instance, addr, path)
+	if addr != "" {
+		fmt.Fprintf(os.Stderr, "homeassistant[%s]: listening on %s%s\n", req.Instance, addr, path)
+	}
+	if smeeURL != "" {
+		fmt.Fprintf(os.Stderr, "homeassistant[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
+	}
 
-	// A shared-token check needs both the request header AND the query
-	// string (?token=), and sourcekit.Listener's callback only forwards
-	// headers + body — not the request URL — so the listener here is a
-	// small direct net/http server (stdlib only) rather than
-	// sourcekit.Listener. sourcekit.Dedup still does the delivery dedup.
-	mux := http.NewServeMux()
-	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 8<<20))
-		if err != nil {
-			http.Error(w, "read body", http.StatusBadRequest)
-			return
-		}
-		if !verifyToken(secret, r) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smeeURL}
+	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
+		if !verifyToken(secret, rq) {
 			return
 		}
 		var payload map[string]any
-		if err := json.Unmarshal(body, &payload); err != nil {
-			http.Error(w, "bad json", http.StatusBadRequest)
+		if err := json.Unmarshal(rq.Body, &payload); err != nil {
 			return
 		}
 		ev := buildEvent(payload)
 		if ev.Dedup == "" || dedup.Add(ev.Dedup) {
 			_ = emit(ev)
 		}
-		w.WriteHeader(http.StatusAccepted)
 	})
-	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	go func() {
-		<-ctx.Done()
-		_ = srv.Close()
-	}()
-	err := srv.ListenAndServe()
-	if err == http.ErrServerClosed {
-		return nil
-	}
-	return err
 }
 
 // verifyToken checks the shared webhook token against X-Conductor-Token or
 // the ?token= query parameter, in constant time. When no secret is
 // configured, the caller (StartSource) only got this far because
 // allow_unsigned was set, so every request is accepted.
-func verifyToken(secret string, r *http.Request) bool {
+func verifyToken(secret string, rq *sourcekit.Request) bool {
 	if secret == "" {
 		return true
 	}
-	got := r.Header.Get("X-Conductor-Token")
+	got := rq.Header.Get("X-Conductor-Token")
 	if got == "" {
-		got = r.URL.Query().Get("token")
+		got = rq.Query.Get("token")
 	}
 	if got == "" {
 		return false

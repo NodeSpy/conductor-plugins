@@ -432,6 +432,11 @@ func TestWebhookAcceptsValidToken(t *testing.T) {
 	}
 }
 
+// TestWebhookRejectsWrongToken proves a wrong token never emits an event.
+// The shared sourcekit.Listener always responds 202 once it has read the
+// body (there is no per-request status hook for a rejection that happens
+// inside the callback), so the assertion is on the absence of an emit, not
+// the HTTP status.
 func TestWebhookRejectsWrongToken(t *testing.T) {
 	p := &healthchecksPlugin{}
 	emitted, addr := startSourceForTest(t, p, map[string]any{
@@ -443,7 +448,7 @@ func TestWebhookRejectsWrongToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
+	if resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("status: %d", resp.StatusCode)
 	}
 	select {

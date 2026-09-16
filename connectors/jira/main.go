@@ -17,7 +17,11 @@
 // (for a delivery path that can set a custom header instead, e.g. a
 // forwarding proxy). Omitting the secret fails closed: `webhook.allow_unsigned:
 // true` is the explicit, greppable way to say you accept unauthenticated
-// deliveries anyway.
+// deliveries anyway. The shared sourcekit.Listener.ServeReq hands the
+// callback the full request (headers, query, body), so the ?secret= query
+// case is checked directly — and the same Listener transparently accepts
+// deliveries over a smee.io-style relay (webhook.smee) for endpoints with no
+// public URL.
 //
 // Connection (used for both Invoke and StartSource):
 //
@@ -29,6 +33,7 @@
 //	  path: "/jira"                         # request path (default /jira)
 //	  secret: "<shared secret>"             # checked against ?secret= or X-Conductor-Token
 //	  allow_unsigned: false                 # accept deliveries with no secret configured
+//	  smee: "https://smee.io/abc123"        # optional smee.io-style SSE relay channel
 //
 // Jira Cloud REST v3 is reached at base_url + "/rest/api/3"; tests point
 // base_url at an httptest.Server to exercise the same code path with no
@@ -49,7 +54,6 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"time"
 
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
 	"github.com/NodeSpy/conductor/pkg/sourcekit"
@@ -66,7 +70,7 @@ func (jiraPlugin) Describe() plugin.Decl {
 			"base_url":  {Type: "string", Required: true, Desc: "Jira Cloud site base URL, e.g. https://acme.atlassian.net (self-hosted Jira Server/Data Center is not supported by the v3 REST verbs this connector calls)"},
 			"email":     {Type: "string", Desc: "Atlassian account email for HTTP Basic auth"},
 			"api_token": {Type: "string", Desc: "Atlassian API token for HTTP Basic auth"},
-			"webhook":   {Type: "map", Desc: "source transport: listen, path (default /jira), secret, allow_unsigned"},
+			"webhook":   {Type: "map", Desc: "source transport: listen, path (default /jira), secret, allow_unsigned, smee"},
 		},
 		Events:       jiraEvents(),
 		Verbs:        jiraVerbs(),
@@ -609,10 +613,10 @@ func doAPI(conn jiraConn, o map[string]any) (plugin.InvokeResult, error) {
 // Cloud webhooks carry no signature, so authentication is a shared secret
 // checked against the `secret` query parameter or an X-Conductor-Token
 // header — never sourcekit.Listener's built-in HMAC verification (there is
-// no HMAC to verify), hence Listener is not used here at all; a bespoke
-// net/http mux gives the handler the *http.Request it needs to read the
-// query string, which sourcekit.Listener.Serve's header+body-only callback
-// does not expose.
+// no HMAC to verify), hence Listener.Secret is left empty and
+// verifyJiraSecret does the check itself against the sourcekit.Request the
+// shared Listener hands the callback (headers, query, body — over the HTTP
+// listener AND, when webhook.smee is set, a smee.io-style SSE relay).
 func (jiraPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest, emit func(any) error) error {
 	cfg := req.Config
 	conn, err := parseConn(cfg)
@@ -624,49 +628,34 @@ func (jiraPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest
 	path := strOr(webhook["path"], "/jira")
 	secret := str(webhook["secret"])
 	allowUnsigned := boolv(webhook["allow_unsigned"])
-	if addr == "" {
-		return fmt.Errorf("jira: no webhook.listen address configured")
+	smeeURL := str(webhook["smee"])
+	if addr == "" && smeeURL == "" {
+		return fmt.Errorf("jira: no webhook.listen address or webhook.smee relay configured")
 	}
 	if err := requireWebhookSecret("jira", secret, allowUnsigned, "webhook.secret"); err != nil {
 		return err
 	}
 
 	dedup := sourcekit.NewDedup(4096)
-	fmt.Fprintf(os.Stderr, "jira[%s]: listening on %s%s\n", req.Instance, addr, path)
+	if addr != "" {
+		fmt.Fprintf(os.Stderr, "jira[%s]: listening on %s%s\n", req.Instance, addr, path)
+	}
+	if smeeURL != "" {
+		fmt.Fprintf(os.Stderr, "jira[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
+	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smeeURL}
+	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
+		if !verifyJiraSecret(secret, rq) {
 			return
 		}
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 8<<20))
-		if err != nil {
-			http.Error(w, "read body", http.StatusBadRequest)
-			return
-		}
-		if !verifyJiraSecret(secret, r) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		for _, ev := range parseWebhook(conn.rawBase, body) {
+		for _, ev := range parseWebhook(conn.rawBase, rq.Body) {
 			if ev.Dedup != "" && !dedup.Add(ev.Dedup) {
 				continue
 			}
 			_ = emit(ev)
 		}
-		w.WriteHeader(http.StatusAccepted)
 	})
-	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	go func() {
-		<-ctx.Done()
-		_ = srv.Close()
-	}()
-	err = srv.ListenAndServe()
-	if err == http.ErrServerClosed {
-		return nil
-	}
-	return err
 }
 
 // verifyJiraSecret reports whether the request carries the configured shared
@@ -674,13 +663,13 @@ func (jiraPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest
 // (query checked first). An empty configured secret always passes — the
 // caller (requireWebhookSecret) already refused to start unless that was an
 // explicit allow_unsigned opt-in. Comparison is constant-time.
-func verifyJiraSecret(secret string, r *http.Request) bool {
+func verifyJiraSecret(secret string, rq *sourcekit.Request) bool {
 	if secret == "" {
 		return true
 	}
-	got := r.URL.Query().Get("secret")
+	got := rq.Query.Get("secret")
 	if got == "" {
-		got = r.Header.Get("X-Conductor-Token")
+		got = rq.Header.Get("X-Conductor-Token")
 	}
 	return subtle.ConstantTimeCompare([]byte(got), []byte(secret)) == 1
 }

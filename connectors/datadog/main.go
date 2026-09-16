@@ -20,14 +20,11 @@
 // Datadog webhooks are user-templated and UNSIGNED: there is no HMAC to
 // verify. Instead, the operator pastes a shared token into the webhook URL
 // (?token=<secret>) or a custom header (X-Conductor-Token: <secret>), and this
-// plugin compares it (constant-time) to webhook.secret. Because
-// pkg/sourcekit's Listener only ever hands a source's callback the request's
-// headers and body (by design — it does its own HMAC verification against the
-// full body before the callback ever runs), it has no way to also inspect the
-// query string; this plugin therefore runs its own minimal net/http listener
-// (stdlib only) for the query-param case, and leaves sourcekit imported for
-// the one piece of shared, tested infrastructure that does apply here: the
-// delivery Dedup set. See requireWebhookToken below and
+// plugin compares it (constant-time) to webhook.secret. The shared
+// sourcekit.Listener.ServeReq hands the callback the full request (headers,
+// query, body), so the ?token= query case is checked directly — and the same
+// Listener transparently accepts deliveries over a smee.io-style relay
+// (webhook.smee) for endpoints with no public URL. See verifyToken below and
 // docs/connectors/datadog.md for the exact payload template the operator
 // configures in Datadog.
 //
@@ -87,7 +84,7 @@ func (datadogPlugin) Describe() plugin.Decl {
 			"app_key":  {Type: "string", Desc: "DD-APPLICATION-KEY (required for monitor/metric verbs)"},
 			"site":     {Type: "string", Desc: "Datadog site, e.g. datadoghq.com (default), datadoghq.eu, us5.datadoghq.com"},
 			"api_base": {Type: "string", Desc: "override the full API base URL (tests only; overrides site)"},
-			"webhook":  {Type: "map", Desc: "source transport: listen, path, secret"},
+			"webhook":  {Type: "map", Desc: "source transport: listen, path, secret, smee"},
 		},
 		Events: []plugin.Event{{
 			Name:    "alert",
@@ -418,64 +415,37 @@ func (c *client) genericAPI(o map[string]any) (plugin.InvokeResult, error) {
 
 // --- source: Datadog webhook ---
 
-// datadogListener is a bounded HTTP webhook receiver, mirroring
-// sourcekit.Listener's shape (method/path/size checks, ctx-bounded shutdown)
-// but calling back with the FULL request rather than just header+body — the
-// query-string token check below needs r.URL, which sourcekit.Listener never
-// forwards (by design: it does its own header-only HMAC check upstream of the
-// callback). Kept local and tiny rather than widening the shared kit for one
-// provider's one quirk.
-func serveWebhook(ctx context.Context, addr, path string, h func(*http.Request, []byte)) error {
-	mux := http.NewServeMux()
-	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 8<<20))
-		if err != nil {
-			http.Error(w, "read body", http.StatusBadRequest)
-			return
-		}
-		h(r, body)
-		w.WriteHeader(http.StatusAccepted)
-	})
-	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	go func() {
-		<-ctx.Done()
-		_ = srv.Close()
-	}()
-	err := srv.ListenAndServe()
-	if err == http.ErrServerClosed {
-		return nil
-	}
-	return err
-}
-
 func (datadogPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest, emit func(any) error) error {
 	cfg := req.Config
 	webhook, _ := cfg["webhook"].(map[string]any)
-	addr, path, secret := "", "/datadog", ""
+	addr, path, secret, smeeURL := "", "/datadog", "", ""
 	if webhook != nil {
 		addr = str(webhook["listen"])
 		if p := str(webhook["path"]); p != "" {
 			path = p
 		}
 		secret = str(webhook["secret"])
+		smeeURL = str(webhook["smee"])
 	}
-	if addr == "" {
-		return fmt.Errorf("datadog: no webhook.listen address configured")
+	if addr == "" && smeeURL == "" {
+		return fmt.Errorf("datadog: no webhook.listen address or webhook.smee relay configured")
 	}
 	if err := requireWebhookSecret("datadog", secret, cfg, "webhook.secret"); err != nil {
 		return err
 	}
 	dedup := sourcekit.NewDedup(2048)
-	fmt.Fprintf(os.Stderr, "datadog[%s]: listening on %s%s\n", req.Instance, addr, path)
-	return serveWebhook(ctx, addr, path, func(r *http.Request, body []byte) {
-		if secret != "" && !verifyToken(secret, r) {
+	if addr != "" {
+		fmt.Fprintf(os.Stderr, "datadog[%s]: listening on %s%s\n", req.Instance, addr, path)
+	}
+	if smeeURL != "" {
+		fmt.Fprintf(os.Stderr, "datadog[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
+	}
+	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smeeURL}
+	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
+		if secret != "" && !verifyToken(secret, rq) {
 			return
 		}
-		f, ok := parseAlert(body)
+		f, ok := parseAlert(rq.Body)
 		if !ok {
 			return
 		}
@@ -507,10 +477,10 @@ func (datadogPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequ
 // time. Datadog cannot sign webhooks, so this shared-token check is the only
 // authentication available; requireWebhookSecret ensures a token is always
 // configured unless the operator explicitly opts out with allow_unsigned.
-func verifyToken(secret string, r *http.Request) bool {
-	got := r.Header.Get("X-Conductor-Token")
+func verifyToken(secret string, rq *sourcekit.Request) bool {
+	got := rq.Header.Get("X-Conductor-Token")
 	if got == "" {
-		got = r.URL.Query().Get("token")
+		got = rq.Query.Get("token")
 	}
 	if got == "" {
 		return false

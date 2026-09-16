@@ -10,7 +10,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
-	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"math/big"
@@ -412,72 +411,13 @@ func TestStartSourceRequiresListenOrSmee(t *testing.T) {
 	}
 }
 
-// --- smee SSE payload parsing ---
+// --- smee relay: now handled by sourcekit.Listener{Relay: ...} itself (see
+// pkg/sourcekit's own relay tests); handle()'s msgType=="" -> msg.Type
+// fallback (exercised below) is what keeps relayed deliveries — which carry
+// no x-amz-sns-message-type header unless the origin request had one —
+// classifying correctly. ---
 
-func TestParseSmeePayloadNestedBody(t *testing.T) {
-	raw := []byte(`{
-		"host": "example.com",
-		"x-amz-sns-message-type": "Notification",
-		"body": {"Type": "Notification", "MessageId": "m1", "Message": "hi"},
-		"query": {},
-		"timestamp": 1700000000000
-	}`)
-	msgType, body, ok := parseSmeePayload(raw)
-	if !ok {
-		t.Fatal("expected ok")
-	}
-	if msgType != "Notification" {
-		t.Fatalf("msgType: %q", msgType)
-	}
-	var m snsMessage
-	if err := json.Unmarshal(body, &m); err != nil {
-		t.Fatal(err)
-	}
-	if m.MessageId != "m1" || m.Message != "hi" {
-		t.Fatalf("body: %#v", m)
-	}
-}
-
-func TestParseSmeePayloadStringBody(t *testing.T) {
-	raw := []byte(`{
-		"X-Amz-Sns-Message-Type": "SubscriptionConfirmation",
-		"body": "{\"Type\":\"SubscriptionConfirmation\",\"Token\":\"tok\"}"
-	}`)
-	msgType, body, ok := parseSmeePayload(raw)
-	if !ok {
-		t.Fatal("expected ok")
-	}
-	if msgType != "SubscriptionConfirmation" {
-		t.Fatalf("msgType: %q", msgType)
-	}
-	var m snsMessage
-	if err := json.Unmarshal(body, &m); err != nil {
-		t.Fatal(err)
-	}
-	if m.Token != "tok" {
-		t.Fatalf("body: %#v", m)
-	}
-}
-
-func TestParseSmeePayloadFallsBackToBodyType(t *testing.T) {
-	raw := []byte(`{"body": {"Type": "Notification", "MessageId": "m2"}}`)
-	msgType, _, ok := parseSmeePayload(raw)
-	if !ok {
-		t.Fatal("expected ok")
-	}
-	if msgType != "Notification" {
-		t.Fatalf("msgType: %q", msgType)
-	}
-}
-
-func TestParseSmeePayloadIgnoresKeepAlive(t *testing.T) {
-	raw := []byte(`{"ready": true}`)
-	if _, _, ok := parseSmeePayload(raw); ok {
-		t.Fatal("expected keep-alive payload with no body to be ignored")
-	}
-}
-
-func TestParseSmeePayloadFlowsThroughHandle(t *testing.T) {
+func TestHandleFallsBackToBodyTypeWhenHeaderEmpty(t *testing.T) {
 	var emitted int
 	s := &snsSource{
 		emit:     func(any) error { emitted++; return nil },
@@ -485,17 +425,10 @@ func TestParseSmeePayloadFlowsThroughHandle(t *testing.T) {
 		instance: "test",
 		verify:   func(snsMessage) error { return nil },
 	}
-	raw := []byte(`{
-		"x-amz-sns-message-type": "Notification",
-		"body": {"Type": "Notification", "MessageId": "m3", "Message": "hi", "Subject": "s"}
-	}`)
-	msgType, body, ok := parseSmeePayload(raw)
-	if !ok {
-		t.Fatal("expected ok")
-	}
-	s.handle(msgType, body)
+	body := []byte(`{"Type": "Notification", "MessageId": "m3", "Message": "hi", "Subject": "s"}`)
+	s.handle("", body)
 	if emitted != 1 {
-		t.Fatalf("expected 1 emit via smee payload -> handle, got %d", emitted)
+		t.Fatalf("expected 1 emit via body Type fallback, got %d", emitted)
 	}
 }
 

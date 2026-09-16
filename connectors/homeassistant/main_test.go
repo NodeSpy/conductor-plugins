@@ -6,12 +6,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
+	"github.com/NodeSpy/conductor/pkg/sourcekit"
 )
 
 // recordedRequest captures everything a verb test needs to assert about the
@@ -406,12 +408,15 @@ func TestBuildEventNoIDNoEventType(t *testing.T) {
 }
 
 func TestVerifyToken(t *testing.T) {
-	req := func(header, query string) *http.Request {
-		r := httptest.NewRequest(http.MethodPost, "/homeassistant?"+query, nil)
-		if header != "" {
-			r.Header.Set("X-Conductor-Token", header)
+	req := func(header, queryToken string) *sourcekit.Request {
+		rq := &sourcekit.Request{Header: http.Header{}, Query: url.Values{}}
+		if queryToken != "" {
+			rq.Query.Set("token", queryToken)
 		}
-		return r
+		if header != "" {
+			rq.Header.Set("X-Conductor-Token", header)
+		}
+		return rq
 	}
 	if !verifyToken("", req("", "")) {
 		t.Fatal("empty secret should always verify (only reached when allow_unsigned)")
@@ -419,7 +424,7 @@ func TestVerifyToken(t *testing.T) {
 	if !verifyToken("s3cret", req("s3cret", "")) {
 		t.Fatal("matching header should verify")
 	}
-	if !verifyToken("s3cret", req("", "token=s3cret")) {
+	if !verifyToken("s3cret", req("", "s3cret")) {
 		t.Fatal("matching query token should verify")
 	}
 	if verifyToken("s3cret", req("wrong", "")) {
@@ -428,7 +433,7 @@ func TestVerifyToken(t *testing.T) {
 	if verifyToken("s3cret", req("", "")) {
 		t.Fatal("missing token should NOT verify when a secret is configured")
 	}
-	if verifyToken("s3cret", req("", "token=wrong")) {
+	if verifyToken("s3cret", req("", "wrong")) {
 		t.Fatal("mismatched query token should NOT verify")
 	}
 }
@@ -447,7 +452,9 @@ func TestRequireWebhookSecret(t *testing.T) {
 
 // TestStartSourceWebhookEndToEnd drives the real HTTP listener StartSource
 // spins up: an accepted, signed delivery produces exactly one emitted event;
-// an unsigned delivery is rejected (401) and produces none.
+// an unsigned delivery is silently dropped (the shared sourcekit.Listener
+// always responds 202 once it has read the body — verifyToken's rejection
+// just skips the emit) and produces none.
 func TestStartSourceWebhookEndToEnd(t *testing.T) {
 	events := make(chan map[string]any, 4)
 	emit := func(payload any) error {
@@ -472,13 +479,19 @@ func TestStartSourceWebhookEndToEnd(t *testing.T) {
 	url := "http://" + addr + "/homeassistant"
 	waitForListener(t, url)
 
-	// Rejected: no token at all.
+	// No token at all: the listener still accepts the delivery (202), but
+	// verifyToken drops it before emit — no event follows.
 	resp, err := http.Post(url, "application/json", jsonBody(`{"event_type":"x"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("unsigned request: want 401, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("unsigned request: want 202, got %d", resp.StatusCode)
+	}
+	select {
+	case ev := <-events:
+		t.Fatalf("unsigned request should not emit, got %#v", ev)
+	case <-time.After(150 * time.Millisecond):
 	}
 
 	// Accepted: header token.

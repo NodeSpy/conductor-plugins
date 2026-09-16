@@ -29,7 +29,7 @@ connectors:
 | `api_key` | string | Healthchecks API key, sent as `X-Api-Key` on **management** verbs only |
 | `api_base` | string | management API base (default `https://healthchecks.io`; override for self-hosted or tests) |
 | `ping_base` | string | pinging base (default `https://hc-ping.com`; override for self-hosted or tests) |
-| `webhook` | map | source transport: `listen`, `path` (default `/healthchecks`), `secret`, `allow_unsigned` |
+| `webhook` | map | source transport: `listen`, `path` (default `/healthchecks`), `secret`, `allow_unsigned`, `smee` (smee.io-style SSE relay URL — receive forwarded deliveries when the endpoint has no public URL; the shared token is still checked) |
 
 Two surfaces, two trust models:
 

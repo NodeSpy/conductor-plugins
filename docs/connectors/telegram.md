@@ -25,7 +25,7 @@ connectors:
 |-----|------|---------|
 | `token` | string | bot token from @BotFather (required for verbs) |
 | `api_base` | string | override the Telegram Bot API base URL (tests) |
-| `webhook` | map | source transport: `listen`, `path` (default `/telegram`), `secret`, `allow_unsigned` |
+| `webhook` | map | source transport: `listen` (optional if `smee` is set), `path` (default `/telegram`), `secret`, `allow_unsigned`, `smee` (smee.io-style SSE relay URL, e.g. `https://smee.io/AbC123` — also (or instead) receive forwarded deliveries over SSE when the endpoint has no public URL) |
 
 ## Source events
 

@@ -501,6 +501,81 @@ func pinNow(t *testing.T, ts time.Time) func() {
 	return func() { nowFunc = prev }
 }
 
+// TestVerifyToken proves the ?token= query check accepts a matching token and
+// rejects everything else — Plex's webhook feature has no header option.
+func TestVerifyToken(t *testing.T) {
+	secret := "s3cret"
+	mk := func(query string) *sourcekit.Request {
+		r := &sourcekit.Request{Header: http.Header{}, Query: url.Values{}}
+		if query != "" {
+			r.Query.Set("token", query)
+		}
+		return r
+	}
+	cases := []struct {
+		name  string
+		query string
+		want  bool
+	}{
+		{"valid query", secret, true},
+		{"wrong query", "nope", false},
+		{"no token", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := verifyToken(secret, mk(tc.query)); got != tc.want {
+				t.Errorf("verifyToken(%q): got %v want %v", tc.query, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestExtractPayload proves the hand-rolled multipart parser pulls the
+// `payload` field out of a body shaped like Plex's actual webhook POST, and
+// rejects non-multipart or boundary-less requests.
+func TestExtractPayload(t *testing.T) {
+	body, contentType := buildMultipartPayload(t, samplePlexWebhookPayload)
+	rq := &sourcekit.Request{
+		Header: http.Header{"Content-Type": []string{contentType}},
+		Body:   body.Bytes(),
+	}
+	got, err := extractPayload(rq)
+	if err != nil {
+		t.Fatalf("extractPayload: %v", err)
+	}
+	if string(got) != samplePlexWebhookPayload {
+		t.Fatalf("extractPayload: got %s want %s", got, samplePlexWebhookPayload)
+	}
+
+	t.Run("non-multipart content type is rejected", func(t *testing.T) {
+		rq := &sourcekit.Request{
+			Header: http.Header{"Content-Type": []string{"application/json"}},
+			Body:   []byte(samplePlexWebhookPayload),
+		}
+		if _, err := extractPayload(rq); err == nil {
+			t.Fatal("expected an error for a non-multipart body")
+		}
+	})
+
+	t.Run("missing payload field is rejected", func(t *testing.T) {
+		buf := &bytes.Buffer{}
+		mw := multipart.NewWriter(buf)
+		if err := mw.WriteField("other", "x"); err != nil {
+			t.Fatal(err)
+		}
+		if err := mw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		rq := &sourcekit.Request{
+			Header: http.Header{"Content-Type": []string{mw.FormDataContentType()}},
+			Body:   buf.Bytes(),
+		}
+		if _, err := extractPayload(rq); err == nil {
+			t.Fatal("expected an error when no payload field is present")
+		}
+	})
+}
+
 func TestTokenEqual(t *testing.T) {
 	if !tokenEqual("s3cret", "s3cret") {
 		t.Fatal("matching token rejected")
@@ -546,7 +621,7 @@ func buildMultipartPayload(t *testing.T, payload string) (body *bytes.Buffer, co
 // TestStartSourceWebhookTokenAcceptReject drives StartSource end to end
 // against a real (loopback) listener with a multipart/form-data body: a
 // request with the correct token is accepted and emits an event; a request
-// with a missing/wrong token is rejected with 401 and nothing is emitted.
+// with a missing/wrong token emits nothing.
 func TestStartSourceWebhookTokenAcceptReject(t *testing.T) {
 	restore := pinNow(t, time.Unix(3000, 0))
 	defer restore()
@@ -580,18 +655,15 @@ func TestStartSourceWebhookTokenAcceptReject(t *testing.T) {
 	waitForListener(t, addr)
 
 	body, contentType := buildMultipartPayload(t, samplePlexWebhookPayload)
-	resp := postMultipart(t, addr, "/plex?token=nope", body.Bytes(), contentType)
-	if resp != http.StatusUnauthorized {
-		t.Fatalf("wrong token: status = %d, want 401", resp)
-	}
+	postMultipart(t, addr, "/plex?token=nope", body.Bytes(), contentType)
 	select {
 	case ev := <-events:
 		t.Fatalf("expected no emission for the wrong token, got %#v", ev)
-	default:
+	case <-time.After(150 * time.Millisecond):
 	}
 
 	body, contentType = buildMultipartPayload(t, samplePlexWebhookPayload)
-	resp = postMultipart(t, addr, "/plex?token=s3cret", body.Bytes(), contentType)
+	resp := postMultipart(t, addr, "/plex?token=s3cret", body.Bytes(), contentType)
 	if resp != http.StatusAccepted {
 		t.Fatalf("correct token: status = %d, want 202", resp)
 	}

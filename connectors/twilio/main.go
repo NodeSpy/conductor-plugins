@@ -16,16 +16,20 @@
 // verifies. So the listener's own Secret is left empty (which disables
 // sourcekit's verification) and this plugin does the Twilio-specific check
 // itself, once the body is parsed into form params. See verifyTwilioSignature.
+// Note: over a smee relay, the URL Twilio actually signed is whatever it was
+// configured to POST to (typically the relay channel URL), not public_url —
+// see webhook.smee below.
 //
 // Config (per start_source, under `webhook:`):
 //
 //	account_sid: "AC..."             # connection: Twilio account SID
 //	auth_token: "..."                # connection: Twilio auth token
 //	webhook:
-//	  listen: ":9097"                # HTTP listener address
+//	  listen: ":9097"                # HTTP listener address (optional if smee is set)
 //	  path: "/twilio"                # request path (default /twilio)
 //	  validate: true                 # verify X-Twilio-Signature (default true)
 //	  public_url: "https://example.com" # externally-reachable base URL Twilio posts to
+//	  smee: "https://smee.io/AbC123" # optional smee.io-style SSE relay for endpoints with no public URL
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -64,8 +68,8 @@ func (twilioPlugin) Describe() plugin.Decl {
 		Connection: plugin.Schema{
 			"account_sid": {Type: "string", Required: true, Desc: "Twilio Account SID"},
 			"auth_token":  {Type: "string", Required: true, Desc: "Twilio Auth Token (also the webhook signing secret)"},
-			"webhook": {Type: "map", Desc: "source transport: listen, path, validate, public_url"},
-			"api_base": {Type: "string", Desc: "override the Twilio API base URL (tests, or a private gateway)"},
+			"webhook":     {Type: "map", Desc: "source transport: listen, path, validate, public_url, smee (smee.io-style SSE relay URL — when set, note that the relayed request URL differs from public_url, so set validate: false or configure public_url to match what the relay reports)"},
+			"api_base":    {Type: "string", Desc: "override the Twilio API base URL (tests, or a private gateway)"},
 		},
 		Events: []plugin.Event{
 			{
@@ -404,7 +408,7 @@ func (twilioPlugin) StartSource(ctx context.Context, req plugin.StartSourceReque
 	webhook, _ := cfg["webhook"].(map[string]any)
 	authToken := str(cfg["auth_token"])
 
-	addr, path, publicURL := "", "/twilio", ""
+	addr, path, publicURL, relay := "", "/twilio", "", ""
 	validate := true
 	if webhook != nil {
 		addr = str(webhook["listen"])
@@ -412,12 +416,13 @@ func (twilioPlugin) StartSource(ctx context.Context, req plugin.StartSourceReque
 			path = p
 		}
 		publicURL = str(webhook["public_url"])
+		relay = str(webhook["smee"])
 		if v, ok := webhook["validate"]; ok {
 			validate = boolv(v)
 		}
 	}
-	if addr == "" {
-		return fmt.Errorf("twilio: no webhook.listen address configured")
+	if addr == "" && relay == "" {
+		return fmt.Errorf("twilio: no webhook.listen address or webhook.smee relay configured")
 	}
 	if err := requireSignatureConfig(validate, authToken, publicURL); err != nil {
 		return err
@@ -429,9 +434,14 @@ func (twilioPlugin) StartSource(ctx context.Context, req plugin.StartSourceReque
 	// the request URL plus the sorted form params, so it does not fit. Leave
 	// Secret empty (VerifyHMAC then passes everything through) and verify the
 	// Twilio way ourselves below, once the body is parsed into form params.
-	ln := sourcekit.Listener{Addr: addr, Path: path}
+	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: relay}
 	dedup := sourcekit.NewDedup(2048)
-	fmt.Fprintf(os.Stderr, "twilio[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
+	if addr != "" {
+		fmt.Fprintf(os.Stderr, "twilio[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
+	}
+	if relay != "" {
+		fmt.Fprintf(os.Stderr, "twilio[%s]: relaying via smee channel %s\n", req.Instance, relay)
+	}
 	return ln.Serve(ctx, func(h http.Header, body []byte) {
 		form, err := url.ParseQuery(string(body))
 		if err != nil {

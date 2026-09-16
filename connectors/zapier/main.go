@@ -19,13 +19,19 @@
 //	  path: "/zapier"                    # request path (default /zapier)
 //	  secret: "<shared token>"           # compared to X-Conductor-Token / ?token=
 //	  allow_unsigned: false              # explicitly accept an unauthenticated listener
+//	  smee: "https://smee.io/xyz"        # optional smee.io-style SSE relay, for
+//	                                     # when the listener has no public URL
 //
 // Zapier's inbound "Webhooks by Zapier" action cannot compute an HMAC
 // signature — it can only POST a JSON body, optionally with a custom header
 // or query string an operator types into the Zap's URL/header fields. So,
 // like Datadog, authentication here is a shared token compared in constant
 // time against either the X-Conductor-Token header or a `?token=` query
-// parameter, never an HMAC. See requireWebhookSecret and verifyToken below.
+// parameter, never an HMAC. The shared sourcekit.Listener.ServeReq hands the
+// callback the full request (headers, query, body), so the ?token= query
+// case is checked directly — and the same Listener transparently accepts
+// deliveries relayed over webhook.smee. See requireWebhookSecret and
+// verifyToken below.
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -41,7 +47,6 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"time"
 
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
 	"github.com/NodeSpy/conductor/pkg/sourcekit"
@@ -62,7 +67,7 @@ func (zapierPlugin) Describe() plugin.Decl {
 		Desc: "Zapier: POST a JSON body to a Catch Hook webhook to kick off a Zap (`send`); receive the JSON a Zap's Webhooks-by-Zapier action posts back as a source event.",
 		Connection: plugin.Schema{
 			"hook_url": {Type: "string", Desc: "default Catch Hook URL used by `send` when the verb's own hook_url option is omitted; must be a hooks.zapier.com URL"},
-			"webhook":  {Type: "map", Desc: "source transport: listen, path (default /zapier), secret, allow_unsigned"},
+			"webhook":  {Type: "map", Desc: "source transport: listen, path (default /zapier), secret, allow_unsigned, smee"},
 		},
 		Events: []plugin.Event{
 			{
@@ -187,7 +192,7 @@ func postToHook(hookURL string, body any) (plugin.InvokeResult, error) {
 func (zapierPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest, emit func(any) error) error {
 	cfg := req.Config
 	webhook, _ := cfg["webhook"].(map[string]any)
-	addr, path, secret := "", "/zapier", ""
+	addr, path, secret, smeeURL := "", "/zapier", "", ""
 	allowUnsigned := false
 	if webhook != nil {
 		addr = str(webhook["listen"])
@@ -196,25 +201,31 @@ func (zapierPlugin) StartSource(ctx context.Context, req plugin.StartSourceReque
 		}
 		secret = str(webhook["secret"])
 		allowUnsigned, _ = webhook["allow_unsigned"].(bool)
+		smeeURL = str(webhook["smee"])
 	}
-	if addr == "" {
-		return fmt.Errorf("zapier: no webhook.listen address configured")
+	if addr == "" && smeeURL == "" {
+		return fmt.Errorf("zapier: no webhook.listen address or webhook.smee relay configured")
 	}
 	if err := requireWebhookSecret("zapier", secret, allowUnsigned, "webhook.secret"); err != nil {
 		return err
 	}
 	dedup := sourcekit.NewDedup(2048)
-	fmt.Fprintf(os.Stderr, "zapier[%s]: listening on %s%s\n", req.Instance, addr, path)
-	return serveWebhook(ctx, addr, path, func(r *http.Request, body []byte) bool {
-		if secret != "" && !verifyToken(secret, r) {
-			return false
+	if addr != "" {
+		fmt.Fprintf(os.Stderr, "zapier[%s]: listening on %s%s\n", req.Instance, addr, path)
+	}
+	if smeeURL != "" {
+		fmt.Fprintf(os.Stderr, "zapier[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
+	}
+	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smeeURL}
+	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
+		if secret != "" && !verifyToken(secret, rq) {
+			return
 		}
-		if ev, ok := parseEvent(body); ok {
+		if ev, ok := parseEvent(rq.Body); ok {
 			if dk, _ := ev["dedup"].(string); dk == "" || dedup.Add(dk) {
 				_ = emit(ev)
 			}
 		}
-		return true
 	})
 }
 
@@ -225,10 +236,10 @@ func (zapierPlugin) StartSource(ctx context.Context, req plugin.StartSourceReque
 // is the only authentication a Zap can produce, so this (not
 // sourcekit.VerifyHMAC) is the whole check; requireWebhookSecret ensures a
 // token is always configured unless the operator explicitly opts out.
-func verifyToken(secret string, r *http.Request) bool {
-	got := r.Header.Get("X-Conductor-Token")
+func verifyToken(secret string, rq *sourcekit.Request) bool {
+	got := rq.Header.Get("X-Conductor-Token")
 	if got == "" {
-		got = r.URL.Query().Get("token")
+		got = rq.Query.Get("token")
 	}
 	if got == "" {
 		return false
@@ -283,47 +294,6 @@ func parseEvent(body []byte) (map[string]any, bool) {
 		}
 	}
 	return ev, true
-}
-
-// serveWebhook is a minimal bounded HTTP webhook receiver. It mirrors
-// sourcekit.Listener.Serve's method/size-limit/graceful-shutdown behavior,
-// but hands the handler the full *http.Request rather than just its headers
-// — sourcekit.Listener only forwards headers+body to its callback, which
-// cannot express Zapier's `?token=` query-parameter fallback (a Zap's
-// Webhooks-by-Zapier action has no way to set a custom header, only a URL
-// and a JSON body). handle reports whether the request was authenticated and
-// accepted (true → 202 Accepted) or should be refused (false → 401).
-func serveWebhook(ctx context.Context, addr, path string, handle func(*http.Request, []byte) bool) error {
-	if path == "" {
-		path = "/"
-	}
-	mux := http.NewServeMux()
-	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 8<<20))
-		if err != nil {
-			http.Error(w, "read body", http.StatusBadRequest)
-			return
-		}
-		if !handle(r, body) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		w.WriteHeader(http.StatusAccepted)
-	})
-	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	go func() {
-		<-ctx.Done()
-		_ = srv.Close()
-	}()
-	err := srv.ListenAndServe()
-	if err == http.ErrServerClosed {
-		return nil
-	}
-	return err
 }
 
 // requireWebhookSecret refuses to start an unauthenticated webhook listener.

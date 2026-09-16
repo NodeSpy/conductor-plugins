@@ -86,16 +86,19 @@ message.
 
 ## smee.io transport
 
-When `smee` is set, the connector opens the channel URL as a Server-Sent
+When `smee` is set, the connector rides `pkg/sourcekit`'s shared
+`Listener{Relay: ...}` support: it opens the channel URL as a Server-Sent
 Events stream (`Accept: text/event-stream`) and reconnects with backoff if the
 stream drops. Each forwarded request arrives as one SSE `data:` payload — a
 JSON object carrying the original request's headers at the top level (e.g.
 `x-amz-sns-message-type`), a `body` field (the SNS JSON, delivered as a nested
-object or as a string), plus `query`/`host`/`timestamp`. The connector extracts
-the message type and body bytes from that payload and feeds them into the same
-core handler the HTTP listener uses — smee is just an alternate transport, not
-a different code path. smee's own "ready"/keep-alive events (no `body`) are
-ignored.
+object or as a string), plus `query`/`host`/`timestamp`. `sourcekit` extracts
+the header and body from that payload and feeds them into the same core
+handler the HTTP listener uses — smee is just an alternate transport, not a
+different code path. When a relayed delivery carries no
+`x-amz-sns-message-type` header, `handle()` falls back to the message body's
+own top-level `Type` field, so relayed deliveries still classify correctly.
+smee's own "ready"/keep-alive events (no `body`) are ignored.
 
 ## Events
 

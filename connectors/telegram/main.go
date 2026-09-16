@@ -15,10 +15,11 @@
 //	token: "<bot token>"                 # from @BotFather
 //	api_base: "https://api.example.com"  # override the Bot API base (tests)
 //	webhook:
-//	  listen: ":9097"                    # HTTP listener address (StartSource only)
+//	  listen: ":9097"                    # HTTP listener address (StartSource only; optional if smee is set)
 //	  path: "/telegram"                  # request path (default /telegram)
 //	  secret: "<secret token>"           # compared to X-Telegram-Bot-Api-Secret-Token
 //	  allow_unsigned: false              # explicit opt-in to accept unsigned webhooks
+//	  smee: "https://smee.io/AbC123"     # smee.io-style SSE relay URL (optional; also/instead of listen)
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -57,7 +58,7 @@ func (telegram) Describe() plugin.Decl {
 		Connection: plugin.Schema{
 			"token":    {Type: "string", Desc: "bot token from @BotFather (required for verbs)"},
 			"api_base": {Type: "string", Desc: "override the Telegram Bot API base URL (tests)"},
-			"webhook":  {Type: "map", Desc: "source transport: listen, path (default /telegram), secret, allow_unsigned"},
+			"webhook":  {Type: "map", Desc: "source transport: listen (optional if smee is set), path (default /telegram), secret, allow_unsigned, smee (smee.io-style SSE relay URL, e.g. https://smee.io/AbC123 — also (or instead) receive forwarded deliveries over SSE when the endpoint has no public URL)"},
 		},
 		Events: []plugin.Event{
 			{
@@ -419,6 +420,7 @@ func (telegram) StartSource(ctx context.Context, req plugin.StartSourceRequest, 
 	webhook, _ := cfg["webhook"].(map[string]any)
 	secret := ""
 	addr, path := "", "/telegram"
+	smee := ""
 	allowUnsigned := false
 	if webhook != nil {
 		secret = str(webhook["secret"])
@@ -427,21 +429,27 @@ func (telegram) StartSource(ctx context.Context, req plugin.StartSourceRequest, 
 			path = p
 		}
 		allowUnsigned, _ = webhook["allow_unsigned"].(bool)
+		smee = str(webhook["smee"])
 	}
 	// sourcekit.Listener.Secret stays empty: Telegram authenticates a webhook
 	// delivery with a bare secret token it echoes back in the
 	// X-Telegram-Bot-Api-Secret-Token header, not an HMAC signature — so
 	// VerifyHMAC's scheme doesn't apply. We compare the header ourselves,
 	// below, with a constant-time comparison.
-	ln := sourcekit.Listener{Addr: addr, Path: path}
-	if ln.Addr == "" {
-		return fmt.Errorf("telegram: no webhook.listen address configured")
+	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smee}
+	if ln.Addr == "" && ln.Relay == "" {
+		return fmt.Errorf("telegram: no webhook.listen address or smee relay configured")
 	}
 	if err := requireWebhookSecret("telegram", secret, allowUnsigned); err != nil {
 		return err
 	}
 	dedup := sourcekit.NewDedup(4096)
-	fmt.Fprintf(os.Stderr, "telegram[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
+	if ln.Addr != "" {
+		fmt.Fprintf(os.Stderr, "telegram[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
+	}
+	if ln.Relay != "" {
+		fmt.Fprintf(os.Stderr, "telegram[%s]: relaying via smee channel %s\n", req.Instance, ln.Relay)
+	}
 	return ln.Serve(ctx, func(h http.Header, body []byte) {
 		if !validSecretToken(secret, h.Get("X-Telegram-Bot-Api-Secret-Token"), allowUnsigned) {
 			return

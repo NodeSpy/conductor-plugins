@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
+	"github.com/NodeSpy/conductor/pkg/sourcekit"
 )
 
 // TestDescribe asserts the declared surface: kind, type, egress capability,
@@ -231,12 +232,11 @@ func TestParseEventEmpty(t *testing.T) {
 // falls back to the ?token= query parameter, and rejects a wrong or absent
 // token.
 func TestVerifyToken(t *testing.T) {
-	mkReq := func(header, query string) *http.Request {
-		u := "http://example.com/zapier"
+	mkReq := func(header, query string) *sourcekit.Request {
+		r := &sourcekit.Request{Header: http.Header{}, Query: url.Values{}}
 		if query != "" {
-			u += "?" + url.Values{"token": {query}}.Encode()
+			r.Query.Set("token", query)
 		}
-		r := httptest.NewRequest(http.MethodPost, u, nil)
 		if header != "" {
 			r.Header.Set("X-Conductor-Token", header)
 		}

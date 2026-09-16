@@ -193,63 +193,63 @@ func TestVerbCall(t *testing.T) {
 		wantParams url.Values
 	}{
 		{
-			name: "send_sms",
-			verb: "send_sms",
-			opts: map[string]any{"from": "+1", "to": "+2", "body": "hi", "media_url": []any{"https://x/1.png"}},
+			name:       "send_sms",
+			verb:       "send_sms",
+			opts:       map[string]any{"from": "+1", "to": "+2", "body": "hi", "media_url": []any{"https://x/1.png"}},
 			wantMethod: http.MethodPost, wantPath: "Messages.json",
 			wantParams: url.Values{"From": {"+1"}, "To": {"+2"}, "Body": {"hi"}, "MediaUrl": {"https://x/1.png"}},
 		},
 		{
-			name: "send_whatsapp adds prefix",
-			verb: "send_whatsapp",
-			opts: map[string]any{"from": "+1", "to": "+2", "body": "hi"},
+			name:       "send_whatsapp adds prefix",
+			verb:       "send_whatsapp",
+			opts:       map[string]any{"from": "+1", "to": "+2", "body": "hi"},
 			wantMethod: http.MethodPost, wantPath: "Messages.json",
 			wantParams: url.Values{"From": {"whatsapp:+1"}, "To": {"whatsapp:+2"}, "Body": {"hi"}},
 		},
 		{
-			name: "send_whatsapp keeps existing prefix",
-			verb: "send_whatsapp",
-			opts: map[string]any{"from": "whatsapp:+1", "to": "+2", "body": "hi"},
+			name:       "send_whatsapp keeps existing prefix",
+			verb:       "send_whatsapp",
+			opts:       map[string]any{"from": "whatsapp:+1", "to": "+2", "body": "hi"},
 			wantMethod: http.MethodPost, wantPath: "Messages.json",
 			wantParams: url.Values{"From": {"whatsapp:+1"}, "To": {"whatsapp:+2"}, "Body": {"hi"}},
 		},
 		{
-			name: "get_message",
-			verb: "get_message",
-			opts: map[string]any{"sid": "SM1"},
+			name:       "get_message",
+			verb:       "get_message",
+			opts:       map[string]any{"sid": "SM1"},
 			wantMethod: http.MethodGet, wantPath: "Messages/SM1.json",
 		},
 		{
-			name: "list_messages",
-			verb: "list_messages",
-			opts: map[string]any{"to": "+2", "page_size": 10},
+			name:       "list_messages",
+			verb:       "list_messages",
+			opts:       map[string]any{"to": "+2", "page_size": 10},
 			wantMethod: http.MethodGet, wantPath: "Messages.json",
 			wantParams: url.Values{"To": {"+2"}, "PageSize": {"10"}},
 		},
 		{
-			name: "make_call with url",
-			verb: "make_call",
-			opts: map[string]any{"from": "+1", "to": "+2", "url": "https://x/twiml"},
+			name:       "make_call with url",
+			verb:       "make_call",
+			opts:       map[string]any{"from": "+1", "to": "+2", "url": "https://x/twiml"},
 			wantMethod: http.MethodPost, wantPath: "Calls.json",
 			wantParams: url.Values{"From": {"+1"}, "To": {"+2"}, "Url": {"https://x/twiml"}},
 		},
 		{
-			name: "make_call with inline twiml",
-			verb: "make_call",
-			opts: map[string]any{"from": "+1", "to": "+2", "twiml": "<Response/>"},
+			name:       "make_call with inline twiml",
+			verb:       "make_call",
+			opts:       map[string]any{"from": "+1", "to": "+2", "twiml": "<Response/>"},
 			wantMethod: http.MethodPost, wantPath: "Calls.json",
 			wantParams: url.Values{"From": {"+1"}, "To": {"+2"}, "Twiml": {"<Response/>"}},
 		},
 		{
-			name: "get_call",
-			verb: "get_call",
-			opts: map[string]any{"sid": "CA1"},
+			name:       "get_call",
+			verb:       "get_call",
+			opts:       map[string]any{"sid": "CA1"},
 			wantMethod: http.MethodGet, wantPath: "Calls/CA1.json",
 		},
 		{
-			name: "api escape hatch",
-			verb: "api",
-			opts: map[string]any{"method": "get", "path": "/Usage.json", "params": map[string]any{"Category": "sms"}},
+			name:       "api escape hatch",
+			verb:       "api",
+			opts:       map[string]any{"method": "get", "path": "/Usage.json", "params": map[string]any{"Category": "sms"}},
 			wantMethod: http.MethodGet, wantPath: "Usage.json",
 			wantParams: url.Values{"Category": {"sms"}},
 		},
@@ -275,16 +275,16 @@ func TestVerbCallErrors(t *testing.T) {
 		verb string
 		opts map[string]any
 	}{
-		{"send_sms", map[string]any{"to": "+2", "body": "hi"}},                // no from
-		{"send_sms", map[string]any{"from": "+1", "body": "hi"}},              // no to
-		{"send_sms", map[string]any{"from": "+1", "to": "+2"}},                // no body
-		{"get_message", map[string]any{}},                                    // no sid
-		{"make_call", map[string]any{"from": "+1", "to": "+2"}},               // neither url nor twiml
+		{"send_sms", map[string]any{"to": "+2", "body": "hi"}},                            // no from
+		{"send_sms", map[string]any{"from": "+1", "body": "hi"}},                          // no to
+		{"send_sms", map[string]any{"from": "+1", "to": "+2"}},                            // no body
+		{"get_message", map[string]any{}},                                                 // no sid
+		{"make_call", map[string]any{"from": "+1", "to": "+2"}},                           // neither url nor twiml
 		{"make_call", map[string]any{"from": "+1", "to": "+2", "url": "a", "twiml": "b"}}, // both
-		{"get_call", map[string]any{}},                                       // no sid
-		{"api", map[string]any{"path": "x"}},                                 // no method
-		{"api", map[string]any{"method": "GET"}},                             // no path
-		{"nope", map[string]any{}},                                           // unknown verb
+		{"get_call", map[string]any{}},                                                    // no sid
+		{"api", map[string]any{"path": "x"}},                                              // no method
+		{"api", map[string]any{"method": "GET"}},                                          // no path
+		{"nope", map[string]any{}},                                                        // unknown verb
 	}
 	for _, tc := range cases {
 		if _, err := verbCall(tc.verb, tc.opts); err == nil {

@@ -38,6 +38,7 @@ cannot set a custom header) and attach it to the monitors you want to watch.
 | `path` | string | listener path (default `/uptimekuma`) |
 | `secret` | string | shared token compared to `X-Conductor-Token` / `?token=` |
 | `allow_unsigned` | bool | accept unauthenticated POSTs when no `secret` is set |
+| `smee` | string | optional smee.io-style SSE relay URL — receive forwarded deliveries when the listener has no public URL; the shared token is still checked |
 
 > **Unsigned listeners fail closed.** Uptime Kuma cannot sign its webhook
 > notifications — there is no HMAC, only whatever token the operator embeds

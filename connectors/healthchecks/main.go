@@ -18,10 +18,16 @@
 //	  path:           "/healthchecks"    # request path (default /healthchecks)
 //	  secret:         "<shared token>"   # compared against ?token= or X-Conductor-Token
 //	  allow_unsigned: false              # explicitly accept an unauthenticated listener
+//	  smee:           "https://smee.io/abc123" # optional smee.io-style SSE relay channel
 //
 // Self-hosted Healthchecks: point api_base/ping_base at your instance and
 // narrow the connector's declared egress (network:) to that host — the
 // default Capabilities only cover the hosted healthchecks.io / hc-ping.com.
+//
+// The shared sourcekit.Listener.ServeReq hands the callback the full request
+// (headers, query, body), so the ?token= query case is checked directly —
+// and the same Listener transparently accepts deliveries over the smee
+// relay for endpoints with no public URL.
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -58,7 +64,7 @@ func (p *healthchecksPlugin) Describe() plugin.Decl {
 			"api_key":   {Type: "string", Desc: "Healthchecks API key (X-Api-Key; management verbs only, never sent for ping)"},
 			"api_base":  {Type: "string", Desc: "management API base (default https://healthchecks.io; override for self-hosted or tests)"},
 			"ping_base": {Type: "string", Desc: "pinging base (default https://hc-ping.com; override for self-hosted or tests)"},
-			"webhook":   {Type: "map", Desc: "source transport: listen, path, secret, allow_unsigned"},
+			"webhook":   {Type: "map", Desc: "source transport: listen, path, secret, allow_unsigned, smee"},
 		},
 		Events: []plugin.Event{
 			{
@@ -495,6 +501,7 @@ func (p *healthchecksPlugin) StartSource(ctx context.Context, req plugin.StartSo
 	webhook, _ := cfg["webhook"].(map[string]any)
 	addr, path, secret := "", "/healthchecks", ""
 	allowUnsigned := false
+	smeeURL := ""
 	if webhook != nil {
 		addr = str(webhook["listen"])
 		if p := str(webhook["path"]); p != "" {
@@ -502,38 +509,32 @@ func (p *healthchecksPlugin) StartSource(ctx context.Context, req plugin.StartSo
 		}
 		secret = str(webhook["secret"])
 		allowUnsigned = boolv(webhook["allow_unsigned"])
+		smeeURL = str(webhook["smee"])
 	}
-	if addr == "" {
-		return fmt.Errorf("healthchecks: no webhook.listen address configured")
+	if addr == "" && smeeURL == "" {
+		return fmt.Errorf("healthchecks: no webhook.listen address or webhook.smee relay configured")
 	}
 	if err := requireWebhookToken(secret, allowUnsigned); err != nil {
 		return err
 	}
 	dedup := sourcekit.NewDedup(2048)
-	fmt.Fprintf(os.Stderr, "healthchecks[%s]: listening on %s%s\n", req.Instance, addr, path)
+	if addr != "" {
+		fmt.Fprintf(os.Stderr, "healthchecks[%s]: listening on %s%s\n", req.Instance, addr, path)
+	}
+	if smeeURL != "" {
+		fmt.Fprintf(os.Stderr, "healthchecks[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
+	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 8<<20))
-		if err != nil {
-			http.Error(w, "read body", http.StatusBadRequest)
-			return
-		}
-		if !verifyWebhookToken(secret, r) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smeeURL}
+	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
+		if !verifyWebhookToken(secret, rq) {
 			return
 		}
 		var p hcWebhookPayload
-		if err := json.Unmarshal(body, &p); err != nil {
-			http.Error(w, "bad payload", http.StatusBadRequest)
+		if err := json.Unmarshal(rq.Body, &p); err != nil {
 			return
 		}
 		if p.UUID == "" && p.Status == "" {
-			w.WriteHeader(http.StatusAccepted)
 			return
 		}
 		dk := p.UUID + "\x00" + p.Status
@@ -554,18 +555,7 @@ func (p *healthchecksPlugin) StartSource(ctx context.Context, req plugin.StartSo
 				},
 			})
 		}
-		w.WriteHeader(http.StatusAccepted)
 	})
-	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	go func() {
-		<-ctx.Done()
-		_ = srv.Close()
-	}()
-	err := srv.ListenAndServe()
-	if err == http.ErrServerClosed {
-		return nil
-	}
-	return err
 }
 
 // verifyWebhookToken checks the shared token, from either the ?token= query
@@ -573,13 +563,13 @@ func (p *healthchecksPlugin) StartSource(ctx context.Context, req plugin.StartSo
 // constant-time comparison. An empty secret means allow_unsigned was set at
 // startup (requireWebhookToken already enforced that), so every request is
 // accepted.
-func verifyWebhookToken(secret string, r *http.Request) bool {
+func verifyWebhookToken(secret string, rq *sourcekit.Request) bool {
 	if secret == "" {
 		return true
 	}
-	token := r.URL.Query().Get("token")
+	token := rq.Query.Get("token")
 	if token == "" {
-		token = r.Header.Get("X-Conductor-Token")
+		token = rq.Header.Get("X-Conductor-Token")
 	}
 	return subtle.ConstantTimeCompare([]byte(token), []byte(secret)) == 1
 }

@@ -34,7 +34,7 @@ triggers:
 |-----|------|---------|
 | `api_key` | string | Linear personal API key or app token — sent **raw** (no `Bearer ` prefix) in `Authorization` |
 | `api_base` | string | override the GraphQL endpoint (default `https://api.linear.app/graphql`; used for tests) |
-| `webhook` | map | source transport: `listen`, `path` (default `/linear`), `secret`, `allow_unsigned` |
+| `webhook` | map | source transport: `listen` (optional if `smee` is set), `path` (default `/linear`), `secret`, `allow_unsigned`, `smee` (smee.io-style SSE relay URL, e.g. `https://smee.io/AbC123` — also (or instead) receive forwarded deliveries over SSE when the endpoint has no public URL) |
 
 ## Source events
 

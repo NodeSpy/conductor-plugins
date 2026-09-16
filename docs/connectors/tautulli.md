@@ -40,7 +40,7 @@ triggers:
 |-----|------|---------|
 | `base_url` | string | **required.** Base URL of the Tautulli instance, e.g. `http://tautulli:8181` (no trailing `/api/v2`) |
 | `api_key` | string | **required.** Tautulli API key (Settings > Web Interface > API) |
-| `webhook` | map | source transport: `listen`, `path` (default `/tautulli`), `secret`, `allow_unsigned` |
+| `webhook` | map | source transport: `listen`, `path` (default `/tautulli`), `secret`, `allow_unsigned`, `smee` (smee.io-style SSE relay URL — receive forwarded deliveries when the endpoint has no public URL; the shared token is still checked) |
 
 Tautulli's entire HTTP API is **one endpoint**: every verb is a `GET` to
 `{base_url}/api/v2` with `apikey` and `cmd` as query parameters, plus whatever

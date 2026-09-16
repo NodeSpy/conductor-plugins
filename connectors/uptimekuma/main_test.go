@@ -2,12 +2,13 @@ package main
 
 import (
 	"net/http"
-	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"strconv"
 	"testing"
 
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
+	"github.com/NodeSpy/conductor/pkg/sourcekit"
 )
 
 // downPayload is a captured Uptime Kuma "DOWN" webhook notification.
@@ -156,43 +157,37 @@ func TestParseEmpty(t *testing.T) {
 	}
 }
 
-// TestVerifyToken covers the header-based check used in production.
+// TestVerifyToken covers both the header and ?token= query forms, now that
+// StartSource uses sourcekit.Listener.ServeReq (full request access) instead
+// of the header-only Serve.
 func TestVerifyToken(t *testing.T) {
-	h := http.Header{}
-	h.Set("X-Conductor-Token", "s3cret")
-	if !verifyToken("s3cret", h) {
-		t.Error("expected matching token to verify")
+	mk := func(header, query string) *sourcekit.Request {
+		r := &sourcekit.Request{Header: http.Header{}, Query: url.Values{}}
+		if header != "" {
+			r.Header.Set("X-Conductor-Token", header)
+		}
+		if query != "" {
+			r.Query.Set("token", query)
+		}
+		return r
 	}
-	if verifyToken("s3cret", http.Header{}) {
-		t.Error("expected missing token to fail")
-	}
-	bad := http.Header{}
-	bad.Set("X-Conductor-Token", "wrong")
-	if verifyToken("s3cret", bad) {
-		t.Error("expected mismatched token to fail")
-	}
-}
 
-// TestVerifyTokenFromRequest covers both the header and ?token= query forms.
-func TestVerifyTokenFromRequest(t *testing.T) {
-	r := httptest.NewRequest(http.MethodPost, "/uptimekuma", nil)
-	r.Header.Set("X-Conductor-Token", "s3cret")
-	if !verifyTokenFromRequest("s3cret", r) {
+	if !verifyToken("s3cret", mk("s3cret", "")) {
 		t.Error("header: expected matching token to verify")
 	}
-
-	r2 := httptest.NewRequest(http.MethodPost, "/uptimekuma?token=s3cret", nil)
-	if !verifyTokenFromRequest("s3cret", r2) {
+	if verifyToken("s3cret", mk("wrong", "")) {
+		t.Error("header: expected mismatched token to fail")
+	}
+	if !verifyToken("s3cret", mk("", "s3cret")) {
 		t.Error("query: expected matching token to verify")
 	}
-
-	r3 := httptest.NewRequest(http.MethodPost, "/uptimekuma?token=wrong", nil)
-	if verifyTokenFromRequest("s3cret", r3) {
+	if verifyToken("s3cret", mk("", "wrong")) {
 		t.Error("query: expected mismatched token to fail")
 	}
-
-	r4 := httptest.NewRequest(http.MethodPost, "/uptimekuma", nil)
-	if verifyTokenFromRequest("s3cret", r4) {
+	if !verifyToken("s3cret", mk("s3cret", "wrong")) {
+		t.Error("header should win over a mismatched query token")
+	}
+	if verifyToken("s3cret", mk("", "")) {
 		t.Error("no token at all: expected failure")
 	}
 }
@@ -225,7 +220,7 @@ func TestDescribe(t *testing.T) {
 	if len(d.Events) != 1 || d.Events[0].Name != "monitor" {
 		t.Fatalf("expected single 'monitor' event, got %#v", d.Events)
 	}
-	for _, key := range []string{"listen", "path", "secret", "allow_unsigned"} {
+	for _, key := range []string{"listen", "path", "secret", "allow_unsigned", "smee"} {
 		if _, ok := d.Connection[key]; !ok {
 			t.Errorf("connection missing key %q", key)
 		}

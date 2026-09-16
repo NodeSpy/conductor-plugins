@@ -29,10 +29,11 @@ triggers:
 
 | key | type | purpose |
 |-----|------|---------|
-| `listen` | string | HTTP listener address, e.g. `:9097` |
+| `listen` | string | HTTP listener address, e.g. `:9097` (optional if `smee` is set) |
 | `path` | string | listener path (default `/alertmanager`) |
 | `secret` | string | bearer token compared to the `Authorization` header (`Bearer <secret>`) |
 | `allow_unsigned` | bool | accept unauthenticated POSTs when no secret is set |
+| `smee` | string | smee.io-style SSE relay URL, e.g. `https://smee.io/AbC123` — also (or instead) receive forwarded deliveries over SSE when the endpoint has no public URL |
 
 > **Unauthenticated listeners fail closed.** Alertmanager and Grafana webhooks
 > carry no HMAC signature at all — only an optional bearer token you configure

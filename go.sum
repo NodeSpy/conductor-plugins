@@ -1,5 +1,5 @@
-github.com/NodeSpy/conductor v0.11.0 h1:caDM1kT5S/+xWwUtgVVyUZGA60Emg2Y5aujc7nY8/Jw=
-github.com/NodeSpy/conductor v0.11.0/go.mod h1:op8bkgt4h1KB9rwcGuAwcmWd03i34BxeSU/mHcYpBTo=
+github.com/NodeSpy/conductor v0.12.0 h1:nQWK8hFgiqYVr30fdzv7o3udtVKoqmPldWi/adG6uMc=
+github.com/NodeSpy/conductor v0.12.0/go.mod h1:op8bkgt4h1KB9rwcGuAwcmWd03i34BxeSU/mHcYpBTo=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/fastschema/qjs v0.0.6 h1:C45KMmQMd21UwsUAmQHxUxiWOfzwTg1GJW0DA0AbFEE=
