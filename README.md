@@ -29,6 +29,7 @@ github.com/NodeSpy/conductor-plugins/connectors/github
 github.com/NodeSpy/conductor-plugins/connectors/helm
 github.com/NodeSpy/conductor-plugins/connectors/kubernetes
 github.com/NodeSpy/conductor-plugins/connectors/notion
+github.com/NodeSpy/conductor-plugins/connectors/ntfy
 github.com/NodeSpy/conductor-plugins/connectors/pagerduty
 github.com/NodeSpy/conductor-plugins/connectors/sentry
 github.com/NodeSpy/conductor-plugins/connectors/sns
@@ -61,6 +62,7 @@ No `replace` directive.
 | [`sns`](docs/connectors/sns.md) | connector (source) | `sns` | **No — never in core.** Add it here. | AWS SNS HTTP(S) subscriber: **auto-confirms** the subscription (gated on signature verification), verifies SNS message signatures (v1/v2, `SigningCertURL` host-allowlisted), emits a `notification` event per message. Optional **smee.io** SSE transport for endpoints with no public URL. |
 | [`aws`](docs/connectors/aws.md) | connector (verbs) | `aws` | **No — never in core.** Add it here. | AWS via the `aws` CLI: a generic `run` (any service/operation, params → flags, JSON parsed into `result`), plus `s3` (cp/sync/mv/rm/ls/mb/rb), `lambda_invoke`, `sts_identity`, and a `cli` escape hatch. `profile`/`region` select the target; credentials come from the ambient AWS environment. |
 | [`docker`](docs/connectors/docker.md) | connector (verbs) | `docker` | **No — never in core.** Add it here. | The container-engine lifecycle as verbs (`run`, `exec`, `build`, `pull`, `push`, `ps`, `images`, `logs`, `stop`, `start`, `rm`, `inspect`, `compose`, `buildx`, `bake`, `cli`) by shelling to the `docker` (or `podman`) CLI. Local by default; `docker_host: ssh://…` / `context:` reach a remote engine. `buildx`/`bake` are docker-only. |
+| [`ntfy`](docs/connectors/ntfy.md) | connector (verbs + source) | `ntfy` | **No — never in core.** Add it here. | ntfy pub/sub: `publish` notifications (title/priority/tags/click/attach) + a topic-subscribe source (JSON stream) emitting `message` events. ntfy.sh or self-hosted. |
 | [`terraspace`](docs/connectors/terraspace.md) | connector (verbs) | `terraspace` | **No — never in core.** Add it here. | Terraspace (Terraform/OpenTofu framework) as verbs: `up`/`down`/`plan` per stack, `all_up`/`all_down`, `output`, `import`, `logs`, `list`, `new`, … via the `terraspace` CLI. `TS_ENV` selects the environment. |
 | [`twilio`](docs/connectors/twilio.md) | connector (verbs + source) | `twilio` | **No — never in core.** Add it here. | Twilio: `send_sms`/`send_whatsapp`/`make_call` + an inbound SMS/voice webhook source (`X-Twilio-Signature` HMAC-verified). Basic auth (account SID + token). |
 | [`notion`](docs/connectors/notion.md) | connector (verbs) | `notion` | **No — never in core.** Add it here. | Notion API: pages, databases (`query_database`), blocks, `search`, comments, users, and a generic `api`. Bearer token + `Notion-Version`. |
