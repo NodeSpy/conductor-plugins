@@ -27,6 +27,7 @@ github.com/NodeSpy/conductor-plugins/connectors/helm
 github.com/NodeSpy/conductor-plugins/connectors/kubernetes
 github.com/NodeSpy/conductor-plugins/connectors/pagerduty
 github.com/NodeSpy/conductor-plugins/connectors/sentry
+github.com/NodeSpy/conductor-plugins/connectors/terraform
 github.com/NodeSpy/conductor-plugins/runtimes/paseo
 ```
 
@@ -50,6 +51,7 @@ No `replace` directive.
 | [`github`](docs/connectors/github.md) | connector (verbs + source) | `github` | **Yes — still bundled.** This is additive. | Full verb surface (comment, submit_review, pr_diff, merge_pr, create_issue, checks, releases, gists, …) over token or GitHub-App auth, plus the webhook events derivable from a single delivery. Built on `pkg/githubkit`. |
 | [`paseo`](docs/runtimes/paseo.md) | runtime | `paseo` | **Yes — still bundled.** This is additive, opt-in. | The paseo-daemon operations `internal/dispatch.Backend` needs, by shelling to the `paseo` CLI. Driven by conductor's `rpcBackend`. |
 | [`docker`](docs/connectors/docker.md) | connector (verbs) | `docker` | **No — never in core.** Add it here. | The container-engine lifecycle as verbs (`run`, `exec`, `build`, `pull`, `push`, `ps`, `images`, `logs`, `stop`, `start`, `rm`, `inspect`, `compose`, `buildx`, `bake`, `cli`) by shelling to the `docker` (or `podman`) CLI. Local by default; `docker_host: ssh://…` / `context:` reach a remote engine. `buildx`/`bake` are docker-only. |
+| [`terraform`](docs/connectors/terraform.md) | connector (verbs) | `terraform` | **No — never in core.** Add it here. | Terraform/OpenTofu as verbs (`init`, `validate`, `plan`, `apply`, `destroy`, `output`, `show`, `fmt`, `workspace`, `state`, `import`, `refresh`, `providers`, `version`, `cli`) by shelling to `terraform`. `-chdir` + non-interactive defaults (`-input=false`, auto-approve); `output`/`show` parse `-json`. |
 | [`helm`](docs/connectors/helm.md) | connector (verbs) | `helm` | **No — never in core.** Add it here. | Helm releases as verbs (`install`, `upgrade`, `uninstall`, `rollback`, `list`, `status`, `history`, `get_values`, `template`, `pull`, `repo_add`, `repo_update`, `test`, `lint`, `cli`) by shelling to `helm`. `list`/`status`/`history`/`get_values` parse JSON into structured outputs. |
 | [`kubernetes`](docs/connectors/kubernetes.md) | connector (verbs) | `kubernetes` | **No — never in core.** Add it here. | The Kubernetes lifecycle as verbs (`apply`, `get`, `delete`, `describe`, `logs`, `exec`, `rollout`, `scale`, `patch`, `create`, `label`, `annotate`, `wait`, `top`, `cordon`/`uncordon`/`drain`, `cp`, `cli`) by shelling to `kubectl`. `kubeconfig`/`context`/`namespace` select the target; `get`/`apply` parse JSON into `result`. |
 
