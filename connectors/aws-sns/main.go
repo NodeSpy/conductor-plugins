@@ -1,11 +1,11 @@
-// Command conductor-sns is the AWS SNS SOURCE connector as an external
-// conductor plugin (#59). It runs an HTTP(S) endpoint (and/or a smee.io relay)
+// Command conductor-aws-sns is the AWS SNS SOURCE connector (type: aws-sns) as
+// an external conductor plugin (#59). It runs an HTTP(S) endpoint (and/or a smee.io relay)
 // that AWS SNS can deliver a topic subscription to: it auto-confirms the
 // subscription, verifies the SNS message signature, and streams a normalized
 // "notification" event per delivery to the daemon, which matches it to the
 // operator's triggers and resolves the action. It is built ONLY against the
 // public SDK + connector-kit (no conductor internals). It is source only —
-// publishing to a topic goes through the `aws` connector's verbs.
+// publishing to a topic goes through the `aws-cli` connector's verbs.
 //
 // Config (delivered per start_source, from the connector instance):
 //
@@ -49,8 +49,8 @@ type sns struct{}
 func (sns) Describe() plugin.Decl {
 	return plugin.Decl{
 		Kind: plugin.KindConnector,
-		Type: "sns",
-		Desc: "AWS SNS HTTP/HTTPS subscription endpoint: auto-confirms the subscription, verifies SNS message signatures, and emits an event per notification (source only — publish via the aws connector). Optional smee.io transport for endpoints without a public URL.",
+		Type: "aws-sns",
+		Desc: "AWS SNS HTTP/HTTPS subscription endpoint: auto-confirms the subscription, verifies SNS message signatures, and emits an event per notification (source only — publish via the aws-cli connector). Optional smee.io transport for endpoints without a public URL.",
 		Connection: plugin.Schema{
 			"listen":           {Type: "string", Desc: "local HTTP listen address for the subscription endpoint (optional if smee is set)"},
 			"path":             {Type: "string", Desc: "listener path (default /sns)"},
@@ -88,7 +88,7 @@ func (sns) Describe() plugin.Decl {
 }
 
 func (sns) Invoke(plugin.InvokeRequest) (plugin.InvokeResult, error) {
-	return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, "sns is a source connector (no verbs)")
+	return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, "aws-sns is a source connector (no verbs)")
 }
 
 func (sns) StartSource(ctx context.Context, req plugin.StartSourceRequest, emit func(any) error) error {
@@ -97,7 +97,7 @@ func (sns) StartSource(ctx context.Context, req plugin.StartSourceRequest, emit 
 	path := strOr(cfg["path"], "/sns")
 	smeeURL := str(cfg["smee"])
 	if listen == "" && smeeURL == "" {
-		return fmt.Errorf("sns: at least one of listen or smee must be configured")
+		return fmt.Errorf("aws-sns: at least one of listen or smee must be configured")
 	}
 
 	autoConfirm := boolOr(cfg["auto_confirm"], true)

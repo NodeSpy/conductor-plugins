@@ -140,7 +140,8 @@ binaries + `checksums.txt`.
 | Plugin | Kind | Page |
 |--------|------|------|
 | `alertmanager` | connector (source) | [connectors/alertmanager.md](connectors/alertmanager.md) |
-| `aws` | connector (verbs) | [connectors/aws.md](connectors/aws.md) |
+| `aws-cli` | connector (verbs) | [connectors/aws-cli.md](connectors/aws-cli.md) |
+| `aws-sns` | connector (source) | [connectors/aws-sns.md](connectors/aws-sns.md) |
 | `cloudflare` | connector (verbs) | [connectors/cloudflare.md](connectors/cloudflare.md) |
 | `docker` | connector (verbs) | [connectors/docker.md](connectors/docker.md) |
 | `helm` | connector (verbs) | [connectors/helm.md](connectors/helm.md) |
@@ -152,6 +153,5 @@ binaries + `checksums.txt`.
 | `github` | connector (verbs + source) | [connectors/github.md](connectors/github.md) |
 | `sentry` | connector (source) | [connectors/sentry.md](connectors/sentry.md) |
 | `pagerduty` | connector (source) | [connectors/pagerduty.md](connectors/pagerduty.md) |
-| `sns` | connector (source) | [connectors/sns.md](connectors/sns.md) |
 | `twilio` | connector (verbs + source) | [connectors/twilio.md](connectors/twilio.md) |
 | `paseo` | runtime | [runtimes/paseo.md](runtimes/paseo.md) |

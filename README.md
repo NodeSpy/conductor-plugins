@@ -22,7 +22,8 @@ github.com/NodeSpy/conductor/pkg/githubkit
 github.com/NodeSpy/conductor/pkg/plugin
 github.com/NodeSpy/conductor/pkg/sourcekit
 github.com/NodeSpy/conductor-plugins/connectors/alertmanager
-github.com/NodeSpy/conductor-plugins/connectors/aws
+github.com/NodeSpy/conductor-plugins/connectors/aws-cli
+github.com/NodeSpy/conductor-plugins/connectors/aws-sns
 github.com/NodeSpy/conductor-plugins/connectors/cloudflare
 github.com/NodeSpy/conductor-plugins/connectors/docker
 github.com/NodeSpy/conductor-plugins/connectors/github
@@ -32,7 +33,6 @@ github.com/NodeSpy/conductor-plugins/connectors/notion
 github.com/NodeSpy/conductor-plugins/connectors/ntfy
 github.com/NodeSpy/conductor-plugins/connectors/pagerduty
 github.com/NodeSpy/conductor-plugins/connectors/sentry
-github.com/NodeSpy/conductor-plugins/connectors/sns
 github.com/NodeSpy/conductor-plugins/connectors/terraform
 github.com/NodeSpy/conductor-plugins/connectors/terraspace
 github.com/NodeSpy/conductor-plugins/connectors/twilio
@@ -59,8 +59,8 @@ No `replace` directive.
 | [`github`](docs/connectors/github.md) | connector (verbs + source) | `github` | **Yes — still bundled.** This is additive. | Full verb surface (comment, submit_review, pr_diff, merge_pr, create_issue, checks, releases, gists, …) over token or GitHub-App auth, plus the webhook events derivable from a single delivery. Built on `pkg/githubkit`. |
 | [`paseo`](docs/runtimes/paseo.md) | runtime | `paseo` | **Yes — still bundled.** This is additive, opt-in. | The paseo-daemon operations `internal/dispatch.Backend` needs, by shelling to the `paseo` CLI. Driven by conductor's `rpcBackend`. |
 | [`alertmanager`](docs/connectors/alertmanager.md) | connector (source) | `alertmanager` | **No — never in core.** Add it here. | Prometheus Alertmanager **and** Grafana unified-alerting webhooks → one `alert` event per alert (status/severity/labels/annotations). Optional bearer-token auth, fail-closed. |
-| [`sns`](docs/connectors/sns.md) | connector (source) | `sns` | **No — never in core.** Add it here. | AWS SNS HTTP(S) subscriber: **auto-confirms** the subscription (gated on signature verification), verifies SNS message signatures (v1/v2, `SigningCertURL` host-allowlisted), emits a `notification` event per message. Optional **smee.io** SSE transport for endpoints with no public URL. |
-| [`aws`](docs/connectors/aws.md) | connector (verbs) | `aws` | **No — never in core.** Add it here. | AWS via the `aws` CLI: a generic `run` (any service/operation, params → flags, JSON parsed into `result`), plus `s3` (cp/sync/mv/rm/ls/mb/rb), `lambda_invoke`, `sts_identity`, and a `cli` escape hatch. `profile`/`region` select the target; credentials come from the ambient AWS environment. |
+| [`aws-sns`](docs/connectors/aws-sns.md) | connector (source) | `aws-sns` | **No — never in core.** Add it here. | AWS SNS HTTP(S) subscriber: **auto-confirms** the subscription (gated on signature verification), verifies SNS message signatures (v1/v2, `SigningCertURL` host-allowlisted), emits a `notification` event per message. Optional **smee.io** SSE transport for endpoints with no public URL. |
+| [`aws-cli`](docs/connectors/aws-cli.md) | connector (verbs) | `aws-cli` | **No — never in core.** Add it here. | AWS via the `aws` CLI: a generic `run` (any service/operation, params → flags, JSON parsed into `result`), plus `s3` (cp/sync/mv/rm/ls/mb/rb), `lambda_invoke`, `sts_identity`, and a `cli` escape hatch. `profile`/`region` select the target; credentials come from the ambient AWS environment. |
 | [`docker`](docs/connectors/docker.md) | connector (verbs) | `docker` | **No — never in core.** Add it here. | The container-engine lifecycle as verbs (`run`, `exec`, `build`, `pull`, `push`, `ps`, `images`, `logs`, `stop`, `start`, `rm`, `inspect`, `compose`, `buildx`, `bake`, `cli`) by shelling to the `docker` (or `podman`) CLI. Local by default; `docker_host: ssh://…` / `context:` reach a remote engine. `buildx`/`bake` are docker-only. |
 | [`ntfy`](docs/connectors/ntfy.md) | connector (verbs + source) | `ntfy` | **No — never in core.** Add it here. | ntfy pub/sub: `publish` notifications (title/priority/tags/click/attach) + a topic-subscribe source (JSON stream) emitting `message` events. ntfy.sh or self-hosted. |
 | [`terraspace`](docs/connectors/terraspace.md) | connector (verbs) | `terraspace` | **No — never in core.** Add it here. | Terraspace (Terraform/OpenTofu framework) as verbs: `up`/`down`/`plan` per stack, `all_up`/`all_down`, `output`, `import`, `logs`, `list`, `new`, … via the `terraspace` CLI. `TS_ENV` selects the environment. |

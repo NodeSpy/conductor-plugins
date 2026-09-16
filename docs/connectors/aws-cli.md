@@ -1,4 +1,4 @@
-# `aws` connector
+# `aws-cli` connector
 
 Drive the AWS CLI by shelling out to it. AWS's surface is unbounded, so the
 design is **generic-first + first-class conveniences**: `run` covers any
@@ -7,14 +7,14 @@ design is **generic-first + first-class conveniences**: `run` covers any
 need, plus a `cli` escape hatch for anything else.
 
 - **Kind:** connector (verbs only — no source events)
-- **Source:** [`connectors/aws/main.go`](../../connectors/aws/main.go)
-- **Provides:** `aws`
+- **Source:** [`connectors/aws-cli/main.go`](../../connectors/aws-cli/main.go)
+- **Provides:** `aws-cli`
 - **Capabilities:** spawns `aws`; no declared egress (AWS API calls happen
   inside the CLI subprocess, not this connector)
 
 ```yaml
 connectors:
-  a: { use: aws, profile: prod, region: us-east-1 }
+  a: { use: aws-cli, profile: prod, region: us-east-1 }
 triggers:
   - on: gh.release
     steps:
@@ -45,8 +45,8 @@ profile or the instance's own role.
 
 ```yaml
 connectors:
-  prod:      { use: aws, profile: prod-deploy, region: us-east-1 }
-  localstack: { use: aws, endpoint_url: "http://localhost:4566", env: { AWS_ACCESS_KEY_ID: test, AWS_SECRET_ACCESS_KEY: test } }
+  prod:      { use: aws-cli, profile: prod-deploy, region: us-east-1 }
+  localstack: { use: aws-cli, endpoint_url: "http://localhost:4566", env: { AWS_ACCESS_KEY_ID: test, AWS_SECRET_ACCESS_KEY: test } }
 ```
 
 ## Common output shape

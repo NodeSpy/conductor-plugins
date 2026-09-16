@@ -1,4 +1,4 @@
-# `sns` connector
+# `aws-sns` connector
 
 A **source-only** connector: it runs an HTTP(S) subscription endpoint for an
 AWS SNS topic (and/or relays through a smee.io channel), auto-confirms the
@@ -6,9 +6,9 @@ subscription, verifies the SNS message signature, and streams a normalized
 `notification` event per delivery to the daemon.
 
 - **Kind:** connector (source only — no verbs; publish to a topic via the
-  `aws` connector)
-- **Source:** [`connectors/sns/main.go`](../../connectors/sns/main.go)
-- **Provides:** `sns`
+  `aws-cli` connector)
+- **Source:** [`connectors/aws-sns/main.go`](../../connectors/aws-sns/main.go)
+- **Provides:** `aws-sns`
 - **Capabilities:** `egress: [smee.io:443, sns.*.amazonaws.com:443,
   *.amazonaws.com:443]` — it fetches SNS signing certs, GETs `SubscribeURL` to
   auto-confirm, and optionally dials smee.io. Spawns nothing.
@@ -16,7 +16,7 @@ subscription, verifies the SNS message signature, and streams a normalized
 ```yaml
 connectors:
   orders:
-    use: sns
+    use: aws-sns
     listen: ":9097"
 triggers:
   - on: orders.notification
@@ -29,7 +29,7 @@ Behind smee.io, for an endpoint with no public URL:
 ```yaml
 connectors:
   orders:
-    use: sns
+    use: aws-sns
     smee: https://smee.io/AbC123
 ```
 
