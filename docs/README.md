@@ -147,6 +147,7 @@ binaries + `checksums.txt`.
 | `kubernetes` | connector (verbs) | [connectors/kubernetes.md](connectors/kubernetes.md) |
 | `notion` | connector (verbs) | [connectors/notion.md](connectors/notion.md) |
 | `terraform` | connector (verbs) | [connectors/terraform.md](connectors/terraform.md) |
+| `terraspace` | connector (verbs) | [connectors/terraspace.md](connectors/terraspace.md) |
 | `github` | connector (verbs + source) | [connectors/github.md](connectors/github.md) |
 | `sentry` | connector (source) | [connectors/sentry.md](connectors/sentry.md) |
 | `pagerduty` | connector (source) | [connectors/pagerduty.md](connectors/pagerduty.md) |
