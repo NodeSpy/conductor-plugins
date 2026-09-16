@@ -21,11 +21,16 @@ $ go list -deps ./... | grep NodeSpy
 github.com/NodeSpy/conductor/pkg/githubkit
 github.com/NodeSpy/conductor/pkg/plugin
 github.com/NodeSpy/conductor/pkg/sourcekit
+github.com/NodeSpy/conductor-plugins/connectors/docker
 github.com/NodeSpy/conductor-plugins/connectors/github
 github.com/NodeSpy/conductor-plugins/connectors/pagerduty
 github.com/NodeSpy/conductor-plugins/connectors/sentry
 github.com/NodeSpy/conductor-plugins/runtimes/paseo
 ```
+
+**Documentation** lives in [`docs/`](docs/README.md) — the plugin model, install
+and capability details, and a reference page per plugin (linked from the table
+below).
 
 ## Status — read this first
 
@@ -38,10 +43,11 @@ No `replace` directive.
 
 | Plugin | Kind | Provides | Bundled in conductor? | Notes |
 |--------|------|----------|-----------------------|-------|
-| `sentry` | connector (source) | `sentry` | **No — removed from core.** This is the only way to get it. | Sentry Integration-Platform webhooks → `issue_alert` / `error_alert` / `event_alert`. HMAC-verified. |
-| `pagerduty` | connector (source) | `pagerduty` | **No — removed from core.** This is the only way to get it. | PagerDuty V3 incident webhooks → `incident`. Multi-signature (`v1=…,v1=…`) verified, so key rotation works. |
-| `github` | connector (verbs + source) | `github` | **Yes — still bundled.** This is additive. | Full verb surface (comment, submit_review, pr_diff, merge_pr, create_issue, checks, releases, gists, …) over token or GitHub-App auth, plus the webhook events derivable from a single delivery. Built on `pkg/githubkit`. |
-| `paseo` | connector (verbs) | `paseo` | **Yes — still bundled.** This is additive, opt-in. | The paseo-daemon operations `internal/dispatch.Backend` needs, by shelling to the `paseo` CLI. Driven by conductor's `rpcBackend`. |
+| [`sentry`](docs/connectors/sentry.md) | connector (source) | `sentry` | **No — removed from core.** This is the only way to get it. | Sentry Integration-Platform webhooks → `issue_alert` / `error_alert` / `event_alert`. HMAC-verified. |
+| [`pagerduty`](docs/connectors/pagerduty.md) | connector (source) | `pagerduty` | **No — removed from core.** This is the only way to get it. | PagerDuty V3 incident webhooks → `incident`. Multi-signature (`v1=…,v1=…`) verified, so key rotation works. |
+| [`github`](docs/connectors/github.md) | connector (verbs + source) | `github` | **Yes — still bundled.** This is additive. | Full verb surface (comment, submit_review, pr_diff, merge_pr, create_issue, checks, releases, gists, …) over token or GitHub-App auth, plus the webhook events derivable from a single delivery. Built on `pkg/githubkit`. |
+| [`paseo`](docs/runtimes/paseo.md) | runtime | `paseo` | **Yes — still bundled.** This is additive, opt-in. | The paseo-daemon operations `internal/dispatch.Backend` needs, by shelling to the `paseo` CLI. Driven by conductor's `rpcBackend`. |
+| [`docker`](docs/connectors/docker.md) | connector (verbs) | `docker` | **No — never in core.** Add it here. | The container-engine lifecycle as verbs (`run`, `exec`, `build`, `pull`, `push`, `ps`, `images`, `logs`, `stop`, `start`, `rm`, `inspect`, `compose`, `buildx`, `bake`, `cli`) by shelling to the `docker` (or `podman`) CLI. Local by default; `docker_host: ssh://…` / `context:` reach a remote engine. `buildx`/`bake` are docker-only. |
 
 ### What the source plugins do NOT replace
 
