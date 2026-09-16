@@ -1,19 +1,20 @@
 # conductor-plugins
 
 Distributable **plugins** for [conductor](https://github.com/NodeSpy/conductor) —
-external connectors the daemon fetches at `conductor init` instead of bundling
-into the core binary. Each plugin is an out-of-process binary that speaks
-conductor's plugin protocol over stdio; the daemon verifies, sandboxes, and runs
-it.
+external connectors, runtimes and step engines the daemon fetches at
+`conductor init` instead of bundling into the core binary. Each plugin is an
+out-of-process binary that speaks conductor's plugin protocol over stdio; the
+daemon verifies, sandboxes, and runs it.
 
-Plugin **source** lives in this repo, under `<kind>/<name>/` — `connectors/` or
-`runtimes/`. That layout is load-bearing: conductor's `use:` resolver turns a
-bare name in a config block into `<kind>/<name>` in THIS repo, so a bare
-`use: sentry` under `connectors:` resolves to `connectors/sentry` and nothing
-else. A connector and a runtime may share a name without colliding. Each plugin
-is built only against conductor's public SDK — `pkg/plugin`, plus
-`pkg/sourcekit` for webhook sources and `pkg/githubkit` for the github client —
-and imports **no** conductor internals. That is enforced, not asserted:
+Plugin **source** lives in this repo, under `<kind>/<name>/` — `connectors/`,
+`runtimes/` or `engines/`. That layout is load-bearing: conductor's `use:`
+resolver turns a bare name in a config block into `<kind>/<name>` in THIS repo,
+so a bare `use: sentry` under `connectors:` resolves to `connectors/sentry` and
+nothing else, and `use: js` under `engines:` to `engines/js`. A connector, a
+runtime and an engine may share a name without colliding. Each plugin is built
+only against conductor's public SDK — `pkg/plugin`, plus `pkg/sourcekit` for
+webhook sources and `pkg/githubkit` for the github client — and imports **no**
+conductor internals. That is enforced, not asserted:
 
 ```console
 $ go list -deps ./... | grep NodeSpy/conductor/internal   # must print nothing
@@ -64,8 +65,16 @@ github.com/NodeSpy/conductor-plugins/connectors/uptimekuma
 github.com/NodeSpy/conductor-plugins/connectors/uptimerobot
 github.com/NodeSpy/conductor-plugins/connectors/wiz
 github.com/NodeSpy/conductor-plugins/connectors/zapier
+github.com/NodeSpy/conductor-plugins/engines/go-embed
+github.com/NodeSpy/conductor-plugins/engines/js
+github.com/NodeSpy/conductor-plugins/engines/lua
+github.com/NodeSpy/conductor-plugins/engines/risor
 github.com/NodeSpy/conductor-plugins/runtimes/paseo
 ```
+
+The engines carry third-party interpreters (QuickJS, yaegi, risor, gopher-lua)
+as ordinary module dependencies — that is the point of moving them out of the
+daemon — but the conductor surface they touch is still `pkg/plugin` alone.
 
 **Documentation** lives in [`docs/`](docs/README.md) — the plugin model, install
 and capability details, and a reference page per plugin (linked from the table
@@ -73,10 +82,12 @@ below).
 
 ## Status — read this first
 
-`go.mod` requires `github.com/NodeSpy/conductor v0.9.0` — the tagged release
-that carries `pkg/githubkit` and the `plugin.SourceHandler`/`start_source`
-surface these plugins need — resolved straight from the public module proxy.
-No `replace` directive.
+`go.mod` requires `github.com/NodeSpy/conductor v0.11.0` — the tagged release
+that carries `pkg/githubkit`, the `plugin.SourceHandler`/`start_source` surface,
+and the STEP-ENGINE SDK the `engines/` plugins need (`plugin.KindStep`,
+`Decl.ABI`/`EngineABI`, `plugin.EngineFunc`, `plugin.run`, and the `plugin.Host`
+client for the `host.kv`/`host.sql`/`host.memory` callbacks) — resolved straight
+from the public module proxy. No `replace` directive.
 
 ## Available plugins
 
@@ -127,6 +138,30 @@ No `replace` directive.
 | [`helm`](docs/connectors/helm.md) | connector (verbs) | `helm` | **No — never in core.** Add it here. | Helm releases as verbs (`install`, `upgrade`, `uninstall`, `rollback`, `list`, `status`, `history`, `get_values`, `template`, `pull`, `repo_add`, `repo_update`, `test`, `lint`, `cli`) by shelling to `helm`. `list`/`status`/`history`/`get_values` parse JSON into structured outputs. |
 | [`kubernetes`](docs/connectors/kubernetes.md) | connector (verbs) | `kubernetes` | **No — never in core.** Add it here. | The Kubernetes lifecycle as verbs (`apply`, `get`, `delete`, `describe`, `logs`, `exec`, `rollout`, `scale`, `patch`, `create`, `label`, `annotate`, `wait`, `top`, `cordon`/`uncordon`/`drain`, `cp`, `cli`) by shelling to `kubectl`. `kubeconfig`/`context`/`namespace` select the target; `get`/`apply` parse JSON into `result`. |
 
+### Step engines
+
+A **step engine** is what executes a code step's work — what a step's `use:`
+selects. These four are conductor's own in-binary engines, lifted out: same
+snippet contract, same `ctx` shape, same output contract, now in a separate
+process the daemon spawns. A snippet written for the bundled `run: js` runs
+unchanged on `engines/js`.
+
+The engine that used to reach the daemon's stores through a Go binding now
+**asks**: `ctx.store` / `ctx.sql` / `ctx.memory` become one `host.kv` /
+`host.sql` / `host.memory` round trip per op, carrying the run's `run_id`, and
+conductor authorizes each one against that step's own `DataGuard` before
+running the same dispatcher it always did. The plugin holds no store, no
+connection string and no capability beyond the ability to ask while its run is
+in flight — which is why all four declare an **empty** permission manifest: no
+egress, no filesystem, no spawns.
+
+| Plugin | Kind | Provides | Bundled in conductor? | Notes |
+|--------|------|----------|-----------------------|-------|
+| [`js`](engines/js) | engine | `js` | **Yes — still bundled today.** Additive; the in-binary copy goes away in a later stage. | JavaScript on QuickJS-in-WASM (`fastschema/qjs` over wazero — no cgo). `ctx` is the step inputs, the snippet body is an IIFE whose return value is the outputs, 256 MiB heap cap, `timeout:` halts the module. |
+| [`go-embed`](engines/go-embed) | engine | `go-embed` | **Yes — still bundled today.** Additive. | Real Go on `traefik/yaegi`, no toolchain needed. Snippet defines `func run(ctx map[string]any) (any, error)`. Sandboxed to a **data-shaping stdlib allowlist** (no `os`, `net`, `io`, `reflect`, `unsafe`) with `GoPath` pinned off-disk; ctx faces are `import "conductor/store"` / `"conductor/sql"` / `"conductor/memory"`. |
+| [`risor`](engines/risor) | engine | `risor` | **Yes — still bundled today.** Additive. | `risor-io/risor` — pure-Go, Go-flavored scripting. `ctx` is the step inputs, the final expression is the outputs. Opts out of risor's default globals (which include `os`/`exec`/`http`/`net`) and grants a data-shaping allowlist plus `store()`, `sql()` and `memory`. |
+| [`lua`](engines/lua) | engine | `lua` | **Yes — still bundled today.** Additive. | Lua 5.1 on `yuin/gopher-lua` (pure Go, no cgo). `ctx` is the step inputs as a table, the script `return`s its outputs. Only base/table/string/math are opened, and `dofile`/`loadfile`/`load`/`loadstring` are removed; ctx faces are `ctx.store(…)`, `ctx.sql(…)`, `ctx.memory`. |
+
 ### What the source plugins do NOT replace
 
 `sentry` and `pagerduty` genuinely replace connectors that no longer exist in
@@ -168,6 +203,19 @@ triggers:
 
 runtimes:
   gpu: { use: paseo }                    # runtimes: → runtimes/paseo, here
+
+engines:
+  js: { use: js }                        # engines: → engines/js, here
+```
+
+…and a step then selects the engine the same way it always did:
+
+```yaml
+steps:
+  - id: shape
+    use: js                              # the engines: entry above
+    code: |
+      return { owner: ctx.repo.split("/")[0] };
 ```
 
 `conductor init` resolves the highest compatible release tag
@@ -212,6 +260,14 @@ normalized event shape for the two source plugins, github's token-auth and
 App-auth verb paths plus its webhook source, and paseo's verb set and CLI round
 trip.
 
+`e2e/engines_test.go` does the same for the four step engines, and exercises the
+direction only an engine has: it drives a `plugin.run` and then **answers the
+plugin's `host.kv` callbacks** on the same stream while that run is still in
+flight (`rpctest.Client.SetHost`), standing in for the daemon's ctx data plane.
+Each engine's own package tests drive `run()` in process against a recording
+host double (`internal/enginekit/hosttest`) for the interpreter behaviour, the
+sandbox boundary, and the exact op/args that cross.
+
 ```console
 $ go test ./...
 ```
@@ -234,9 +290,10 @@ Not automated on merge — pushing a tag publishes binaries, so it is a human
 decision.
 
 Tag shape is `<kind>/<name>/vX.Y.Z` — `connectors/sentry/v1.0.0`,
-`runtimes/paseo/v1.0.0`. The kind prefix matches the source directory AND the
-prefix conductor's resolver matches against when it resolves a bare `use:`, so
-tags for a connector and a runtime of the same name never mix.
+`runtimes/paseo/v1.0.0`, `engines/js/v1.0.0`. The kind prefix matches the source
+directory AND the prefix conductor's resolver matches against when it resolves a
+bare `use:`, so tags for a connector, a runtime and an engine of the same name
+never mix.
 
 Pushing one runs [`.github/workflows/release.yml`](.github/workflows/release.yml),
 which cross-builds `<kind>/<name>` for linux/darwin/windows on amd64 and arm64,
@@ -244,7 +301,7 @@ checksums the set, and publishes `conductor-<name>_<os>_<arch>` +
 `checksums.txt` to the release. Note the ASSET name is flat — the kind lives in
 the tag, not in the filename.
 
-The workflow builds straight against `github.com/NodeSpy/conductor v0.9.0` from
+The workflow builds straight against `github.com/NodeSpy/conductor v0.11.0` from
 the public module proxy — no sibling checkout, no `replace` rewrite.
 
 ## Build your own plugin
