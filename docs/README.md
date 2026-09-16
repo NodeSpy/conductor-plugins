@@ -140,6 +140,7 @@ binaries + `checksums.txt`.
 | Plugin | Kind | Page |
 |--------|------|------|
 | `docker` | connector (verbs) | [connectors/docker.md](connectors/docker.md) |
+| `kubernetes` | connector (verbs) | [connectors/kubernetes.md](connectors/kubernetes.md) |
 | `github` | connector (verbs + source) | [connectors/github.md](connectors/github.md) |
 | `sentry` | connector (source) | [connectors/sentry.md](connectors/sentry.md) |
 | `pagerduty` | connector (source) | [connectors/pagerduty.md](connectors/pagerduty.md) |
