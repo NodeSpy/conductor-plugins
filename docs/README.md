@@ -148,4 +148,5 @@ binaries + `checksums.txt`.
 | `github` | connector (verbs + source) | [connectors/github.md](connectors/github.md) |
 | `sentry` | connector (source) | [connectors/sentry.md](connectors/sentry.md) |
 | `pagerduty` | connector (source) | [connectors/pagerduty.md](connectors/pagerduty.md) |
+| `sns` | connector (source) | [connectors/sns.md](connectors/sns.md) |
 | `paseo` | runtime | [runtimes/paseo.md](runtimes/paseo.md) |
