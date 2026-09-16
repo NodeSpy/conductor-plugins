@@ -146,6 +146,7 @@ binaries + `checksums.txt`.
 | `helm` | connector (verbs) | [connectors/helm.md](connectors/helm.md) |
 | `kubernetes` | connector (verbs) | [connectors/kubernetes.md](connectors/kubernetes.md) |
 | `notion` | connector (verbs) | [connectors/notion.md](connectors/notion.md) |
+| `ntfy` | connector (verbs + source) | [connectors/ntfy.md](connectors/ntfy.md) |
 | `terraform` | connector (verbs) | [connectors/terraform.md](connectors/terraform.md) |
 | `terraspace` | connector (verbs) | [connectors/terraspace.md](connectors/terraspace.md) |
 | `github` | connector (verbs + source) | [connectors/github.md](connectors/github.md) |
