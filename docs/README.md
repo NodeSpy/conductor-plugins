@@ -151,4 +151,5 @@ binaries + `checksums.txt`.
 | `sentry` | connector (source) | [connectors/sentry.md](connectors/sentry.md) |
 | `pagerduty` | connector (source) | [connectors/pagerduty.md](connectors/pagerduty.md) |
 | `sns` | connector (source) | [connectors/sns.md](connectors/sns.md) |
+| `twilio` | connector (verbs + source) | [connectors/twilio.md](connectors/twilio.md) |
 | `paseo` | runtime | [runtimes/paseo.md](runtimes/paseo.md) |
