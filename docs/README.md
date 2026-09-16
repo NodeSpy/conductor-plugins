@@ -144,6 +144,13 @@ binaries + `checksums.txt`.
 | `aws-sns` | connector (source) | [connectors/aws-sns.md](connectors/aws-sns.md) |
 | `cloudflare` | connector (verbs) | [connectors/cloudflare.md](connectors/cloudflare.md) |
 | `docker` | connector (verbs) | [connectors/docker.md](connectors/docker.md) |
+| `datadog` | connector (verbs + source) | [connectors/datadog.md](connectors/datadog.md) |
+| `jira` | connector (verbs + source) | [connectors/jira.md](connectors/jira.md) |
+| `telegram` | connector (verbs + source) | [connectors/telegram.md](connectors/telegram.md) |
+| `matrix` | connector (verbs + source) | [connectors/matrix.md](connectors/matrix.md) |
+| `homeassistant` | connector (verbs + source) | [connectors/homeassistant.md](connectors/homeassistant.md) |
+| `ifttt` | connector (verbs + source) | [connectors/ifttt.md](connectors/ifttt.md) |
+| `healthchecks` | connector (verbs + source) | [connectors/healthchecks.md](connectors/healthchecks.md) |
 | `git` | connector (verbs) | [connectors/git.md](connectors/git.md) |
 | `gitlab` | connector (verbs + source) | [connectors/gitlab.md](connectors/gitlab.md) |
 | `gitea` | connector (verbs + source) | [connectors/gitea.md](connectors/gitea.md) |
