@@ -22,6 +22,7 @@ github.com/NodeSpy/conductor/pkg/githubkit
 github.com/NodeSpy/conductor/pkg/plugin
 github.com/NodeSpy/conductor/pkg/sourcekit
 github.com/NodeSpy/conductor-plugins/connectors/alertmanager
+github.com/NodeSpy/conductor-plugins/connectors/audiobookshelf
 github.com/NodeSpy/conductor-plugins/connectors/aws-cli
 github.com/NodeSpy/conductor-plugins/connectors/aws-sns
 github.com/NodeSpy/conductor-plugins/connectors/cloudflare
@@ -44,10 +45,13 @@ github.com/NodeSpy/conductor-plugins/connectors/notifiarr
 github.com/NodeSpy/conductor-plugins/connectors/notion
 github.com/NodeSpy/conductor-plugins/connectors/ntfy
 github.com/NodeSpy/conductor-plugins/connectors/pagerduty
+github.com/NodeSpy/conductor-plugins/connectors/plex
 github.com/NodeSpy/conductor-plugins/connectors/pushover
 github.com/NodeSpy/conductor-plugins/connectors/qbittorrent
+github.com/NodeSpy/conductor-plugins/connectors/radarr
 github.com/NodeSpy/conductor-plugins/connectors/sabnzbd
 github.com/NodeSpy/conductor-plugins/connectors/sentry
+github.com/NodeSpy/conductor-plugins/connectors/sonarr
 github.com/NodeSpy/conductor-plugins/connectors/tautulli
 github.com/NodeSpy/conductor-plugins/connectors/telegram
 github.com/NodeSpy/conductor-plugins/connectors/terraform
@@ -83,6 +87,10 @@ No `replace` directive.
 | [`aws-sns`](docs/connectors/aws-sns.md) | connector (source) | `aws-sns` | **No — never in core.** Add it here. | AWS SNS HTTP(S) subscriber: **auto-confirms** the subscription (gated on signature verification), verifies SNS message signatures (v1/v2, `SigningCertURL` host-allowlisted), emits a `notification` event per message. Optional **smee.io** SSE transport for endpoints with no public URL. |
 | [`aws-cli`](docs/connectors/aws-cli.md) | connector (verbs) | `aws-cli` | **No — never in core.** Add it here. | AWS via the `aws` CLI: a generic `run` (any service/operation, params → flags, JSON parsed into `result`), plus `s3` (cp/sync/mv/rm/ls/mb/rb), `lambda_invoke`, `sts_identity`, and a `cli` escape hatch. `profile`/`region` select the target; credentials come from the ambient AWS environment. |
 | [`docker`](docs/connectors/docker.md) | connector (verbs) | `docker` | **No — never in core.** Add it here. | The container-engine lifecycle as verbs (`run`, `exec`, `build`, `pull`, `push`, `ps`, `images`, `logs`, `stop`, `start`, `rm`, `inspect`, `compose`, `buildx`, `bake`, `cli`) by shelling to the `docker` (or `podman`) CLI. Local by default; `docker_host: ssh://…` / `context:` reach a remote engine. `buildx`/`bake` are docker-only. |
+| [`plex`](docs/connectors/plex.md) | connector (verbs + source) | `plex` | **No — never in core.** Add it here. | Plex Media Server: sessions, library sections/scan, search, metadata, recently-added, watched/unwatched, refresh + a Plex webhook source (playback events). `X-Plex-Token`. |
+| [`sonarr`](docs/connectors/sonarr.md) | connector (verbs + source) | `sonarr` | **No — never in core.** Add it here. | Sonarr (TV): series CRUD, lookup, episodes, commands, queue, calendar, wanted, profiles + a webhook source (Grab/Download/…). API key. |
+| [`radarr`](docs/connectors/radarr.md) | connector (verbs + source) | `radarr` | **No — never in core.** Add it here. | Radarr (movies): movie CRUD, lookup, commands, queue, calendar, wanted, profiles + a webhook source. API key. |
+| [`audiobookshelf`](docs/connectors/audiobookshelf.md) | connector (verbs) | `audiobookshelf` | **No — never in core.** Add it here. | Audiobookshelf: libraries/items, `get_item`, `search`, `scan`, series, collections, progress + generic `api`. Bearer token. |
 | [`datadog`](docs/connectors/datadog.md) | connector (verbs + source) | `datadog` | **No — never in core.** Add it here. | Datadog: `post_event`, mute/unmute & get/list monitors, `submit_metric` + a webhook alert source (operator-templated payload, token-verified). API + APP keys. |
 | [`jira`](docs/connectors/jira.md) | connector (verbs + source) | `jira` | **No — never in core.** Add it here. | Jira Cloud REST v3: create/update issues, comments (ADF), transitions, assign, search (JQL) + issue/comment webhook events. Basic auth (email + API token). |
 | [`telegram`](docs/connectors/telegram.md) | connector (verbs + source) | `telegram` | **No — never in core.** Add it here. | Telegram Bot API: send message/photo/document, edit/delete, answer callbacks, set webhook + message/callback_query source (secret-token verified). Bot token. |
