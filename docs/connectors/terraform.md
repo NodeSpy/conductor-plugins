@@ -1,16 +1,17 @@
 # `terraform` connector
 
-Drive a Terraform workflow by shelling out to the `terraform` CLI. The
-standard workflow is exposed as verbs (`init`, `validate`, `plan`, `apply`,
-`destroy`, `output`, `show`, `fmt`, `workspace`, `state`, `import`, `refresh`,
-`providers`, `version`), plus a `cli` escape hatch for any subcommand a
-first-class verb does not cover.
+Drive a Terraform, OpenTofu, or Terragrunt workflow by shelling out to the
+selected CLI. The standard workflow is exposed as verbs (`init`, `validate`,
+`plan`, `apply`, `destroy`, `output`, `show`, `fmt`, `workspace`, `state`,
+`import`, `refresh`, `providers`, `version`), plus a `cli` escape hatch for
+any subcommand a first-class verb does not cover.
 
 - **Kind:** connector (verbs only — no source events)
 - **Source:** [`connectors/terraform/main.go`](../../connectors/terraform/main.go)
 - **Provides:** `terraform`
-- **Capabilities:** spawns `terraform`; no declared egress (talks to whatever
-  backend/provider the configuration points at)
+- **Capabilities:** spawns `terraform` (or `tofu`/`terragrunt`, depending on
+  `engine`); no declared egress (talks to whatever backend/provider the
+  configuration points at)
 
 ```yaml
 connectors:
@@ -34,21 +35,58 @@ own environment is otherwise clean.
 
 | key | type | purpose |
 |-----|------|---------|
-| `chdir` | string | working directory — emitted as the **global** `-chdir=<dir>` flag, which precedes the subcommand |
-| `binary` | string | override the CLI binary path (default `terraform`) |
+| `engine` | string | which CLI to drive: `terraform` (default), `tofu`, or `terragrunt` |
+| `chdir` | string | working directory — for `terraform`/`tofu`, emitted as the **global** `-chdir=<dir>` flag, which precedes the subcommand; for `terragrunt`, applied as the spawned process's working directory instead (see below) |
+| `binary` | string | override the CLI binary path (default: the engine name — `terraform`, `tofu`, or `terragrunt`) |
 | `env` | map | process environment for every invocation, e.g. `TF_VAR_*`, `AWS_*` |
 | `timeout` | duration | default per-verb timeout (default `10m`); a verb's `timeout` option overrides it |
 
-### `-chdir` placement
+### Engines: Terraform, OpenTofu, Terragrunt
 
-`-chdir` is a **global** terraform flag — it must appear before the
-subcommand (`terraform -chdir=DIR plan …`), unlike per-subcommand flags. The
-connector builds argv as `[-chdir=<dir>] <subcommand> <subcommand flags…>`,
-so every verb — including `cli` — runs against the configured directory.
+`engine` selects which CLI is spawned:
+
+- **`terraform`** (default) — the standard `terraform` binary.
+- **`tofu`** — OpenTofu, a 100% drop-in: identical argv to `terraform`,
+  including `-chdir` placement, for every verb.
+- **`terragrunt`** — Terragrunt understands every terraform/tofu subcommand,
+  so the verbs behave the same way, but with two differences (below):
+  `-chdir` and `run_all`.
 
 ```yaml
 connectors:
-  tf: { use: terraform, chdir: infra/prod, binary: /usr/local/bin/terraform }
+  tf:   { use: terraform, chdir: infra/prod, binary: /usr/local/bin/terraform }
+  tofu: { use: terraform, engine: tofu, chdir: infra/prod }
+  tg:   { use: terraform, engine: terragrunt, chdir: infra/prod }
+```
+
+### `-chdir` placement
+
+`-chdir` is a **global** terraform/OpenTofu flag — it must appear before the
+subcommand (`terraform -chdir=DIR plan …`), unlike per-subcommand flags. For
+`engine: terraform` and `engine: tofu`, the connector builds argv as
+`[-chdir=<dir>] <subcommand> <subcommand flags…>`, so every verb — including
+`cli` — runs against the configured directory.
+
+**Terragrunt has no `-chdir` flag.** For `engine: terragrunt`, the connector
+never emits `-chdir`; instead, when `chdir` is set, the terragrunt process is
+spawned with that directory as its working directory (`cmd.Dir`), and argv is
+just `<subcommand> <subcommand flags…>`.
+
+### `run_all` (terragrunt only)
+
+Terragrunt's multi-module orchestration is invoked via a `run-all` prefix
+(`terragrunt run-all apply …`) rather than a flag. The `init`, `plan`,
+`apply`, `destroy`, `refresh`, and `output` verbs accept a `run_all` boolean
+option: when `true`, the subcommand is prefixed with `run-all`. It is a no-op
+argv-wise for `terraform`/`tofu` connections (nothing stops you from setting
+it, but only terragrunt gives it meaning). Anything terragrunt-specific
+beyond that — `--terragrunt-*` flags on a verb without a matching option —
+passes through the `cli` verb's `args` escape hatch.
+
+```yaml
+uses: tg.apply
+options: { run_all: true }
+# → terragrunt run-all apply -auto-approve -input=false   (cwd = chdir)
 ```
 
 ## Common output shape
@@ -77,6 +115,7 @@ failures — both are ordinary responses, not RPC errors.
 | `upgrade` | boolean | `-upgrade` |
 | `reconfigure` | boolean | `-reconfigure` |
 | `no_color` | boolean | `-no-color` |
+| `run_all` | boolean | terragrunt only: prefix the subcommand with `run-all` |
 
 ### `validate` — validate the configuration
 
@@ -97,6 +136,7 @@ Always runs with `-input=false` (non-interactive).
 | `detailed_exitcode` | boolean | `-detailed-exitcode` (0 no changes, 1 error, 2 changes present) |
 | `json` | boolean | `-json` |
 | `no_color` | boolean | `-no-color` |
+| `run_all` | boolean | terragrunt only: prefix the subcommand with `run-all` |
 
 ```yaml
 uses: tf.plan
@@ -121,6 +161,7 @@ options:
 | `target` | list | `-target=<addr>` each |
 | `json` | boolean | `-json` |
 | `no_color` | boolean | `-no-color` |
+| `run_all` | boolean | terragrunt only: prefix the subcommand with `run-all` |
 
 Set `auto_approve: false` to omit `-auto-approve` (terraform will then refuse
 to run non-interactively unless a plan file with a matching approval is
@@ -129,7 +170,8 @@ supplied).
 ### `destroy` — destroy all managed resources
 
 Same options as `apply` (minus `plan_file`): `auto_approve` (default `true`),
-`var`, `var_files`, `target`, `json`, `no_color`. Always `-input=false`.
+`var`, `var_files`, `target`, `json`, `no_color`, `run_all` (terragrunt only).
+Always `-input=false`.
 
 ### `output` — read a state output (parsed into `outputs`)
 
@@ -138,6 +180,7 @@ Same options as `apply` (minus `plan_file`): `auto_approve` (default `true`),
 | `name` | string | a single output name (positional, optional) |
 | `json` | boolean | `-json` (default `true`) |
 | `raw` | boolean | `-raw` — mutually exclusive with `json`; wins when both are set |
+| `run_all` | boolean | terragrunt only: prefix the subcommand with `run-all` |
 
 Extra output **`outputs`**: the parsed `-json` document, when `json` (and not
 `raw`) is used and the command exits `0`.
@@ -177,7 +220,8 @@ options: { subcommand: show, args: [aws_instance.web] }
 
 ### `refresh` — reconcile state with real infrastructure
 
-`var`, `var_files`, `target`, `no_color`. Always runs with `-input=false`.
+`var`, `var_files`, `target`, `no_color`, `run_all` (terragrunt only). Always
+runs with `-input=false`.
 
 ### `providers` — print the provider dependency tree
 
@@ -187,20 +231,29 @@ No options.
 
 `json` (`-json`).
 
-### `cli` — any terraform subcommand
+### `cli` — any terraform/tofu/terragrunt subcommand
 
-`args` * (raw argv, appended after `-chdir`). The escape hatch for anything
-the first-class verbs don't model.
+`args` * (raw argv, appended after `-chdir` for terraform/tofu, or run as-is
+in `chdir` for terragrunt). The escape hatch for anything the first-class
+verbs don't model — including terragrunt-specific flags like
+`--terragrunt-non-interactive`.
 
 ```yaml
 uses: tf.cli
 options: { args: [graph] }
 # → terraform [-chdir=…] graph
+
+uses: tg.cli
+options: { args: [run-all, plan, --terragrunt-non-interactive] }
+# → terragrunt run-all plan --terragrunt-non-interactive   (cwd = chdir)
 ```
 
 ## Capabilities & security
 
-Declares `Commands: [terraform]` and `Spawns: true`; no `Egress`.
+Declares `Commands: [terraform]` and `Spawns: true`; no `Egress`. (The
+declared command name is `terraform` regardless of `engine` — connectors
+declare capabilities statically, and `tofu`/`terragrunt` are the same class
+of local process spawn.)
 
 - Verb options become CLI argv **directly** (`exec.Command`, no shell), so
   there is no shell-quoting/injection surface in how options are assembled.
