@@ -28,6 +28,7 @@ github.com/NodeSpy/conductor-plugins/connectors/docker
 github.com/NodeSpy/conductor-plugins/connectors/github
 github.com/NodeSpy/conductor-plugins/connectors/helm
 github.com/NodeSpy/conductor-plugins/connectors/kubernetes
+github.com/NodeSpy/conductor-plugins/connectors/notion
 github.com/NodeSpy/conductor-plugins/connectors/pagerduty
 github.com/NodeSpy/conductor-plugins/connectors/sentry
 github.com/NodeSpy/conductor-plugins/connectors/sns
@@ -58,6 +59,7 @@ No `replace` directive.
 | [`sns`](docs/connectors/sns.md) | connector (source) | `sns` | **No — never in core.** Add it here. | AWS SNS HTTP(S) subscriber: **auto-confirms** the subscription (gated on signature verification), verifies SNS message signatures (v1/v2, `SigningCertURL` host-allowlisted), emits a `notification` event per message. Optional **smee.io** SSE transport for endpoints with no public URL. |
 | [`aws`](docs/connectors/aws.md) | connector (verbs) | `aws` | **No — never in core.** Add it here. | AWS via the `aws` CLI: a generic `run` (any service/operation, params → flags, JSON parsed into `result`), plus `s3` (cp/sync/mv/rm/ls/mb/rb), `lambda_invoke`, `sts_identity`, and a `cli` escape hatch. `profile`/`region` select the target; credentials come from the ambient AWS environment. |
 | [`docker`](docs/connectors/docker.md) | connector (verbs) | `docker` | **No — never in core.** Add it here. | The container-engine lifecycle as verbs (`run`, `exec`, `build`, `pull`, `push`, `ps`, `images`, `logs`, `stop`, `start`, `rm`, `inspect`, `compose`, `buildx`, `bake`, `cli`) by shelling to the `docker` (or `podman`) CLI. Local by default; `docker_host: ssh://…` / `context:` reach a remote engine. `buildx`/`bake` are docker-only. |
+| [`notion`](docs/connectors/notion.md) | connector (verbs) | `notion` | **No — never in core.** Add it here. | Notion API: pages, databases (`query_database`), blocks, `search`, comments, users, and a generic `api`. Bearer token + `Notion-Version`. |
 | [`cloudflare`](docs/connectors/cloudflare.md) | connector (verbs) | `cloudflare` | **No — never in core.** Add it here. | Cloudflare API: DNS (`dns_list`/`dns_create`/`dns_update`/`dns_delete`), `cache_purge`, zones, `worker_deploy`, rulesets, and a generic `api`. API-token or legacy key/email auth. |
 | [`terraform`](docs/connectors/terraform.md) | connector (verbs) | `terraform` | **No — never in core.** Add it here. | Terraform/OpenTofu as verbs (`init`, `validate`, `plan`, `apply`, `destroy`, `output`, `show`, `fmt`, `workspace`, `state`, `import`, `refresh`, `providers`, `version`, `cli`) by shelling to `terraform`. `-chdir` + non-interactive defaults (`-input=false`, auto-approve); `output`/`show` parse `-json`. |
 | [`helm`](docs/connectors/helm.md) | connector (verbs) | `helm` | **No — never in core.** Add it here. | Helm releases as verbs (`install`, `upgrade`, `uninstall`, `rollback`, `list`, `status`, `history`, `get_values`, `template`, `pull`, `repo_add`, `repo_update`, `test`, `lint`, `cli`) by shelling to `helm`. `list`/`status`/`history`/`get_values` parse JSON into structured outputs. |
