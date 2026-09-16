@@ -144,6 +144,11 @@ binaries + `checksums.txt`.
 | `aws-sns` | connector (source) | [connectors/aws-sns.md](connectors/aws-sns.md) |
 | `cloudflare` | connector (verbs) | [connectors/cloudflare.md](connectors/cloudflare.md) |
 | `docker` | connector (verbs) | [connectors/docker.md](connectors/docker.md) |
+| `git` | connector (verbs) | [connectors/git.md](connectors/git.md) |
+| `gitlab` | connector (verbs + source) | [connectors/gitlab.md](connectors/gitlab.md) |
+| `gitea` | connector (verbs + source) | [connectors/gitea.md](connectors/gitea.md) |
+| `linear` | connector (verbs + source) | [connectors/linear.md](connectors/linear.md) |
+| `ffmpeg` | connector (verbs) | [connectors/ffmpeg.md](connectors/ffmpeg.md) |
 | `wiz` | connector (verbs + source) | [connectors/wiz.md](connectors/wiz.md) |
 | `uptimekuma` | connector (source) | [connectors/uptimekuma.md](connectors/uptimekuma.md) |
 | `uptimerobot` | connector (verbs + source) | [connectors/uptimerobot.md](connectors/uptimerobot.md) |

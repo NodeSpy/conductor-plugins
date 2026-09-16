@@ -26,9 +26,14 @@ github.com/NodeSpy/conductor-plugins/connectors/aws-cli
 github.com/NodeSpy/conductor-plugins/connectors/aws-sns
 github.com/NodeSpy/conductor-plugins/connectors/cloudflare
 github.com/NodeSpy/conductor-plugins/connectors/docker
+github.com/NodeSpy/conductor-plugins/connectors/ffmpeg
+github.com/NodeSpy/conductor-plugins/connectors/git
+github.com/NodeSpy/conductor-plugins/connectors/gitea
 github.com/NodeSpy/conductor-plugins/connectors/github
+github.com/NodeSpy/conductor-plugins/connectors/gitlab
 github.com/NodeSpy/conductor-plugins/connectors/helm
 github.com/NodeSpy/conductor-plugins/connectors/kubernetes
+github.com/NodeSpy/conductor-plugins/connectors/linear
 github.com/NodeSpy/conductor-plugins/connectors/notifiarr
 github.com/NodeSpy/conductor-plugins/connectors/notion
 github.com/NodeSpy/conductor-plugins/connectors/ntfy
@@ -71,6 +76,11 @@ No `replace` directive.
 | [`aws-sns`](docs/connectors/aws-sns.md) | connector (source) | `aws-sns` | **No — never in core.** Add it here. | AWS SNS HTTP(S) subscriber: **auto-confirms** the subscription (gated on signature verification), verifies SNS message signatures (v1/v2, `SigningCertURL` host-allowlisted), emits a `notification` event per message. Optional **smee.io** SSE transport for endpoints with no public URL. |
 | [`aws-cli`](docs/connectors/aws-cli.md) | connector (verbs) | `aws-cli` | **No — never in core.** Add it here. | AWS via the `aws` CLI: a generic `run` (any service/operation, params → flags, JSON parsed into `result`), plus `s3` (cp/sync/mv/rm/ls/mb/rb), `lambda_invoke`, `sts_identity`, and a `cli` escape hatch. `profile`/`region` select the target; credentials come from the ambient AWS environment. |
 | [`docker`](docs/connectors/docker.md) | connector (verbs) | `docker` | **No — never in core.** Add it here. | The container-engine lifecycle as verbs (`run`, `exec`, `build`, `pull`, `push`, `ps`, `images`, `logs`, `stop`, `start`, `rm`, `inspect`, `compose`, `buildx`, `bake`, `cli`) by shelling to the `docker` (or `podman`) CLI. Local by default; `docker_host: ssh://…` / `context:` reach a remote engine. `buildx`/`bake` are docker-only. |
+| [`git`](docs/connectors/git.md) | connector (verbs) | `git` | **No — never in core.** Add it here. | The `git` CLI with **configurable credentials**: clone/fetch/pull/push/checkout/commit/branch/tag/merge/reset/… + `rev_parse`/`ls_remote`/`status` parsing. SSH key or HTTPS token (kept out of argv via GIT_ASKPASS), commit identity. |
+| [`gitlab`](docs/connectors/gitlab.md) | connector (verbs + source) | `gitlab` | **No — never in core.** Add it here. | GitLab REST v4: MR/issue comments, create/update/merge MRs & issues, labels, branches, pipelines + generic `api`, plus push/MR/pipeline/issue/note webhook events (`X-Gitlab-Token` verified). |
+| [`gitea`](docs/connectors/gitea.md) | connector (verbs + source) | `gitea` | **No — never in core.** Add it here. | Gitea/Forgejo API: issue/PR comments, create issue/PR, merge, labels, releases, branches, files + push/PR/issue webhook events (HMAC-verified). |
+| [`linear`](docs/connectors/linear.md) | connector (verbs + source) | `linear` | **No — never in core.** Add it here. | Linear GraphQL: create/update/comment/archive issues, search + issue/comment/project webhook events (HMAC-verified). |
+| [`ffmpeg`](docs/connectors/ffmpeg.md) | connector (verbs) | `ffmpeg` | **No — never in core.** Add it here. | Media via `ffmpeg`/`ffprobe`: `transcode`, `extract_audio`, `thumbnail`, `extract_frames`, `trim`, `scale`, `to_gif`, `concat`, `remux`, `overlay`, `probe` (JSON) + `cli`. |
 | [`wiz`](docs/connectors/wiz.md) | connector (verbs + source) | `wiz` | **No — never in core.** Add it here. | Wiz cloud security: query/update issues & findings via GraphQL (OAuth2 client-credentials, token cached) + a new-issue webhook source. Deal with what Wiz finds. |
 | [`uptimekuma`](docs/connectors/uptimekuma.md) | connector (source) | `uptimekuma` | **No — never in core.** Add it here. | Uptime Kuma webhook notifications → one `monitor` event per heartbeat (up/down/pending/maintenance, name/url/msg). Optional shared-token auth, fail-closed. |
 | [`uptimerobot`](docs/connectors/uptimerobot.md) | connector (verbs + source) | `uptimerobot` | **No — never in core.** Add it here. | UptimeRobot: monitor CRUD + pause/resume over the v2 API, plus an alert webhook source (up/down, form or JSON). API key. |
