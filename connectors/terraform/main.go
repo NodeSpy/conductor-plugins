@@ -1,13 +1,20 @@
 // Command conductor-terraform is a verb-only conductor connector that drives
-// Terraform runs by shelling out to the `terraform` CLI. It exposes the
-// standard workflow as verbs — init/validate/plan/apply/destroy/output/show/
-// fmt/workspace/state/import/refresh/providers/version — plus a `cli` escape
-// hatch for any subcommand a first-class verb does not cover. Built ONLY
-// against the public SDK.
+// Terraform (and its drop-in siblings OpenTofu and Terragrunt) runs by
+// shelling out to the corresponding CLI. It exposes the standard workflow as
+// verbs — init/validate/plan/apply/destroy/output/show/fmt/workspace/state/
+// import/refresh/providers/version — plus a `cli` escape hatch for any
+// subcommand a first-class verb does not cover. Built ONLY against the
+// public SDK.
 //
-// `-chdir=DIR` is a GLOBAL terraform flag: it must precede the subcommand
-// (`terraform -chdir=DIR plan ...`), so the connection's `chdir` is emitted
-// as a connFlag ahead of every verb's argv, exactly like docker's --context.
+// The connection's `engine` selects which CLI is driven: "terraform"
+// (default) or "tofu" — both 100% argv-compatible, including the GLOBAL
+// `-chdir=DIR` flag, which must precede the subcommand
+// (`terraform -chdir=DIR plan ...`) and is emitted as a connFlag ahead of
+// every verb's argv, exactly like docker's --context — or "terragrunt",
+// which has no -chdir flag at all: chdir is instead applied as the spawned
+// process's working directory (cmd.Dir). Terragrunt also understands a
+// `run_all` option on plan/apply/destroy/refresh/output/init, prefixing the
+// subcommand with `run-all`.
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -32,10 +39,11 @@ func (terraformPlugin) Describe() plugin.Decl {
 	return plugin.Decl{
 		Kind: plugin.KindConnector,
 		Type: "terraform",
-		Desc: "Terraform: run the standard workflow as verbs (init, validate, plan, apply, destroy, output, show, fmt, workspace, state, import, refresh, providers, version, cli). Shells out to the terraform CLI; -chdir targets a working directory.",
+		Desc: "Terraform / OpenTofu / Terragrunt: run the standard workflow as verbs (init, validate, plan, apply, destroy, output, show, fmt, workspace, state, import, refresh, providers, version, cli). Shells out to the selected engine's CLI; -chdir targets a working directory for terraform/tofu, while terragrunt (which has no -chdir) runs with its process working directory set instead.",
 		Connection: plugin.Schema{
-			"chdir":   {Type: "string", Desc: "working directory — emitted as the global -chdir=<dir> flag, before the subcommand"},
-			"binary":  {Type: "string", Desc: "override the CLI binary path (default terraform)"},
+			"engine":  {Type: "string", Enum: []string{"terraform", "tofu", "terragrunt"}, Desc: "which CLI to drive (default terraform); tofu is argv-identical to terraform, terragrunt has no -chdir and instead runs with cmd.Dir set to chdir"},
+			"chdir":   {Type: "string", Desc: "working directory — for terraform/tofu, emitted as the global -chdir=<dir> flag before the subcommand; for terragrunt, used as the spawned process's working directory (no -chdir flag exists)"},
+			"binary":  {Type: "string", Desc: "override the CLI binary path (default: the engine name — terraform, tofu, or terragrunt)"},
 			"env":     {Type: "map", Desc: "process environment for every invocation, e.g. TF_VAR_*, AWS_*"},
 			"timeout": {Type: "duration", Desc: "default per-verb timeout (default 10m); a verb's timeout option overrides it"},
 		},
@@ -66,6 +74,7 @@ func terraformVerbs() []plugin.Verb {
 				"upgrade":        {Type: "boolean", Desc: "-upgrade"},
 				"reconfigure":    {Type: "boolean", Desc: "-reconfigure"},
 				"no_color":       {Type: "boolean", Desc: "-no-color"},
+				"run_all":        {Type: "boolean", Desc: "terragrunt only: prefix the subcommand with run-all"},
 			},
 			Outputs: out,
 		},
@@ -90,6 +99,7 @@ func terraformVerbs() []plugin.Verb {
 				"detailed_exitcode": {Type: "boolean", Desc: "-detailed-exitcode"},
 				"json":              {Type: "boolean", Desc: "-json"},
 				"no_color":          {Type: "boolean", Desc: "-no-color"},
+				"run_all":           {Type: "boolean", Desc: "terragrunt only: prefix the subcommand with run-all"},
 			},
 			Outputs: out,
 		},
@@ -104,6 +114,7 @@ func terraformVerbs() []plugin.Verb {
 				"target":       {Type: "list", Desc: "-target=<addr> (repeatable)"},
 				"json":         {Type: "boolean", Desc: "-json"},
 				"no_color":     {Type: "boolean", Desc: "-no-color"},
+				"run_all":      {Type: "boolean", Desc: "terragrunt only: prefix the subcommand with run-all"},
 			},
 			Outputs: out,
 		},
@@ -117,15 +128,17 @@ func terraformVerbs() []plugin.Verb {
 				"target":       {Type: "list", Desc: "-target=<addr> (repeatable)"},
 				"json":         {Type: "boolean", Desc: "-json"},
 				"no_color":     {Type: "boolean", Desc: "-no-color"},
+				"run_all":      {Type: "boolean", Desc: "terragrunt only: prefix the subcommand with run-all"},
 			},
 			Outputs: out,
 		},
 		{
 			Name: "output", Desc: "read an output value from the current state (parsed into outputs)",
 			Options: plugin.Schema{
-				"name": {Type: "string", Desc: "a single output name (positional)"},
-				"json": {Type: "boolean", Desc: "-json (default true)"},
-				"raw":  {Type: "boolean", Desc: "-raw (mutually exclusive with json)"},
+				"name":    {Type: "string", Desc: "a single output name (positional)"},
+				"json":    {Type: "boolean", Desc: "-json (default true)"},
+				"raw":     {Type: "boolean", Desc: "-raw (mutually exclusive with json)"},
+				"run_all": {Type: "boolean", Desc: "terragrunt only: prefix the subcommand with run-all"},
 			},
 			Outputs: withOutputs,
 		},
@@ -181,6 +194,7 @@ func terraformVerbs() []plugin.Verb {
 				"var_files": {Type: "list", Desc: "-var-file=<path> (repeatable)"},
 				"target":    {Type: "list", Desc: "-target=<addr> (repeatable)"},
 				"no_color":  {Type: "boolean", Desc: "-no-color"},
+				"run_all":   {Type: "boolean", Desc: "terragrunt only: prefix the subcommand with run-all"},
 			},
 			Outputs: out,
 		},
@@ -205,6 +219,7 @@ func terraformVerbs() []plugin.Verb {
 
 // terraformConn is the resolved connection config for one invocation.
 type terraformConn struct {
+	engine  string
 	binary  string
 	chdir   string
 	env     map[string]string
@@ -212,8 +227,15 @@ type terraformConn struct {
 }
 
 func parseConn(m map[string]any) (terraformConn, error) {
+	engine := strOr(m["engine"], "terraform")
+	switch engine {
+	case "terraform", "tofu", "terragrunt":
+	default:
+		return terraformConn{}, fmt.Errorf("connection.engine: invalid value %q (want terraform, tofu, or terragrunt)", engine)
+	}
 	c := terraformConn{
-		binary:  strOr(m["binary"], "terraform"),
+		engine:  engine,
+		binary:  strOr(m["binary"], engine),
 		chdir:   str(m["chdir"]),
 		env:     strMap(m["env"]),
 		timeout: 10 * time.Minute,
@@ -227,8 +249,10 @@ func parseConn(m map[string]any) (terraformConn, error) {
 }
 
 // connFlags is the GLOBAL -chdir flag, which must precede the subcommand.
+// terragrunt has no -chdir flag at all: its chdir is instead applied as the
+// spawned process's working directory (see runTerraform).
 func (c terraformConn) connFlags() []string {
-	if c.chdir != "" {
+	if c.chdir != "" && c.engine != "terragrunt" {
 		return []string{"-chdir=" + c.chdir}
 	}
 	return nil
@@ -321,6 +345,16 @@ func verbArgs(verb string, o map[string]any) ([]string, error) {
 	return nil, fmt.Errorf("unknown verb")
 }
 
+// runAllPrefix prepends "run-all" to a subcommand's argv when run_all is set
+// — a terragrunt-only option (terragrunt run-all <subcommand> ...); other
+// engines simply never set it.
+func runAllPrefix(o map[string]any, a []string) []string {
+	if boolv(o["run_all"]) {
+		return append([]string{"run-all"}, a...)
+	}
+	return a
+}
+
 func initArgs(o map[string]any) []string {
 	a := []string{"init"}
 	a = append(a, eqFlags("-backend-config=", strList(o["backend_config"]))...)
@@ -333,7 +367,7 @@ func initArgs(o map[string]any) []string {
 	if boolv(o["no_color"]) {
 		a = append(a, "-no-color")
 	}
-	return a
+	return runAllPrefix(o, a)
 }
 
 func validateArgs(o map[string]any) []string {
@@ -380,7 +414,7 @@ func planArgs(o map[string]any) []string {
 		a = append(a, "-no-color")
 	}
 	a = append(a, "-input=false")
-	return a
+	return runAllPrefix(o, a)
 }
 
 func applyArgs(o map[string]any) []string {
@@ -399,7 +433,7 @@ func applyArgs(o map[string]any) []string {
 	if pf := str(o["plan_file"]); pf != "" {
 		a = append(a, pf)
 	}
-	return a
+	return runAllPrefix(o, a)
 }
 
 func destroyArgs(o map[string]any) []string {
@@ -415,7 +449,7 @@ func destroyArgs(o map[string]any) []string {
 		a = append(a, "-no-color")
 	}
 	a = append(a, "-input=false")
-	return a
+	return runAllPrefix(o, a)
 }
 
 func outputArgs(o map[string]any) []string {
@@ -428,7 +462,7 @@ func outputArgs(o map[string]any) []string {
 	if n := str(o["name"]); n != "" {
 		a = append(a, n)
 	}
-	return a
+	return runAllPrefix(o, a)
 }
 
 func showArgs(o map[string]any) []string {
@@ -513,7 +547,7 @@ func refreshArgs(o map[string]any) []string {
 		a = append(a, "-no-color")
 	}
 	a = append(a, "-input=false")
-	return a
+	return runAllPrefix(o, a)
 }
 
 func versionArgs(o map[string]any) []string {
@@ -555,6 +589,9 @@ func enrich(verb string, o, res map[string]any) {
 func runTerraform(ctx context.Context, conn terraformConn, args []string) (map[string]any, error) {
 	full := append(conn.connFlags(), args...)
 	cmd := exec.CommandContext(ctx, conn.binary, full...)
+	if conn.engine == "terragrunt" && conn.chdir != "" {
+		cmd.Dir = conn.chdir
+	}
 	cmd.Env = conn.procEnv()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
