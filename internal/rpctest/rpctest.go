@@ -54,10 +54,11 @@ func Build(t *testing.T, kind, name string) string {
 	return bin
 }
 
-// BuildConnector and BuildRuntime name the kind at the call site, so an e2e
-// test reads as what it is.
+// BuildConnector, BuildRuntime and BuildEngine name the kind at the call site,
+// so an e2e test reads as what it is.
 func BuildConnector(t *testing.T, name string) string { return Build(t, "connectors", name) }
 func BuildRuntime(t *testing.T, name string) string   { return Build(t, "runtimes", name) }
+func BuildEngine(t *testing.T, name string) string    { return Build(t, "engines", name) }
 
 // wireMessage is the JSON-RPC 2.0 envelope the SDK's Serve loop reads/writes.
 type wireMessage struct {
@@ -80,8 +81,25 @@ type Client struct {
 	nextID  int
 	pending map[string]chan wireMessage
 	emit    func(json.RawMessage)
+	host    HostFunc
 
 	closeOnce sync.Once
+}
+
+// HostFunc stands in for the daemon's ctx data plane: it answers one host.kv /
+// host.sql / host.memory request a STEP-ENGINE plugin issued mid-run. In the
+// daemon this is internal/code's CtxHandler, which authorizes the op against
+// the step's DataGuard and runs it against the real stores; a test supplies
+// whatever it needs to assert.
+type HostFunc func(plugin.HostRequest) plugin.HostResult
+
+// SetHost installs the answer to the plugin's host.* callbacks. Without one,
+// the client refuses every callback the way the daemon refuses a run it does
+// not recognise — which is itself a useful thing to test against.
+func (c *Client) SetHost(fn HostFunc) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.host = fn
 }
 
 // Start spawns the plugin binary and begins reading its stdout. Stderr is
@@ -138,6 +156,16 @@ func (c *Client) read() {
 		if m.ID == nil {
 			continue
 		}
+		// method + id from the PLUGIN is a request in the other direction —
+		// a step engine calling back for a ctx data-plane op while one of its
+		// plugin.run calls is in flight. Answering it on its own goroutine
+		// keeps this reader free, which it has to be: the engine is blocked
+		// on the answer, and the run response will arrive on this same
+		// stream afterwards.
+		if m.Method != "" {
+			go c.serveHostCall(m)
+			continue
+		}
 		key := string(*m.ID)
 		c.mu.Lock()
 		ch, ok := c.pending[key]
@@ -147,6 +175,48 @@ func (c *Client) read() {
 			ch <- m
 		}
 	}
+}
+
+// serveHostCall answers one plugin→client request. The kind is taken from the
+// METHOD and cross-checked against the body, exactly as the daemon does: a
+// host.kv call must not be able to smuggle a sql op past a reader of the log.
+func (c *Client) serveHostCall(m wireMessage) {
+	kind := plugin.HostKindFor(m.Method)
+	res := plugin.HostResult{}
+	switch {
+	case kind == "":
+		res.Error = "no such method: " + m.Method
+	default:
+		var req plugin.HostRequest
+		if err := json.Unmarshal(m.Params, &req); err != nil {
+			res.Error = "bad params: " + err.Error()
+			break
+		}
+		if req.Kind != kind {
+			res.Error = fmt.Sprintf("kind %q does not match method %q", req.Kind, m.Method)
+			break
+		}
+		c.mu.Lock()
+		fn := c.host
+		c.mu.Unlock()
+		if fn == nil {
+			res.Error, res.Refused = "this run was granted no ctx data plane", true
+			break
+		}
+		res = fn(req)
+	}
+	raw, err := json.Marshal(res)
+	if err != nil {
+		return
+	}
+	reply := wireMessage{JSONRPC: "2.0", ID: m.ID, Result: raw}
+	line, err := json.Marshal(reply)
+	if err != nil {
+		return
+	}
+	c.encM.Lock()
+	_, _ = c.in.Write(append(line, '\n'))
+	c.encM.Unlock()
 }
 
 // call sends one request and waits for its response.
@@ -209,6 +279,21 @@ func (c *Client) Invoke(ctx context.Context, req plugin.InvokeRequest) (map[stri
 		return nil, err
 	}
 	var res plugin.InvokeResult
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return nil, err
+	}
+	return res.Outputs, nil
+}
+
+// Run issues plugin.run — ONE code step on a step-engine plugin — and returns
+// the step's outputs. Any host.* callbacks the engine makes while this is in
+// flight are answered by the HostFunc set with SetHost.
+func (c *Client) Run(ctx context.Context, req plugin.RunRequest) (map[string]any, error) {
+	raw, err := c.call(ctx, plugin.MethodRun, req)
+	if err != nil {
+		return nil, err
+	}
+	var res plugin.RunResult
 	if err := json.Unmarshal(raw, &res); err != nil {
 		return nil, err
 	}
