@@ -29,13 +29,22 @@ github.com/NodeSpy/conductor-plugins/connectors/docker
 github.com/NodeSpy/conductor-plugins/connectors/github
 github.com/NodeSpy/conductor-plugins/connectors/helm
 github.com/NodeSpy/conductor-plugins/connectors/kubernetes
+github.com/NodeSpy/conductor-plugins/connectors/notifiarr
 github.com/NodeSpy/conductor-plugins/connectors/notion
 github.com/NodeSpy/conductor-plugins/connectors/ntfy
 github.com/NodeSpy/conductor-plugins/connectors/pagerduty
+github.com/NodeSpy/conductor-plugins/connectors/pushover
+github.com/NodeSpy/conductor-plugins/connectors/qbittorrent
+github.com/NodeSpy/conductor-plugins/connectors/sabnzbd
 github.com/NodeSpy/conductor-plugins/connectors/sentry
+github.com/NodeSpy/conductor-plugins/connectors/tautulli
 github.com/NodeSpy/conductor-plugins/connectors/terraform
 github.com/NodeSpy/conductor-plugins/connectors/terraspace
 github.com/NodeSpy/conductor-plugins/connectors/twilio
+github.com/NodeSpy/conductor-plugins/connectors/uptimekuma
+github.com/NodeSpy/conductor-plugins/connectors/uptimerobot
+github.com/NodeSpy/conductor-plugins/connectors/wiz
+github.com/NodeSpy/conductor-plugins/connectors/zapier
 github.com/NodeSpy/conductor-plugins/runtimes/paseo
 ```
 
@@ -62,6 +71,15 @@ No `replace` directive.
 | [`aws-sns`](docs/connectors/aws-sns.md) | connector (source) | `aws-sns` | **No — never in core.** Add it here. | AWS SNS HTTP(S) subscriber: **auto-confirms** the subscription (gated on signature verification), verifies SNS message signatures (v1/v2, `SigningCertURL` host-allowlisted), emits a `notification` event per message. Optional **smee.io** SSE transport for endpoints with no public URL. |
 | [`aws-cli`](docs/connectors/aws-cli.md) | connector (verbs) | `aws-cli` | **No — never in core.** Add it here. | AWS via the `aws` CLI: a generic `run` (any service/operation, params → flags, JSON parsed into `result`), plus `s3` (cp/sync/mv/rm/ls/mb/rb), `lambda_invoke`, `sts_identity`, and a `cli` escape hatch. `profile`/`region` select the target; credentials come from the ambient AWS environment. |
 | [`docker`](docs/connectors/docker.md) | connector (verbs) | `docker` | **No — never in core.** Add it here. | The container-engine lifecycle as verbs (`run`, `exec`, `build`, `pull`, `push`, `ps`, `images`, `logs`, `stop`, `start`, `rm`, `inspect`, `compose`, `buildx`, `bake`, `cli`) by shelling to the `docker` (or `podman`) CLI. Local by default; `docker_host: ssh://…` / `context:` reach a remote engine. `buildx`/`bake` are docker-only. |
+| [`wiz`](docs/connectors/wiz.md) | connector (verbs + source) | `wiz` | **No — never in core.** Add it here. | Wiz cloud security: query/update issues & findings via GraphQL (OAuth2 client-credentials, token cached) + a new-issue webhook source. Deal with what Wiz finds. |
+| [`uptimekuma`](docs/connectors/uptimekuma.md) | connector (source) | `uptimekuma` | **No — never in core.** Add it here. | Uptime Kuma webhook notifications → one `monitor` event per heartbeat (up/down/pending/maintenance, name/url/msg). Optional shared-token auth, fail-closed. |
+| [`uptimerobot`](docs/connectors/uptimerobot.md) | connector (verbs + source) | `uptimerobot` | **No — never in core.** Add it here. | UptimeRobot: monitor CRUD + pause/resume over the v2 API, plus an alert webhook source (up/down, form or JSON). API key. |
+| [`tautulli`](docs/connectors/tautulli.md) | connector (verbs + source) | `tautulli` | **No — never in core.** Add it here. | Tautulli (Plex monitoring): activity/history/stats/libraries/users/metadata + `notify`/`terminate_session`, plus a webhook source. API key. |
+| [`qbittorrent`](docs/connectors/qbittorrent.md) | connector (verbs) | `qbittorrent` | **No — never in core.** Add it here. | qBittorrent WebUI: list/add/delete/pause/resume torrents, categories, tags, transfer info + generic `api`. Cookie login (username/password). |
+| [`sabnzbd`](docs/connectors/sabnzbd.md) | connector (verbs) | `sabnzbd` | **No — never in core.** Add it here. | SABnzbd Usenet downloader: `queue`/`history`, `add_url`, pause/resume, delete, speed limit, status, categories + generic `api`. API key. |
+| [`pushover`](docs/connectors/pushover.md) | connector (verbs) | `pushover` | **No — never in core.** Add it here. | Pushover push notifications: `send` (priority/sound/url/html), emergency receipts (`get_receipt`/`cancel_receipt`), `glances`, `validate_user`. App token + user key. |
+| [`notifiarr`](docs/connectors/notifiarr.md) | connector (verbs) | `notifiarr` | **No — never in core.** Add it here. | Notifiarr passthrough Discord notifications (title/message/color/channel/ping/fields) + generic `api`. API key. |
+| [`zapier`](docs/connectors/zapier.md) | connector (verbs + source) | `zapier` | **No — never in core.** Add it here. | Zapier: `send` to a Catch-Hook URL (host-validated to hooks.zapier.com) + an inbound webhook source (token-verified, fail-closed). |
 | [`ntfy`](docs/connectors/ntfy.md) | connector (verbs + source) | `ntfy` | **No — never in core.** Add it here. | ntfy pub/sub: `publish` notifications (title/priority/tags/click/attach) + a topic-subscribe source (JSON stream) emitting `message` events. ntfy.sh or self-hosted. |
 | [`terraspace`](docs/connectors/terraspace.md) | connector (verbs) | `terraspace` | **No — never in core.** Add it here. | Terraspace (Terraform/OpenTofu framework) as verbs: `up`/`down`/`plan` per stack, `all_up`/`all_down`, `output`, `import`, `logs`, `list`, `new`, … via the `terraspace` CLI. `TS_ENV` selects the environment. |
 | [`twilio`](docs/connectors/twilio.md) | connector (verbs + source) | `twilio` | **No — never in core.** Add it here. | Twilio: `send_sms`/`send_whatsapp`/`make_call` + an inbound SMS/voice webhook source (`X-Twilio-Signature` HMAC-verified). Basic auth (account SID + token). |

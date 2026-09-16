@@ -144,6 +144,15 @@ binaries + `checksums.txt`.
 | `aws-sns` | connector (source) | [connectors/aws-sns.md](connectors/aws-sns.md) |
 | `cloudflare` | connector (verbs) | [connectors/cloudflare.md](connectors/cloudflare.md) |
 | `docker` | connector (verbs) | [connectors/docker.md](connectors/docker.md) |
+| `wiz` | connector (verbs + source) | [connectors/wiz.md](connectors/wiz.md) |
+| `uptimekuma` | connector (source) | [connectors/uptimekuma.md](connectors/uptimekuma.md) |
+| `uptimerobot` | connector (verbs + source) | [connectors/uptimerobot.md](connectors/uptimerobot.md) |
+| `tautulli` | connector (verbs + source) | [connectors/tautulli.md](connectors/tautulli.md) |
+| `qbittorrent` | connector (verbs) | [connectors/qbittorrent.md](connectors/qbittorrent.md) |
+| `sabnzbd` | connector (verbs) | [connectors/sabnzbd.md](connectors/sabnzbd.md) |
+| `pushover` | connector (verbs) | [connectors/pushover.md](connectors/pushover.md) |
+| `notifiarr` | connector (verbs) | [connectors/notifiarr.md](connectors/notifiarr.md) |
+| `zapier` | connector (verbs + source) | [connectors/zapier.md](connectors/zapier.md) |
 | `helm` | connector (verbs) | [connectors/helm.md](connectors/helm.md) |
 | `kubernetes` | connector (verbs) | [connectors/kubernetes.md](connectors/kubernetes.md) |
 | `notion` | connector (verbs) | [connectors/notion.md](connectors/notion.md) |
