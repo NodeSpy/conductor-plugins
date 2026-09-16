@@ -145,6 +145,7 @@ binaries + `checksums.txt`.
 | `cloudflare` | connector (verbs) | [connectors/cloudflare.md](connectors/cloudflare.md) |
 | `docker` | connector (verbs) | [connectors/docker.md](connectors/docker.md) |
 | `smart` | connector (verbs + source) | [connectors/smart.md](connectors/smart.md) |
+| `libation` | connector (verbs) | [connectors/libation.md](connectors/libation.md) |
 | `email` | connector (verbs + source) | [connectors/email.md](connectors/email.md) |
 | `plex` | connector (verbs + source) | [connectors/plex.md](connectors/plex.md) |
 | `sonarr` | connector (verbs + source) | [connectors/sonarr.md](connectors/sonarr.md) |
