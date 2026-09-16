@@ -52,6 +52,7 @@ github.com/NodeSpy/conductor-plugins/connectors/qbittorrent
 github.com/NodeSpy/conductor-plugins/connectors/radarr
 github.com/NodeSpy/conductor-plugins/connectors/sabnzbd
 github.com/NodeSpy/conductor-plugins/connectors/sentry
+github.com/NodeSpy/conductor-plugins/connectors/smart
 github.com/NodeSpy/conductor-plugins/connectors/sonarr
 github.com/NodeSpy/conductor-plugins/connectors/tautulli
 github.com/NodeSpy/conductor-plugins/connectors/telegram
@@ -88,6 +89,7 @@ No `replace` directive.
 | [`aws-sns`](docs/connectors/aws-sns.md) | connector (source) | `aws-sns` | **No — never in core.** Add it here. | AWS SNS HTTP(S) subscriber: **auto-confirms** the subscription (gated on signature verification), verifies SNS message signatures (v1/v2, `SigningCertURL` host-allowlisted), emits a `notification` event per message. Optional **smee.io** SSE transport for endpoints with no public URL. |
 | [`aws-cli`](docs/connectors/aws-cli.md) | connector (verbs) | `aws-cli` | **No — never in core.** Add it here. | AWS via the `aws` CLI: a generic `run` (any service/operation, params → flags, JSON parsed into `result`), plus `s3` (cp/sync/mv/rm/ls/mb/rb), `lambda_invoke`, `sts_identity`, and a `cli` escape hatch. `profile`/`region` select the target; credentials come from the ambient AWS environment. |
 | [`docker`](docs/connectors/docker.md) | connector (verbs) | `docker` | **No — never in core.** Add it here. | The container-engine lifecycle as verbs (`run`, `exec`, `build`, `pull`, `push`, `ps`, `images`, `logs`, `stop`, `start`, `rm`, `inspect`, `compose`, `buildx`, `bake`, `cli`) by shelling to the `docker` (or `podman`) CLI. Local by default; `docker_host: ssh://…` / `context:` reach a remote engine. `buildx`/`bake` are docker-only. |
+| [`smart`](docs/connectors/smart.md) | connector (verbs + source) | `smart` | **No — never in core.** Add it here. | Disk S.M.A.R.T. health via `smartctl` (smartmontools): `scan`, `info`, `health`, `attributes`, `all`, `capabilities`, `test`, `log`, `cli` — every verb `--json`-parsed — plus a poll source emitting a `health` event when a device fails its self-assessment (deduped on device+status). smartctl's exit status is a **bitmask**, so a non-zero exit is data; `sudo: true` for raw device access. |
 | [`email`](docs/connectors/email.md) | connector (verbs + source) | `email` | **No — never in core.** Add it here. | Email: SMTP `send`/`send_raw` (multipart text+HTML, STARTTLS/implicit-TLS) + an IMAP poll source emitting `message` events (minimal stdlib IMAP client, mark-seen, dedup). |
 | [`plex`](docs/connectors/plex.md) | connector (verbs + source) | `plex` | **No — never in core.** Add it here. | Plex Media Server: sessions, library sections/scan, search, metadata, recently-added, watched/unwatched, refresh + a Plex webhook source (playback events). `X-Plex-Token`. |
 | [`sonarr`](docs/connectors/sonarr.md) | connector (verbs + source) | `sonarr` | **No — never in core.** Add it here. | Sonarr (TV): series CRUD, lookup, episodes, commands, queue, calendar, wanted, profiles + a webhook source (Grab/Download/…). API key. |
