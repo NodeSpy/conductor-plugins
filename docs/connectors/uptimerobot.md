@@ -34,7 +34,7 @@ triggers:
 |-----|------|---------|
 | `api_key` | string | UptimeRobot API key — the main key, or a monitor-specific key (required) |
 | `api_base` | string | override the API base URL (default `https://api.uptimerobot.com/v2`; tests or a private gateway) |
-| `webhook` | map | source transport: `listen`, `path`, `secret`, `allow_unsigned` |
+| `webhook` | map | source transport: `listen`, `path`, `secret`, `allow_unsigned`, `smee` |
 
 ### `webhook`
 
@@ -44,6 +44,7 @@ triggers:
 | `path` | string | listener path (default `/uptimerobot`) |
 | `secret` | string | shared token compared to `X-Conductor-Token` / `?token=` |
 | `allow_unsigned` | boolean | accept unauthenticated POSTs when no `secret` is set |
+| `smee` | string | optional smee.io-style SSE relay URL — receive forwarded deliveries when the listener has no public URL; the shared token is still checked |
 
 ## UptimeRobot v2 API conventions
 

@@ -47,9 +47,10 @@ func (sentry) Describe() plugin.Decl {
 		Type: "sentry",
 		Desc: "Sentry issue/error alerts via Integration-Platform webhooks (source only).",
 		Connection: plugin.Schema{
-			"listen":        {Type: "string", Desc: "HTTP listener address, e.g. :9099"},
+			"listen":        {Type: "string", Desc: "HTTP listener address, e.g. :9099 (optional if smee is set)"},
 			"path":          {Type: "string", Desc: "listener path (default /sentry)"},
 			"client_secret": {Type: "string", Desc: "Sentry-Hook-Signature HMAC key"},
+			"smee":          {Type: "string", Desc: "smee.io-style SSE relay URL, e.g. https://smee.io/AbC123 — also (or instead) receive forwarded deliveries over SSE when the endpoint has no public URL"},
 		},
 		Events: []plugin.Event{
 			ev("issue_alert", "a Sentry issue alert fired"),
@@ -73,15 +74,21 @@ func (sentry) StartSource(ctx context.Context, req plugin.StartSourceRequest, em
 		Path:      strOr(cfg["path"], "/sentry"),
 		Secret:    str(cfg["client_secret"]),
 		SigHeader: "Sentry-Hook-Signature",
+		Relay:     str(cfg["smee"]),
 	}
-	if ln.Addr == "" {
-		return fmt.Errorf("sentry: no listen address configured")
+	if ln.Addr == "" && ln.Relay == "" {
+		return fmt.Errorf("sentry: no listen address or smee relay configured")
 	}
 	if err := requireWebhookSecret("sentry", ln.Secret, cfg, "client_secret"); err != nil {
 		return err
 	}
 	dedup := sourcekit.NewDedup(2048)
-	fmt.Fprintf(os.Stderr, "sentry[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
+	if ln.Addr != "" {
+		fmt.Fprintf(os.Stderr, "sentry[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
+	}
+	if ln.Relay != "" {
+		fmt.Fprintf(os.Stderr, "sentry[%s]: relaying via smee channel %s\n", req.Instance, ln.Relay)
+	}
 	return ln.Serve(ctx, func(h http.Header, body []byte) {
 		f := parse(h.Get("Sentry-Hook-Resource"), body)
 		if f.shortID == "" && f.title == "" {

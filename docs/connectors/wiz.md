@@ -43,7 +43,7 @@ triggers:
 | `api_url` | string | **required.** tenant GraphQL endpoint, e.g. `https://api.us1.app.wiz.io/graphql` |
 | `auth_url` | string | OAuth2 token endpoint (default `https://auth.app.wiz.io/oauth/token`) |
 | `audience` | string | OAuth2 audience (default `wiz-api`) |
-| `webhook` | map | source transport: `listen`, `path`, `secret`, `header`, `allow_unsigned` |
+| `webhook` | map | source transport: `listen`, `path`, `secret`, `header`, `allow_unsigned`, `smee` (smee.io-style SSE relay URL — receive forwarded deliveries when the endpoint has no public URL; the shared token is still checked) |
 
 ### Tenant host varies — narrow `network:` yourself
 
@@ -145,6 +145,7 @@ parameter. The connector compares it to `webhook.secret` in constant time
 | `webhook.secret` | string | shared token compared against the header/query value |
 | `webhook.header` | string | header carrying the token (default `X-Conductor-Token`) |
 | `webhook.allow_unsigned` | boolean | explicit opt-out of the fail-closed default |
+| `webhook.smee` | string | optional smee.io-style SSE relay URL — receive forwarded deliveries when the listener has no public URL; the shared token is still checked |
 
 > **Unverified listeners fail closed.** With no `webhook.secret`, the listener
 > would accept any POST on the address as a real issue event. Set the secret,

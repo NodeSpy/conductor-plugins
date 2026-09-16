@@ -28,7 +28,7 @@ connectors:
 | `app` | map | GitHub App credentials: `app_id`, `private_key_path`, `webhook_secret` |
 | `token` | string | PAT used when no App is configured (chain: app → token → `gh auth token`) |
 | `identity` | map | credential policy: `write_token` |
-| `webhook` | map | source transport: `listen`, `path`, `secret` |
+| `webhook` | map | source transport: `listen` (optional if `smee` is set), `path`, `secret`, `smee` (SSE relay URL, e.g. `https://smee.io/AbC123` — HMAC verification still applies to relayed bodies) |
 | `api_base` | string | override the API base URL (GitHub Enterprise Server, or tests) |
 
 The `as` option on write verbs selects the identity (`me` vs `bot`) when an App

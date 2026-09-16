@@ -39,7 +39,7 @@ triggers:
 | `app_key` | string | `DD-APPLICATION-KEY` (required for monitor/metric verbs) |
 | `site` | string | Datadog site: `datadoghq.com` (default), `datadoghq.eu`, `us5.datadoghq.com`, … |
 | `api_base` | string | override the full API base URL (tests only; overrides `site`) |
-| `webhook` | map | source transport: `listen`, `path` (default `/datadog`), `secret` |
+| `webhook` | map | source transport: `listen`, `path` (default `/datadog`), `secret`, `smee` (smee.io-style SSE relay URL — receive forwarded deliveries when the endpoint has no public URL; the shared token is still checked) |
 
 ### Non-default sites and egress
 

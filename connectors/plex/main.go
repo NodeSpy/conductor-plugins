@@ -24,6 +24,7 @@
 //	  path: "/plex"                 # request path (default /plex)
 //	  secret: "<shared token>"      # compared against ?token= on the webhook URL
 //	  allow_unsigned: false         # explicit opt-in to run with no shared token
+//	  smee: "<smee.io channel URL>" # optional relay for endpoints with no public URL
 //
 // Plex has no signing of its own for outbound webhooks (a Plex Pass feature
 // that just POSTs multipart/form-data to a URL you configure in Settings >
@@ -32,7 +33,11 @@
 // webhook URL itself, compared against webhook.secret with a constant-time
 // comparison, and fails closed exactly like the HMAC-verified sources do: no
 // secret configured refuses to start unless webhook.allow_unsigned: true says
-// the operator means it.
+// the operator means it. The shared sourcekit.Listener.ServeReq hands the
+// callback the full request (headers, query, raw body), so the ?token= query
+// case is checked directly and the multipart body is parsed by hand (see
+// extractPayload) — and the same Listener transparently accepts deliveries
+// over a smee.io-style relay (webhook.smee) for endpoints with no public URL.
 //
 // Plex is always self-hosted/LAN, so this plugin declares NO egress in its
 // capability manifest — the operator is expected to scope `network:` on the
@@ -48,6 +53,9 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -69,7 +77,7 @@ func (plexPlugin) Describe() plugin.Decl {
 		Connection: plugin.Schema{
 			"base_url": {Type: "string", Required: true, Desc: "base URL of the Plex Media Server, e.g. http://plex:32400"},
 			"token":    {Type: "string", Required: true, Desc: "X-Plex-Token (Settings > Account, or see support.plex.tv/articles/204059436)"},
-			"webhook":  {Type: "map", Desc: "source transport: listen, path (default /plex), secret, allow_unsigned"},
+			"webhook":  {Type: "map", Desc: "source transport: listen, path (default /plex), secret, allow_unsigned, smee"},
 		},
 		Events: []plugin.Event{plexEvent()},
 		Verbs:  plexVerbs(),
@@ -450,6 +458,48 @@ func tokenEqual(got, want string) bool {
 	return subtle.ConstantTimeCompare(g[:], w[:]) == 1
 }
 
+// verifyToken compares the request's ?token= query parameter against secret.
+// Plex's webhook feature has no header option — the shared token can only
+// travel in the webhook URL's query string.
+func verifyToken(secret string, rq *sourcekit.Request) bool {
+	return tokenEqual(rq.Query.Get("token"), secret)
+}
+
+// extractPayload pulls the `payload` form field out of a Plex webhook's raw
+// multipart/form-data body. Unlike the old http.Request-based handler, the
+// shared sourcekit.Listener only hands the callback the request's headers,
+// query, and raw body bytes — not a live *http.Request — so there is no
+// r.ParseMultipartForm to lean on. This reimplements just enough of it by
+// hand: read the boundary out of the Content-Type header, then walk the
+// multipart parts looking for the one named "payload".
+func extractPayload(rq *sourcekit.Request) ([]byte, error) {
+	mediaType, params, err := mime.ParseMediaType(rq.Header.Get("Content-Type"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid Content-Type: %w", err)
+	}
+	if !strings.HasPrefix(mediaType, "multipart/") {
+		return nil, fmt.Errorf("expected multipart/form-data, got %q", mediaType)
+	}
+	boundary := params["boundary"]
+	if boundary == "" {
+		return nil, fmt.Errorf("missing multipart boundary")
+	}
+	mr := multipart.NewReader(bytes.NewReader(rq.Body), boundary)
+	for {
+		part, err := mr.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if part.FormName() == "payload" {
+			return io.ReadAll(part)
+		}
+	}
+	return nil, fmt.Errorf("no payload field in multipart body")
+}
+
 func (plexPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest, emit func(any) error) error {
 	cfg := req.Config
 	wh, _ := cfg["webhook"].(map[string]any)
@@ -460,45 +510,33 @@ func (plexPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest
 	path := strOr(wh["path"], "/plex")
 	secret := str(wh["secret"])
 	allowUnsigned := boolv(wh["allow_unsigned"])
+	smeeURL := str(wh["smee"])
 
-	if addr == "" {
-		return fmt.Errorf("plex: no webhook.listen address configured")
+	if addr == "" && smeeURL == "" {
+		return fmt.Errorf("plex: no webhook.listen address or webhook.smee relay configured")
 	}
 	if err := requireToken(secret, allowUnsigned); err != nil {
 		return err
 	}
 
 	dedup := sourcekit.NewDedup(2048)
-	mux := http.NewServeMux()
-	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		if secret != "" && !tokenEqual(r.URL.Query().Get("token"), secret) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, 8<<20)
-		if err := r.ParseMultipartForm(8 << 20); err != nil {
-			http.Error(w, "bad multipart form", http.StatusBadRequest)
-			return
-		}
-		handleWebhookPayload([]byte(r.FormValue("payload")), dedup, emit)
-		w.WriteHeader(http.StatusAccepted)
-	})
-
-	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	go func() {
-		<-ctx.Done()
-		_ = srv.Close()
-	}()
-	fmt.Fprintf(os.Stderr, "plex[%s]: listening on %s%s\n", req.Instance, addr, path)
-	err := srv.ListenAndServe()
-	if err == http.ErrServerClosed {
-		return nil
+	if addr != "" {
+		fmt.Fprintf(os.Stderr, "plex[%s]: listening on %s%s\n", req.Instance, addr, path)
 	}
-	return err
+	if smeeURL != "" {
+		fmt.Fprintf(os.Stderr, "plex[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
+	}
+	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smeeURL}
+	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
+		if secret != "" && !verifyToken(secret, rq) {
+			return
+		}
+		payload, err := extractPayload(rq)
+		if err != nil {
+			return
+		}
+		handleWebhookPayload(payload, dedup, emit)
+	})
 }
 
 // webhookFacts is what one Plex webhook `payload` form field decodes to.

@@ -34,23 +34,36 @@ triggers:
 |-----|------|---------|
 | `account_sid` | string | Twilio Account SID (required) |
 | `auth_token` | string | Twilio Auth Token — used for REST auth **and** as the webhook signing secret (required) |
-| `webhook` | map | source transport: `listen`, `path`, `validate`, `public_url` |
+| `webhook` | map | source transport: `listen`, `path`, `validate`, `public_url`, `smee` |
 | `api_base` | string | override the Twilio API base URL (tests, or a private gateway) |
 
 ### `webhook`
 
 | key | type | purpose |
 |-----|------|---------|
-| `listen` | string | HTTP listener address, e.g. `:9097` |
+| `listen` | string | HTTP listener address, e.g. `:9097` (optional if `smee` is set) |
 | `path` | string | listener path (default `/twilio`) |
 | `validate` | boolean | verify `X-Twilio-Signature` (default `true`) |
 | `public_url` | string | the externally-reachable base URL Twilio posts to (e.g. `https://hooks.example.com`) — required when `validate` is true, since it is part of the signed data |
+| `smee` | string | a smee.io-style SSE relay URL, e.g. `https://smee.io/AbC123` — also (or instead) receive forwarded deliveries over SSE when the endpoint has no public URL |
+
+At least one of `listen` or `smee` must be set.
 
 > **Unverified listeners fail closed.** `validate: true` (the default) needs
 > both `auth_token` and `webhook.public_url` — without either, signature
 > verification is impossible and a plugin start fails rather than silently
 > accepting unsigned deliveries. Set both, or set `webhook.validate: false` to
 > opt in explicitly when something else authenticates the endpoint.
+
+> **Signature verification behind `smee`.** `X-Twilio-Signature` is computed
+> over the exact URL Twilio requested (`webhook.public_url` + `path`), not
+> over whatever URL the delivery arrives at. When `smee` relays a request in,
+> the request Twilio actually signed was the URL you gave *it* (typically the
+> smee.io channel URL), which will not match `public_url` — so verification
+> will fail even though the delivery is genuine. When using `smee`, either set
+> `webhook.validate: false` (and rely on the relay channel's own secrecy), or
+> set `webhook.public_url` to the exact URL Twilio was configured with so the
+> signed URL matches.
 
 ## X-Twilio-Signature verification
 

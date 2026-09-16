@@ -26,7 +26,7 @@ connectors:
 |-----|------|---------|
 | `base_url` | string (required) | Home Assistant base URL, e.g. `http://homeassistant.local:8123`; the REST API is served at `base_url + /api` |
 | `token` | string (required) | long-lived access token, sent as `Authorization: Bearer <token>` |
-| `webhook` | map | source transport: `listen`, `path` (default `/homeassistant`), `secret`, `allow_unsigned` |
+| `webhook` | map | source transport: `listen`, `path` (default `/homeassistant`), `secret`, `allow_unsigned`, `smee` (smee.io-style SSE relay URL — receive forwarded deliveries when the endpoint has no public URL; the shared token is still checked) |
 
 A non-2xx REST response is surfaced as an internal error carrying the status
 code and response body.

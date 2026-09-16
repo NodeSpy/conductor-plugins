@@ -18,12 +18,18 @@
 //	path: "/uptimekuma"      # request path (default /uptimekuma)
 //	secret: "<shared token>" # compared to X-Conductor-Token / ?token=
 //	allow_unsigned: false    # true = accept unauthenticated POSTs
+//	smee: "https://smee.io/xyz" # optional smee.io-style SSE relay, for when
+//	                         # the listener has no public URL
 //
 // Uptime Kuma's webhook notification is UNSIGNED: there is no HMAC to verify,
 // only whatever the operator pastes into the notification's custom body /
 // URL. So, like the datadog connector, sourcekit.Listener.Secret is left
 // EMPTY here (its HMAC check does not apply) and the shared token is checked
-// by hand inside the handler below. See requireWebhookSecret and verifyToken.
+// by hand inside the handler below. The shared sourcekit.Listener.ServeReq
+// hands the callback the full request (headers, query, body), so the ?token=
+// query case is checked directly — and the same Listener transparently
+// accepts deliveries relayed over smee for endpoints with no public URL. See
+// requireWebhookSecret and verifyToken.
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -33,7 +39,6 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -60,6 +65,7 @@ func (uptimekuma) Describe() plugin.Decl {
 			"path":           {Type: "string", Desc: "listener path (default /uptimekuma)"},
 			"secret":         {Type: "string", Desc: "shared token compared to X-Conductor-Token / ?token="},
 			"allow_unsigned": {Type: "bool", Desc: "accept unauthenticated POSTs when no secret is set"},
+			"smee":           {Type: "string", Desc: "optional smee.io-style SSE relay URL, for when the listener has no public URL"},
 		},
 		Events: []plugin.Event{{
 			Name:    "monitor",
@@ -86,26 +92,33 @@ func (uptimekuma) Invoke(plugin.InvokeRequest) (plugin.InvokeResult, error) {
 func (uptimekuma) StartSource(ctx context.Context, req plugin.StartSourceRequest, emit func(any) error) error {
 	cfg := req.Config
 	secret := str(cfg["secret"])
+	smeeURL := str(cfg["smee"])
 	ln := sourcekit.Listener{
-		Addr: str(cfg["listen"]),
-		Path: strOr(cfg["path"], "/uptimekuma"),
+		Addr:  str(cfg["listen"]),
+		Path:  strOr(cfg["path"], "/uptimekuma"),
+		Relay: smeeURL,
 		// Secret intentionally left empty — see the package comment. The
 		// shared token, when configured, is verified by hand below instead
 		// of via sourcekit's HMAC path.
 	}
-	if ln.Addr == "" {
-		return fmt.Errorf("uptimekuma: no listen address configured")
+	if ln.Addr == "" && smeeURL == "" {
+		return fmt.Errorf("uptimekuma: no listen address or smee relay configured")
 	}
 	if err := requireWebhookSecret("uptimekuma", secret, cfg, "secret"); err != nil {
 		return err
 	}
 	dedup := sourcekit.NewDedup(2048)
-	fmt.Fprintf(os.Stderr, "uptimekuma[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
-	return ln.Serve(ctx, func(h http.Header, body []byte) {
-		if secret != "" && !verifyToken(secret, h) {
+	if ln.Addr != "" {
+		fmt.Fprintf(os.Stderr, "uptimekuma[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
+	}
+	if smeeURL != "" {
+		fmt.Fprintf(os.Stderr, "uptimekuma[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
+	}
+	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
+		if secret != "" && !verifyToken(secret, rq) {
 			return
 		}
-		f, ok := parse(body)
+		f, ok := parse(rq.Body)
 		if !ok {
 			return
 		}
@@ -329,31 +342,19 @@ func boolVal(v any) bool {
 	return false
 }
 
-// verifyToken compares the request's X-Conductor-Token header against secret
-// in constant time.
+// verifyToken compares the request's X-Conductor-Token header — or, if
+// absent, its ?token= query parameter — against secret in constant time.
 //
 // Uptime Kuma cannot sign its webhook notifications, so this shared-token
 // check is the only authentication available; requireWebhookSecret ensures a
 // token is always configured unless the operator explicitly opts out with
-// allow_unsigned. sourcekit.Listener.Serve hands its callback only the
-// request's headers and body (not the *http.Request), so the ?token= query
-// fallback documented alongside this connector is exercised through
-// verifyTokenFromRequest below, which a future Listener revision exposing
-// the full request can wire straight in.
-func verifyToken(secret string, h http.Header) bool {
-	got := h.Get("X-Conductor-Token")
+// allow_unsigned. The shared sourcekit.Listener.ServeReq hands the callback
+// the full request (headers, query, body), so the ?token= query fallback
+// documented alongside this connector is checked directly.
+func verifyToken(secret string, rq *sourcekit.Request) bool {
+	got := rq.Header.Get("X-Conductor-Token")
 	if got == "" {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(got), []byte(secret)) == 1
-}
-
-// verifyTokenFromRequest is the full check: header first, then the ?token=
-// query parameter, against secret in constant time.
-func verifyTokenFromRequest(secret string, r *http.Request) bool {
-	got := r.Header.Get("X-Conductor-Token")
-	if got == "" {
-		got = r.URL.Query().Get("token")
+		got = rq.Query.Get("token")
 	}
 	if got == "" {
 		return false

@@ -29,9 +29,10 @@ triggers:
 
 | key | type | purpose |
 |-----|------|---------|
-| `listen` | string | HTTP listener address, e.g. `:9099` |
+| `listen` | string | HTTP listener address, e.g. `:9099` (optional if `smee` is set) |
 | `path` | string | listener path (default `/sentry`) |
 | `client_secret` | string | `Sentry-Hook-Signature` HMAC key |
+| `smee` | string | smee.io-style SSE relay URL, e.g. `https://smee.io/AbC123` — also (or instead) receive forwarded deliveries over SSE when the endpoint has no public URL. HMAC verification still applies to relayed bodies. |
 
 > **Unsigned listeners fail closed.** With no `client_secret`, the listener
 > would accept any POST on the address as a real event. Set the secret, or set

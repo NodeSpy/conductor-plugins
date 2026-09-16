@@ -668,10 +668,45 @@ func TestRequireToken(t *testing.T) {
 	}
 }
 
+// TestVerifyToken proves the header/query precedence (header wins) and that
+// only a matching token passes.
+func TestVerifyToken(t *testing.T) {
+	secret := "s3cret"
+	mk := func(header, query string) *sourcekit.Request {
+		r := &sourcekit.Request{Header: http.Header{}, Query: url.Values{}}
+		if query != "" {
+			r.Query.Set("token", query)
+		}
+		if header != "" {
+			r.Header.Set("X-Conductor-Token", header)
+		}
+		return r
+	}
+	cases := []struct {
+		name          string
+		header, query string
+		want          bool
+	}{
+		{"valid header", secret, "", true},
+		{"valid query", "", secret, true},
+		{"header wins over query", secret, "wrong", true},
+		{"wrong header", "nope", "", false},
+		{"wrong query", "", "nope", false},
+		{"neither present", "", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := verifyToken(secret, mk(tc.header, tc.query)); got != tc.want {
+				t.Errorf("verifyToken(%q, %q): got %v want %v", tc.header, tc.query, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestStartSourceWebhookTokenAcceptReject drives StartSource end to end
 // against a real (loopback) listener: a request with the correct token is
-// accepted and emits an event; a request with a missing/wrong token is
-// rejected with 401 and nothing is emitted.
+// accepted and emits an event; a request with a missing/wrong token emits
+// nothing.
 func TestStartSourceWebhookTokenAcceptReject(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -703,18 +738,16 @@ func TestStartSourceWebhookTokenAcceptReject(t *testing.T) {
 
 	body := []byte(`{"eventType":"Grab","series":{"title":"Foo","tvdbId":1},"downloadId":"a"}`)
 
-	// Wrong token: rejected, nothing emitted.
-	resp := postJSON(t, addr, "/sonarr?token=nope", body, nil)
-	if resp != http.StatusUnauthorized {
-		t.Fatalf("wrong token: status = %d, want 401", resp)
+	// Wrong token: nothing emitted.
+	postJSON(t, addr, "/sonarr?token=nope", body, nil)
+	select {
+	case ev := <-events:
+		t.Fatalf("wrong token should not emit, got %#v", ev)
+	case <-time.After(150 * time.Millisecond):
 	}
 
 	// Correct token via header: accepted and emits.
-	resp = postJSON(t, addr, "/sonarr", body, map[string]string{"X-Conductor-Token": "s3cret"})
-	if resp != http.StatusAccepted {
-		t.Fatalf("header token: status = %d, want 202", resp)
-	}
-
+	postJSON(t, addr, "/sonarr", body, map[string]string{"X-Conductor-Token": "s3cret"})
 	select {
 	case ev := <-events:
 		if ev["kind"] != "Grab" {
@@ -726,10 +759,7 @@ func TestStartSourceWebhookTokenAcceptReject(t *testing.T) {
 
 	// Correct token via query param, different downloadId so dedup doesn't hide it.
 	body2 := []byte(`{"eventType":"Grab","series":{"title":"Foo","tvdbId":1},"downloadId":"b"}`)
-	resp = postJSON(t, addr, "/sonarr?token=s3cret", body2, nil)
-	if resp != http.StatusAccepted {
-		t.Fatalf("query token: status = %d, want 202", resp)
-	}
+	postJSON(t, addr, "/sonarr?token=s3cret", body2, nil)
 	select {
 	case ev := <-events:
 		if ev["dedup"] != "Grab\x001\x00b" {

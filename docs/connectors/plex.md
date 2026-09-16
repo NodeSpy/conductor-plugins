@@ -38,7 +38,7 @@ triggers:
 |-----|------|---------|
 | `base_url` | string | **required.** Base URL of the Plex Media Server, e.g. `http://plex:32400` |
 | `token` | string | **required.** `X-Plex-Token` (Settings > Account, or see [support.plex.tv/articles/204059436](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)) |
-| `webhook` | map | source transport: `listen`, `path` (default `/plex`), `secret`, `allow_unsigned` |
+| `webhook` | map | source transport: `listen`, `path` (default `/plex`), `secret`, `allow_unsigned`, `smee` (smee.io-style SSE relay URL — receive forwarded deliveries when the endpoint has no public URL; the shared token is still checked) |
 
 Every verb call sends `token` as the `X-Plex-Token` header (never a query
 parameter, so it never leaks into an access log) plus `Accept:

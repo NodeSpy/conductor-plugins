@@ -19,6 +19,13 @@
 //	  secret:         "<shared token>"  # compared to X-Conductor-Token (or ?token=)
 //	  header:         "X-Conductor-Token" # override the token header name
 //	  allow_unsigned: false             # explicit opt-out of the fail-closed default
+//	  smee:           "https://smee.io/xyz" # optional smee.io-style SSE relay,
+//	                                     # for when the listener has no public URL
+//
+// The shared sourcekit.Listener.ServeReq hands the callback the full request
+// (headers, query, body), so the ?token= query case is checked directly — and
+// the same Listener transparently accepts deliveries relayed over
+// webhook.smee. See checkToken below.
 //
 // Wiz's tenant `api_url` host varies per tenant/region (e.g.
 // api.us1.app.wiz.io, api.eu1.app.wiz.io, ...) — narrow `network:` to your
@@ -80,7 +87,7 @@ func (w *wizPlugin) Describe() plugin.Decl {
 			"api_url":       {Type: "string", Required: true, Desc: "tenant GraphQL endpoint, e.g. https://api.us1.app.wiz.io/graphql"},
 			"auth_url":      {Type: "string", Desc: "OAuth2 token endpoint (default " + defaultAuthURL + ")"},
 			"audience":      {Type: "string", Desc: "OAuth2 audience (default " + defaultAudience + ")"},
-			"webhook":       {Type: "map", Desc: "source transport: listen, path, secret, header, allow_unsigned"},
+			"webhook":       {Type: "map", Desc: "source transport: listen, path, secret, header, allow_unsigned, smee"},
 		},
 		Events: []plugin.Event{
 			{
@@ -544,8 +551,8 @@ const defaultTokenHeader = "X-Conductor-Token"
 
 // wizWebhookConfig is the resolved webhook.* sub-map.
 type wizWebhookConfig struct {
-	addr, path, secret, header string
-	allowUnsigned              bool
+	addr, path, secret, header, smeeURL string
+	allowUnsigned                       bool
 }
 
 func parseWebhookConfig(cfg map[string]any) wizWebhookConfig {
@@ -563,22 +570,32 @@ func parseWebhookConfig(cfg map[string]any) wizWebhookConfig {
 		wc.header = h
 	}
 	wc.allowUnsigned, _ = webhook["allow_unsigned"].(bool)
+	wc.smeeURL = str(webhook["smee"])
 	return wc
 }
 
 func (w *wizPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest, emit func(any) error) error {
 	cfg := req.Config
 	wc := parseWebhookConfig(cfg)
-	if wc.addr == "" {
-		return fmt.Errorf("wiz: no webhook.listen address configured")
+	if wc.addr == "" && wc.smeeURL == "" {
+		return fmt.Errorf("wiz: no webhook.listen address or webhook.smee relay configured")
 	}
 	if err := requireWebhookSecret("wiz", wc.secret, wc.allowUnsigned, "webhook.secret"); err != nil {
 		return err
 	}
 	dedup := sourcekit.NewDedup(2048)
-	fmt.Fprintf(os.Stderr, "wiz[%s]: listening on %s%s\n", req.Instance, wc.addr, wc.path)
-	return serveWebhook(ctx, wc, func(body []byte) {
-		iss := parseIssuePayload(body)
+	if wc.addr != "" {
+		fmt.Fprintf(os.Stderr, "wiz[%s]: listening on %s%s\n", req.Instance, wc.addr, wc.path)
+	}
+	if wc.smeeURL != "" {
+		fmt.Fprintf(os.Stderr, "wiz[%s]: relaying via smee channel %s\n", req.Instance, wc.smeeURL)
+	}
+	ln := sourcekit.Listener{Addr: wc.addr, Path: wc.path, Relay: wc.smeeURL}
+	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
+		if wc.secret != "" && !checkToken(wc, rq) {
+			return
+		}
+		iss := parseIssuePayload(rq.Body)
 		if iss.IssueID == "" {
 			return
 		}
@@ -624,47 +641,12 @@ func parseIssuePayload(body []byte) issuePayload {
 	return p
 }
 
-// serveWebhook is a minimal HTTP listener for the wiz source. It does not use
-// sourcekit.Listener's built-in HMAC verification: Wiz's operator-configured
-// webhook carries a bare shared TOKEN (header or query param), not a signed
-// body, so this compares that token directly with crypto/subtle instead.
-func serveWebhook(ctx context.Context, wc wizWebhookConfig, h func(body []byte)) error {
-	mux := http.NewServeMux()
-	mux.HandleFunc(wc.path, func(rw http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(rw, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		body, err := io.ReadAll(http.MaxBytesReader(rw, r.Body, 8<<20))
-		if err != nil {
-			http.Error(rw, "read body", http.StatusBadRequest)
-			return
-		}
-		if wc.secret != "" && !checkToken(wc, r) {
-			http.Error(rw, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		h(body)
-		rw.WriteHeader(http.StatusAccepted)
-	})
-	srv := &http.Server{Addr: wc.addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	go func() {
-		<-ctx.Done()
-		_ = srv.Close()
-	}()
-	err := srv.ListenAndServe()
-	if err == http.ErrServerClosed {
-		return nil
-	}
-	return err
-}
-
 // checkToken compares the shared token from the configured header — or, if
 // absent, the `token` query parameter — against wc.secret in constant time.
-func checkToken(wc wizWebhookConfig, r *http.Request) bool {
-	got := r.Header.Get(wc.header)
+func checkToken(wc wizWebhookConfig, rq *sourcekit.Request) bool {
+	got := rq.Header.Get(wc.header)
 	if got == "" {
-		got = r.URL.Query().Get("token")
+		got = rq.Query.Get("token")
 	}
 	if got == "" {
 		return false

@@ -37,7 +37,7 @@ triggers:
 |-----|------|---------|
 | `base_url` | string (required) | base URL of the Radarr instance, e.g. `http://radarr:7878` (no trailing `/api/v3`) |
 | `api_key` | string (required) | Radarr API key (Settings > General > Security) |
-| `webhook` | map | source transport: `listen`, `path` (default `/radarr`), `secret`, `allow_unsigned` |
+| `webhook` | map | source transport: `listen`, `path` (default `/radarr`), `secret`, `allow_unsigned`, `smee` (smee.io-style SSE relay URL — receive forwarded deliveries when the endpoint has no public URL; the shared token is still checked) |
 
 Every verb call sends the API key as the `X-Api-Key` header against
 `{base_url}/api/v3/<resource>`. A non-2xx response is surfaced as a connector

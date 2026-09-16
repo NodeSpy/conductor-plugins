@@ -21,7 +21,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"crypto"
 	"crypto/rsa"
@@ -38,7 +37,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"time"
 
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
 	"github.com/NodeSpy/conductor/pkg/sourcekit"
@@ -117,46 +115,19 @@ func (sns) StartSource(ctx context.Context, req plugin.StartSourceRequest, emit 
 		verify:          func(m snsMessage) error { return verifySignature(m, certs) },
 	}
 
-	var wg sync.WaitGroup
-	var errsMu sync.Mutex
-	var errs []error
-	recordErr := func(err error) {
-		if err == nil {
-			return
-		}
-		errsMu.Lock()
-		errs = append(errs, err)
-		errsMu.Unlock()
-	}
-
+	// Secret is intentionally empty: SNS carries its own RSA signature, not
+	// an HMAC, so verification happens in handle() against the message body,
+	// not the sourcekit listener's HMAC check.
+	ln := sourcekit.Listener{Addr: listen, Path: path, Relay: smeeURL}
 	if listen != "" {
-		ln := sourcekit.Listener{Addr: listen, Path: path}
 		fmt.Fprintf(os.Stderr, "sns[%s]: listening on %s%s\n", req.Instance, listen, path)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			// Secret is intentionally empty: SNS carries its own RSA
-			// signature, not an HMAC, so verification happens in handle()
-			// against the message body, not the sourcekit listener's HMAC
-			// check.
-			recordErr(ln.Serve(ctx, func(h http.Header, body []byte) {
-				src.handle(h.Get("x-amz-sns-message-type"), body)
-			}))
-		}()
 	}
 	if smeeURL != "" {
 		fmt.Fprintf(os.Stderr, "sns[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			src.runSmee(ctx, smeeURL)
-		}()
 	}
-	wg.Wait()
-	if len(errs) > 0 {
-		return errs[0]
-	}
-	return nil
+	return ln.Serve(ctx, func(h http.Header, body []byte) {
+		src.handle(h.Get("x-amz-sns-message-type"), body)
+	})
 }
 
 func main() {
@@ -465,132 +436,6 @@ func fetchCert(certURL string) (*rsa.PublicKey, error) {
 		return nil, fmt.Errorf("sns: signing cert is not RSA")
 	}
 	return pub, nil
-}
-
-// --- smee.io transport (stdlib SSE client) ---
-
-// runSmee connects to a smee.io channel and feeds every forwarded request into
-// handle(), reconnecting with backoff until ctx is cancelled.
-func (s *snsSource) runSmee(ctx context.Context, smeeURL string) {
-	backoff := time.Second
-	const maxBackoff = 30 * time.Second
-	for ctx.Err() == nil {
-		if err := s.smeeOnce(ctx, smeeURL); err != nil {
-			fmt.Fprintf(os.Stderr, "sns[%s]: smee stream error: %v\n", s.instance, err)
-		}
-		if ctx.Err() != nil {
-			return
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(backoff):
-		}
-		if backoff < maxBackoff {
-			backoff *= 2
-		}
-	}
-}
-
-// smeeOnce holds one smee connection open, parsing the SSE stream into
-// forwarded-request payloads until the connection drops or ctx cancels.
-func (s *snsSource) smeeOnce(ctx context.Context, smeeURL string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, smeeURL, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Accept", "text/event-stream")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("smee: unexpected status %s", resp.Status)
-	}
-	fmt.Fprintf(os.Stderr, "sns[%s]: smee connected\n", s.instance)
-	defer fmt.Fprintf(os.Stderr, "sns[%s]: smee disconnected\n", s.instance)
-
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 64<<10), 1<<20)
-	var data strings.Builder
-	flush := func() {
-		if data.Len() == 0 {
-			return
-		}
-		payload := data.String()
-		data.Reset()
-		if msgType, body, ok := parseSmeePayload([]byte(payload)); ok {
-			s.handle(msgType, body)
-		}
-	}
-	for scanner.Scan() {
-		line := scanner.Text()
-		switch {
-		case strings.HasPrefix(line, "data:"):
-			if data.Len() > 0 {
-				data.WriteByte('\n')
-			}
-			data.WriteString(strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
-		case line == "":
-			flush()
-		default:
-			// event:, id:, retry:, and comments (":...") carry no SNS
-			// payload — the "ready"/keep-alive events smee sends land here
-			// and are silently ignored.
-		}
-	}
-	flush()
-	return scanner.Err()
-}
-
-// parseSmeePayload extracts the SNS message type and body bytes from one
-// smee-forwarded `data:` JSON payload. smee delivers the original request as
-// headers at the top level, plus body/query/host/timestamp; body may arrive as
-// a nested JSON object or as a raw string. Returns ok=false for a payload with
-// no body (smee's own ready/keep-alive events).
-func parseSmeePayload(raw []byte) (msgType string, body []byte, ok bool) {
-	var payload map[string]any
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return "", nil, false
-	}
-	bodyVal, present := payload["body"]
-	if !present {
-		return "", nil, false
-	}
-	switch b := bodyVal.(type) {
-	case string:
-		body = []byte(b)
-	case nil:
-		return "", nil, false
-	default:
-		marshaled, err := json.Marshal(b)
-		if err != nil {
-			return "", nil, false
-		}
-		body = marshaled
-	}
-	msgType = headerValue(payload, "x-amz-sns-message-type")
-	if msgType == "" {
-		var m snsMessage
-		_ = json.Unmarshal(body, &m)
-		msgType = m.Type
-	}
-	return msgType, body, true
-}
-
-// headerValue looks up a smee-forwarded header case-insensitively — smee
-// preserves the original request's header casing, which does not necessarily
-// match what SNS actually sent.
-func headerValue(payload map[string]any, key string) string {
-	for k, v := range payload {
-		if strings.EqualFold(k, key) {
-			if s, ok := v.(string); ok {
-				return s
-			}
-		}
-	}
-	return ""
 }
 
 // --- option helpers ---

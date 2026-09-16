@@ -13,10 +13,11 @@
 //	url: "https://gitlab.com"      # GitLab instance base (self-managed: your own URL); API base = url + /api/v4
 //	token: "<personal/project access token>"
 //	webhook:
-//	  listen: ":9097"               # HTTP listener address (StartSource only)
+//	  listen: ":9097"               # HTTP listener address (StartSource only; optional if smee is set)
 //	  path: "/gitlab"               # request path (default /gitlab)
 //	  secret: "<secret token>"      # the webhook's Secret Token, compared to X-Gitlab-Token
 //	  allow_unsigned: false         # explicitly accept unauthenticated deliveries when no secret is set
+//	  smee: "https://smee.io/AbC123" # smee.io-style SSE relay URL (optional; also/instead of listen)
 //
 // GitLab webhooks authenticate with a plain shared-secret header
 // (`X-Gitlab-Token`), NOT an HMAC signature — so this source compares it with
@@ -61,7 +62,7 @@ func (gitlabPlugin) Describe() plugin.Decl {
 		Connection: plugin.Schema{
 			"url":     {Type: "string", Desc: "GitLab instance base URL (default https://gitlab.com); API base is url + /api/v4"},
 			"token":   {Type: "string", Desc: "personal/project access token, sent as PRIVATE-TOKEN"},
-			"webhook": {Type: "map", Desc: "source transport: listen, path, secret, allow_unsigned"},
+			"webhook": {Type: "map", Desc: "source transport: listen (optional if smee is set), path, secret, allow_unsigned, smee (smee.io-style SSE relay URL, e.g. https://smee.io/AbC123 — also (or instead) receive forwarded deliveries over SSE when the endpoint has no public URL)"},
 		},
 		Events:       gitlabEvents(),
 		Verbs:        gitlabVerbs(),
@@ -602,9 +603,10 @@ func (gitlabPlugin) StartSource(ctx context.Context, req plugin.StartSourceReque
 	path := strOr(webhook["path"], "/gitlab")
 	secret := str(webhook["secret"])
 	allowUnsigned := boolv(webhook["allow_unsigned"])
+	smee := str(webhook["smee"])
 
-	if addr == "" {
-		return fmt.Errorf("gitlab: no webhook.listen address configured")
+	if addr == "" && smee == "" {
+		return fmt.Errorf("gitlab: no webhook.listen address or smee relay configured")
 	}
 	if err := requireWebhookSecret(secret, allowUnsigned); err != nil {
 		return err
@@ -614,10 +616,15 @@ func (gitlabPlugin) StartSource(ctx context.Context, req plugin.StartSourceReque
 	// header (X-Gitlab-Token), not an HMAC signature, so sourcekit.Listener's
 	// own (HMAC-shaped) verification must not run here — this handler verifies
 	// the header itself, by constant-time equality.
-	ln := sourcekit.Listener{Addr: addr, Path: path}
+	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smee}
 
 	dedup := sourcekit.NewDedup(4096)
-	fmt.Fprintf(os.Stderr, "gitlab[%s]: listening on %s%s\n", req.Instance, addr, path)
+	if addr != "" {
+		fmt.Fprintf(os.Stderr, "gitlab[%s]: listening on %s%s\n", req.Instance, addr, path)
+	}
+	if smee != "" {
+		fmt.Fprintf(os.Stderr, "gitlab[%s]: relaying via smee channel %s\n", req.Instance, smee)
+	}
 	return ln.Serve(ctx, func(h http.Header, body []byte) {
 		if secret != "" && !constantTimeEqual(h.Get("X-Gitlab-Token"), secret) {
 			return

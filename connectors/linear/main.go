@@ -14,10 +14,11 @@
 //	api_key: "<linear API key>"          # sent RAW (no "Bearer ") in Authorization
 //	api_base: "https://api.example.com/graphql" # override the GraphQL endpoint (tests)
 //	webhook:
-//	  listen: ":9100"                    # HTTP listener address (StartSource only)
+//	  listen: ":9100"                    # HTTP listener address (StartSource only; optional if smee is set)
 //	  path: "/linear"                    # request path (default /linear)
 //	  secret: "<webhook signing secret>" # HMAC-SHA256 hex secret
 //	  allow_unsigned: false              # explicit opt-in to accept unsigned webhooks
+//	  smee: "https://smee.io/AbC123"     # smee.io-style SSE relay URL (optional; also/instead of listen)
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -71,7 +72,7 @@ func (l *linearPlugin) Describe() plugin.Decl {
 		Connection: plugin.Schema{
 			"api_key":  {Type: "string", Required: true, Desc: "Linear personal API key or app token, sent raw (no Bearer prefix) in Authorization"},
 			"api_base": {Type: "string", Desc: "override the GraphQL endpoint URL (default https://api.linear.app/graphql; used for tests)"},
-			"webhook":  {Type: "map", Desc: "source transport: listen, path, secret, allow_unsigned"},
+			"webhook":  {Type: "map", Desc: "source transport: listen (optional if smee is set), path, secret, allow_unsigned, smee (smee.io-style SSE relay URL, e.g. https://smee.io/AbC123 — also (or instead) receive forwarded deliveries over SSE when the endpoint has no public URL)"},
 		},
 		Events: []plugin.Event{
 			{
@@ -469,7 +470,7 @@ func (l *linearPlugin) StartSource(ctx context.Context, req plugin.StartSourceRe
 	cfg := req.Config
 	webhook, _ := cfg["webhook"].(map[string]any)
 
-	addr, path, secret := "", "/linear", ""
+	addr, path, secret, smee := "", "/linear", "", ""
 	allowUnsigned := false
 	if webhook != nil {
 		addr = str(webhook["listen"])
@@ -478,9 +479,10 @@ func (l *linearPlugin) StartSource(ctx context.Context, req plugin.StartSourceRe
 		}
 		secret = str(webhook["secret"])
 		allowUnsigned = boolv(webhook["allow_unsigned"])
+		smee = str(webhook["smee"])
 	}
-	if addr == "" {
-		return fmt.Errorf("linear: no webhook.listen address configured")
+	if addr == "" && smee == "" {
+		return fmt.Errorf("linear: no webhook.listen address or smee relay configured")
 	}
 	if strings.TrimSpace(secret) == "" {
 		if !allowUnsigned {
@@ -491,9 +493,14 @@ func (l *linearPlugin) StartSource(ctx context.Context, req plugin.StartSourceRe
 
 	// Signature verification is done by hand (below), not by
 	// sourcekit.Listener's built-in check, so ln.Secret is left empty.
-	ln := sourcekit.Listener{Addr: addr, Path: path}
+	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smee}
 	dedup := sourcekit.NewDedup(4096)
-	fmt.Fprintf(os.Stderr, "linear[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
+	if ln.Addr != "" {
+		fmt.Fprintf(os.Stderr, "linear[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
+	}
+	if ln.Relay != "" {
+		fmt.Fprintf(os.Stderr, "linear[%s]: relaying via smee channel %s\n", req.Instance, ln.Relay)
+	}
 	return ln.Serve(ctx, func(h http.Header, body []byte) {
 		if secret != "" && !verifySignature(secret, body, h.Get("Linear-Signature")) {
 			fmt.Fprintf(os.Stderr, "linear[%s]: rejected webhook: bad signature\n", req.Instance)

@@ -421,8 +421,9 @@ func TestDedupKey(t *testing.T) {
 // --- token verification ---
 
 func TestVerifyTokenFromRequest(t *testing.T) {
-	mk := func(header, query string) *http.Request {
-		r := httptest.NewRequest(http.MethodPost, "/uptimerobot?"+query, nil)
+	mk := func(header, query string) *sourcekit.Request {
+		q, _ := url.ParseQuery(query)
+		r := &sourcekit.Request{Header: http.Header{}, Query: q}
 		if header != "" {
 			r.Header.Set("X-Conductor-Token", header)
 		}

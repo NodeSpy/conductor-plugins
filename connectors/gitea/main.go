@@ -14,10 +14,11 @@
 //	url:   "https://gitea.example.com" # REQUIRED: base of the instance; API base is url + /api/v1
 //	token: "<access token>"            # sent as Authorization: token <token>
 //	webhook:
-//	  listen: ":9097"                  # HTTP listener address (StartSource only)
+//	  listen: ":9097"                  # HTTP listener address (StartSource only; optional if smee is set)
 //	  path:   "/gitea"                 # request path (default /gitea)
 //	  secret: "<webhook secret>"       # HMAC secret configured on the webhook
 //	  allow_unsigned: false            # explicitly accept unauthenticated deliveries when no secret is set
+//	  smee:   "https://smee.io/AbC123" # optional SSE relay URL, in place of or alongside listen
 //
 // Gitea signs webhook deliveries with HMAC-SHA256 over the raw body,
 // hex-encoded, in X-Gitea-Signature — exactly the bare-hex shape
@@ -61,7 +62,7 @@ func (giteaPlugin) Describe() plugin.Decl {
 		Connection: plugin.Schema{
 			"url":     {Type: "string", Required: true, Desc: "base URL of the Gitea/Forgejo instance, e.g. https://gitea.example.com (API base is url + /api/v1)"},
 			"token":   {Type: "string", Desc: "access token; sent as Authorization: token <token>"},
-			"webhook": {Type: "map", Desc: "source transport: listen, path (default /gitea), secret, allow_unsigned"},
+			"webhook": {Type: "map", Desc: "source transport: listen (optional if smee is set), path (default /gitea), secret, allow_unsigned, smee (SSE relay URL)"},
 		},
 		Events: giteaEvents(),
 		Verbs:  giteaVerbs(),
@@ -647,28 +648,34 @@ func parseJSON(raw []byte) any {
 func (giteaPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest, emit func(any) error) error {
 	cfg := req.Config
 	webhook, _ := cfg["webhook"].(map[string]any)
-	addr, path, secret, allowUnsigned := "", "/gitea", "", false
+	addr, path, secret, relay, allowUnsigned := "", "/gitea", "", "", false
 	if webhook != nil {
 		addr = str(webhook["listen"])
 		if p := str(webhook["path"]); p != "" {
 			path = p
 		}
 		secret = str(webhook["secret"])
+		relay = str(webhook["smee"])
 		allowUnsigned = boolv(webhook["allow_unsigned"])
 	}
 	// sourcekit.VerifyHMAC's bare-hex branch (no v1=/sha256= prefix present to
 	// trim) is exactly Gitea's X-Gitea-Signature format: hex-encoded
 	// HMAC-SHA256 over the raw body, nothing else — so the shared listener
 	// verifies it with no custom crypto needed here.
-	ln := sourcekit.Listener{Addr: addr, Path: path, Secret: secret, SigHeader: "X-Gitea-Signature"}
-	if ln.Addr == "" {
-		return fmt.Errorf("gitea: no webhook.listen address configured")
+	ln := sourcekit.Listener{Addr: addr, Path: path, Secret: secret, SigHeader: "X-Gitea-Signature", Relay: relay}
+	if ln.Addr == "" && ln.Relay == "" {
+		return fmt.Errorf("gitea: no webhook.listen address or smee relay configured")
 	}
 	if err := requireWebhookSecret(ln.Secret, allowUnsigned); err != nil {
 		return err
 	}
 	dedup := sourcekit.NewDedup(2048)
-	fmt.Fprintf(os.Stderr, "gitea[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
+	if ln.Addr != "" {
+		fmt.Fprintf(os.Stderr, "gitea[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
+	}
+	if ln.Relay != "" {
+		fmt.Fprintf(os.Stderr, "gitea[%s]: relaying via smee channel %s\n", req.Instance, ln.Relay)
+	}
 	return ln.Serve(ctx, func(h http.Header, body []byte) {
 		event := parseWebhook(h.Get("X-Gitea-Event"), body)
 		if event == nil {

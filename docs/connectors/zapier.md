@@ -38,7 +38,7 @@ triggers:
 | key | type | purpose |
 |-----|------|---------|
 | `hook_url` | string | default Catch Hook URL used by `send` when the verb's own `hook_url` option is omitted; must be a `hooks.zapier.com` URL |
-| `webhook` | map | source transport: `listen`, `path` (default `/zapier`), `secret`, `allow_unsigned` |
+| `webhook` | map | source transport: `listen`, `path` (default `/zapier`), `secret`, `allow_unsigned`, `smee` (smee.io-style SSE relay URL — receive forwarded deliveries when the endpoint has no public URL; the shared token is still checked) |
 
 ## Verbs
 
@@ -66,9 +66,10 @@ compute an HMAC signature. So, like the `datadog` connector, authentication is
 a shared token compared in constant time against either the
 `X-Conductor-Token` header or a `?token=` query parameter (whichever the Zap's
 action can attach), never an HMAC. `sourcekit.Listener.Secret` is left empty on
-purpose; this connector runs its own bounded webhook listener so the token
-check can also see the query string, which `sourcekit.Listener`'s callback
-does not expose.
+purpose; the shared `sourcekit.Listener.ServeReq` hands the callback the full
+request (headers, query, body), so the `?token=` query case is checked
+directly — and the same listener transparently accepts deliveries relayed
+over `webhook.smee` for endpoints with no public URL.
 
 > **Unauthenticated listeners fail closed.** With no `webhook.secret`, the
 > listener would accept any POST on the address as a real event. Set it, or

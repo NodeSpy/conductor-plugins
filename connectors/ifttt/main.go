@@ -6,7 +6,11 @@
 // IFTTT applet's "Make a web request" action and streams a normalized `event`
 // event per delivery, guarded by a shared token (not an HMAC — Maker Webhooks
 // has no signing story) checked against the `X-Conductor-Token` header or a
-// `?token=` query parameter.
+// `?token=` query parameter. The shared sourcekit.Listener.ServeReq hands the
+// callback the full request (headers, query, body), so the ?token= query case
+// is checked directly — and the same Listener transparently accepts
+// deliveries over a smee.io-style relay (webhook.smee) for endpoints with no
+// public URL.
 //
 // Built ONLY against the public SDK (pkg/plugin) and the connector-kit
 // (pkg/sourcekit) — no other internal daemon package.
@@ -23,6 +27,7 @@
 //	  path: "/ifttt"                    # request path (default /ifttt)
 //	  secret: "<shared token>"          # required unless allow_unsigned
 //	  allow_unsigned: false             # explicit opt-out of the shared-token check
+//	  smee: "<smee.io channel URL>"     # optional relay for endpoints with no public URL
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -60,7 +65,7 @@ func (iftttPlugin) Describe() plugin.Decl {
 		Connection: plugin.Schema{
 			"key":      {Type: "string", Required: true, Desc: "IFTTT Maker Webhooks key"},
 			"base_url": {Type: "string", Desc: "override the Maker Webhooks base URL (default https://maker.ifttt.com; for tests)"},
-			"webhook":  {Type: "map", Desc: "source transport: listen, path (default /ifttt), secret, allow_unsigned"},
+			"webhook":  {Type: "map", Desc: "source transport: listen, path (default /ifttt), secret, allow_unsigned, smee"},
 		},
 		Events: []plugin.Event{
 			{
@@ -187,7 +192,7 @@ func doTrigger(base, path string, body map[string]any) (plugin.InvokeResult, err
 func (iftttPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest, emit func(any) error) error {
 	cfg := req.Config
 	webhook, _ := cfg["webhook"].(map[string]any)
-	addr, path, secret, allowUnsigned := "", "/ifttt", "", false
+	addr, path, secret, allowUnsigned, smeeURL := "", "/ifttt", "", false, ""
 	if webhook != nil {
 		addr = str(webhook["listen"])
 		if p := str(webhook["path"]); p != "" {
@@ -195,49 +200,33 @@ func (iftttPlugin) StartSource(ctx context.Context, req plugin.StartSourceReques
 		}
 		secret = str(webhook["secret"])
 		allowUnsigned = boolv(webhook["allow_unsigned"])
+		smeeURL = str(webhook["smee"])
 	}
-	if addr == "" {
-		return fmt.Errorf("ifttt: no webhook.listen address configured")
+	if addr == "" && smeeURL == "" {
+		return fmt.Errorf("ifttt: no webhook.listen address or webhook.smee relay configured")
 	}
 	if err := requireWebhookSecret("ifttt", secret, allowUnsigned); err != nil {
 		return err
 	}
 
 	dedup := sourcekit.NewDedup(4096)
-	fmt.Fprintf(os.Stderr, "ifttt[%s]: listening on %s%s\n", req.Instance, addr, path)
+	if addr != "" {
+		fmt.Fprintf(os.Stderr, "ifttt[%s]: listening on %s%s\n", req.Instance, addr, path)
+	}
+	if smeeURL != "" {
+		fmt.Fprintf(os.Stderr, "ifttt[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
+	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smeeURL}
+	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
+		if !checkToken(rq, secret, allowUnsigned) {
 			return
 		}
-		if !checkToken(r, secret, allowUnsigned) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		body, err := io.ReadAll(io.LimitReader(r.Body, 8<<20))
-		if err != nil {
-			http.Error(w, "read body", http.StatusBadRequest)
-			return
-		}
-		ev := parseInbound(body)
+		ev := parseInbound(rq.Body)
 		if ev.Dedup == "" || dedup.Add(ev.Dedup) {
 			_ = emit(ev)
 		}
-		w.WriteHeader(http.StatusAccepted)
 	})
-
-	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	go func() {
-		<-ctx.Done()
-		_ = srv.Close()
-	}()
-	err := srv.ListenAndServe()
-	if err == http.ErrServerClosed {
-		return nil
-	}
-	return err
 }
 
 // checkToken verifies the shared token conveyed by the IFTTT applet: the
@@ -248,13 +237,13 @@ func (iftttPlugin) StartSource(ctx context.Context, req plugin.StartSourceReques
 // A secret was required unless allow_unsigned — requireWebhookSecret already
 // refused to start the listener otherwise — so an empty secret here only
 // happens when the operator explicitly opted into accepting everything.
-func checkToken(r *http.Request, secret string, allowUnsigned bool) bool {
+func checkToken(rq *sourcekit.Request, secret string, allowUnsigned bool) bool {
 	if secret == "" {
 		return allowUnsigned
 	}
-	got := r.Header.Get("X-Conductor-Token")
+	got := rq.Header.Get("X-Conductor-Token")
 	if got == "" {
-		got = r.URL.Query().Get("token")
+		got = rq.Query.Get("token")
 	}
 	return subtle.ConstantTimeCompare([]byte(got), []byte(secret)) == 1
 }

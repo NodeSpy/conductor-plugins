@@ -32,9 +32,10 @@
 //	  private_key_path: "/path/to/app.pem"
 //	  webhook_secret: "<secret>"         # HMAC secret for incoming webhooks
 //	webhook:
-//	  listen: ":9099"                    # HTTP listener address (StartSource only)
+//	  listen: ":9099"                    # HTTP listener address (StartSource only; optional if smee is set)
 //	  path: "/github"                    # request path (default /github)
 //	  secret: "<secret>"                 # webhook HMAC secret, if not under app.webhook_secret
+//	  smee: "https://smee.io/AbC123"     # optional SSE relay URL, in place of or alongside listen
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -99,7 +100,7 @@ func (g *githubPlugin) Describe() plugin.Decl {
 			"app":      {Type: "map", Desc: "GitHub App credentials: app_id, private_key_path, webhook_secret"},
 			"token":    {Type: "string", Desc: "PAT used when no App is configured (chain: app → token → gh auth token)"},
 			"identity": {Type: "map", Desc: "credential policy: write_token"},
-			"webhook":  {Type: "map", Desc: "source transport: listen, path, secret"},
+			"webhook":  {Type: "map", Desc: "source transport: listen (optional if smee is set), path, secret, smee (SSE relay URL)"},
 			"api_base": {Type: "string", Desc: "override the GitHub API base URL (GitHub Enterprise Server, or tests)"},
 		},
 		Events: []plugin.Event{
@@ -612,22 +613,28 @@ func (g *githubPlugin) StartSource(ctx context.Context, req plugin.StartSourceRe
 	if secret == "" && webhook != nil {
 		secret = str(webhook["secret"])
 	}
-	addr, path := "", "/github"
+	addr, path, relay := "", "/github", ""
 	if webhook != nil {
 		addr = str(webhook["listen"])
 		if p := str(webhook["path"]); p != "" {
 			path = p
 		}
+		relay = str(webhook["smee"])
 	}
-	ln := sourcekit.Listener{Addr: addr, Path: path, Secret: secret, SigHeader: "X-Hub-Signature-256"}
-	if ln.Addr == "" {
-		return fmt.Errorf("github: no webhook.listen address configured")
+	ln := sourcekit.Listener{Addr: addr, Path: path, Secret: secret, SigHeader: "X-Hub-Signature-256", Relay: relay}
+	if ln.Addr == "" && ln.Relay == "" {
+		return fmt.Errorf("github: no webhook.listen address or smee relay configured")
 	}
 	if err := requireWebhookSecret("github", ln.Secret, cfg, "app.webhook_secret / webhook.secret"); err != nil {
 		return err
 	}
 	dedup := sourcekit.NewDedup(4096)
-	fmt.Fprintf(os.Stderr, "github[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
+	if ln.Addr != "" {
+		fmt.Fprintf(os.Stderr, "github[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
+	}
+	if ln.Relay != "" {
+		fmt.Fprintf(os.Stderr, "github[%s]: relaying via smee channel %s\n", req.Instance, ln.Relay)
+	}
 	return ln.Serve(ctx, func(h http.Header, body []byte) {
 		kind := h.Get("X-GitHub-Event")
 		if kind == "" {

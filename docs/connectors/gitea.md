@@ -29,7 +29,7 @@ connectors:
 |-----|------|---------|
 | `url` | string | **required.** base URL of the Gitea/Forgejo instance, e.g. `https://gitea.example.com`; the API base is `url` + `/api/v1` |
 | `token` | string | access token, sent as `Authorization: token <token>` |
-| `webhook` | map | source transport: `listen`, `path` (default `/gitea`), `secret`, `allow_unsigned` |
+| `webhook` | map | source transport: `listen` (optional if `smee` is set), `path` (default `/gitea`), `secret`, `allow_unsigned`, `smee` (SSE relay URL, e.g. `https://smee.io/AbC123` — HMAC verification still applies to relayed bodies) |
 
 ## Source events
 

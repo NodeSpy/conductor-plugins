@@ -10,6 +10,7 @@
 //	listen: ":9098"                 # HTTP listener address
 //	path: "/pagerduty"              # request path (default /pagerduty)
 //	signing_secret: "<secret>"      # webhook subscription signing secret
+//	smee: "https://smee.io/AbC123"  # optional SSE relay URL, in place of or alongside listen
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -34,9 +35,10 @@ func (pagerduty) Describe() plugin.Decl {
 		Type: "pagerduty",
 		Desc: "PagerDuty incident webhooks (V3 subscriptions; source only).",
 		Connection: plugin.Schema{
-			"listen":         {Type: "string", Desc: "HTTP listener address, e.g. :9098"},
+			"listen":         {Type: "string", Desc: "HTTP listener address, e.g. :9098 (optional if smee is set)"},
 			"path":           {Type: "string", Desc: "listener path (default /pagerduty)"},
 			"signing_secret": {Type: "string", Desc: "webhook subscription signing secret"},
+			"smee":           {Type: "string", Desc: "smee.io-style SSE relay URL, e.g. https://smee.io/AbC123 — also (or instead) receive forwarded deliveries over SSE when the endpoint has no public URL"},
 		},
 		Events: []plugin.Event{{
 			Name: "incident",
@@ -65,15 +67,21 @@ func (pagerduty) StartSource(ctx context.Context, req plugin.StartSourceRequest,
 		Path:      strOr(cfg["path"], "/pagerduty"),
 		Secret:    str(cfg["signing_secret"]),
 		SigHeader: "X-PagerDuty-Signature",
+		Relay:     str(cfg["smee"]),
 	}
-	if ln.Addr == "" {
-		return fmt.Errorf("pagerduty: no listen address configured")
+	if ln.Addr == "" && ln.Relay == "" {
+		return fmt.Errorf("pagerduty: no listen address or smee relay configured")
 	}
 	if err := requireWebhookSecret("pagerduty", ln.Secret, cfg, "signing_secret"); err != nil {
 		return err
 	}
 	dedup := sourcekit.NewDedup(2048)
-	fmt.Fprintf(os.Stderr, "pagerduty[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
+	if ln.Addr != "" {
+		fmt.Fprintf(os.Stderr, "pagerduty[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
+	}
+	if ln.Relay != "" {
+		fmt.Fprintf(os.Stderr, "pagerduty[%s]: relaying via smee channel %s\n", req.Instance, ln.Relay)
+	}
 	return ln.Serve(ctx, func(h http.Header, body []byte) {
 		f := parse(body)
 		if f.EventType == "" {

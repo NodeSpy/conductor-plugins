@@ -50,10 +50,11 @@ func (alertmanager) Describe() plugin.Decl {
 		Type: "alertmanager",
 		Desc: "Prometheus Alertmanager and Grafana unified-alerting webhooks — they share the payload shape (source only).",
 		Connection: plugin.Schema{
-			"listen":         {Type: "string", Desc: "HTTP listener address, e.g. :9097"},
+			"listen":         {Type: "string", Desc: "HTTP listener address, e.g. :9097 (optional if smee is set)"},
 			"path":           {Type: "string", Desc: "listener path (default /alertmanager)"},
 			"secret":         {Type: "string", Desc: "bearer token compared to the Authorization header (\"Bearer <secret>\")"},
 			"allow_unsigned": {Type: "bool", Desc: "accept unauthenticated POSTs when no secret is set"},
+			"smee":           {Type: "string", Desc: "smee.io-style SSE relay URL, e.g. https://smee.io/AbC123 — also (or instead) receive forwarded deliveries over SSE when the endpoint has no public URL"},
 		},
 		Events: []plugin.Event{{
 			Name:    "alert",
@@ -86,15 +87,21 @@ func (alertmanager) StartSource(ctx context.Context, req plugin.StartSourceReque
 		// Secret intentionally left empty — see the package comment. The
 		// bearer token, when configured, is verified by hand below instead of
 		// via sourcekit's HMAC path.
+		Relay: str(cfg["smee"]),
 	}
-	if ln.Addr == "" {
-		return fmt.Errorf("alertmanager: no listen address configured")
+	if ln.Addr == "" && ln.Relay == "" {
+		return fmt.Errorf("alertmanager: no listen address or smee relay configured")
 	}
 	if err := requireBearerSecret("alertmanager", secret, cfg); err != nil {
 		return err
 	}
 	dedup := sourcekit.NewDedup(2048)
-	fmt.Fprintf(os.Stderr, "alertmanager[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
+	if ln.Addr != "" {
+		fmt.Fprintf(os.Stderr, "alertmanager[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)
+	}
+	if ln.Relay != "" {
+		fmt.Fprintf(os.Stderr, "alertmanager[%s]: relaying via smee channel %s\n", req.Instance, ln.Relay)
+	}
 	return ln.Serve(ctx, func(h http.Header, body []byte) {
 		if secret != "" && !verifyBearer(secret, h.Get("Authorization")) {
 			return

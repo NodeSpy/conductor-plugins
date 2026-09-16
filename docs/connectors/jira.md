@@ -33,7 +33,7 @@ connectors:
 | `base_url` | string | **required.** Jira Cloud site base URL, e.g. `https://acme.atlassian.net` |
 | `email` | string | Atlassian account email for HTTP Basic auth |
 | `api_token` | string | Atlassian API token for HTTP Basic auth |
-| `webhook` | map | source transport: `listen`, `path` (default `/jira`), `secret`, `allow_unsigned` |
+| `webhook` | map | source transport: `listen`, `path` (default `/jira`), `secret`, `allow_unsigned`, `smee` (smee.io-style SSE relay URL — receive forwarded deliveries when the endpoint has no public URL; the shared secret is still checked) |
 
 Verbs call `base_url + "/rest/api/3"` with HTTP Basic auth (`email:api_token`,
 base64-encoded). A non-2xx response is surfaced as an internal error carrying
