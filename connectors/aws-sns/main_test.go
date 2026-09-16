@@ -503,7 +503,7 @@ func TestParseSmeePayloadFlowsThroughHandle(t *testing.T) {
 
 func TestDescribe(t *testing.T) {
 	d := sns{}.Describe()
-	if d.Kind != plugin.KindConnector || d.Type != "sns" {
+	if d.Kind != plugin.KindConnector || d.Type != "aws-sns" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
 	wantEgress := []string{"smee.io:443", "sns.*.amazonaws.com:443", "*.amazonaws.com:443"}

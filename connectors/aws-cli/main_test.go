@@ -174,7 +174,7 @@ func TestParseConn(t *testing.T) {
 // every verb.
 func TestDescribe(t *testing.T) {
 	d := awsPlugin{}.Describe()
-	if d.Kind != plugin.KindConnector || d.Type != "aws" {
+	if d.Kind != plugin.KindConnector || d.Type != "aws-cli" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
 	if !contains(d.Capabilities.Commands, "aws") || !d.Capabilities.Spawns {

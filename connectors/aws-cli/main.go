@@ -1,5 +1,5 @@
-// Command conductor-aws is a verb-only conductor connector that drives the AWS
-// CLI (`aws`) by shelling out to it. AWS's surface is unbounded, so the design
+// Command conductor-aws-cli is a verb-only conductor connector (type: aws-cli)
+// that drives the AWS CLI (`aws`) by shelling out to it. AWS's surface is unbounded, so the design
 // is generic-first + first-class conveniences: `run` covers ANY AWS CLI
 // service/operation pair, while `s3`, `lambda_invoke`, `sts_identity`, and
 // `cli` give ergonomic shapes to the operations most triggers actually need.
@@ -31,7 +31,7 @@ type awsPlugin struct{}
 func (awsPlugin) Describe() plugin.Decl {
 	return plugin.Decl{
 		Kind: plugin.KindConnector,
-		Type: "aws",
+		Type: "aws-cli",
 		Desc: "AWS CLI: a generic `run` (any service/operation) plus first-class conveniences for s3, lambda invoke, and sts identity, and a `cli` escape hatch. Shells out to the aws CLI; credentials come from the ambient AWS profile/environment, not from this connector.",
 		Connection: plugin.Schema{
 			"profile":      {Type: "string", Desc: "--profile (selects an ambient credential profile; does not carry secrets)"},
