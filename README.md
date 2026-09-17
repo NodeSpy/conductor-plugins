@@ -48,9 +48,11 @@ github.com/NodeSpy/conductor-plugins/connectors/matrix
 github.com/NodeSpy/conductor-plugins/connectors/notifiarr
 github.com/NodeSpy/conductor-plugins/connectors/notion
 github.com/NodeSpy/conductor-plugins/connectors/ntfy
+github.com/NodeSpy/conductor-plugins/connectors/opnsense
 github.com/NodeSpy/conductor-plugins/connectors/pagerduty
 github.com/NodeSpy/conductor-plugins/connectors/plex
 github.com/NodeSpy/conductor-plugins/connectors/prowlarr
+github.com/NodeSpy/conductor-plugins/connectors/proxmox
 github.com/NodeSpy/conductor-plugins/connectors/pushover
 github.com/NodeSpy/conductor-plugins/connectors/qbittorrent
 github.com/NodeSpy/conductor-plugins/connectors/radarr
@@ -58,10 +60,12 @@ github.com/NodeSpy/conductor-plugins/connectors/sabnzbd
 github.com/NodeSpy/conductor-plugins/connectors/sentry
 github.com/NodeSpy/conductor-plugins/connectors/smart
 github.com/NodeSpy/conductor-plugins/connectors/sonarr
+github.com/NodeSpy/conductor-plugins/connectors/tailscale
 github.com/NodeSpy/conductor-plugins/connectors/tautulli
 github.com/NodeSpy/conductor-plugins/connectors/telegram
 github.com/NodeSpy/conductor-plugins/connectors/terraform
 github.com/NodeSpy/conductor-plugins/connectors/terraspace
+github.com/NodeSpy/conductor-plugins/connectors/truenas
 github.com/NodeSpy/conductor-plugins/connectors/twilio
 github.com/NodeSpy/conductor-plugins/connectors/uptimekuma
 github.com/NodeSpy/conductor-plugins/connectors/uptimerobot
@@ -118,6 +122,10 @@ from the public module proxy. No `replace` directive.
 | [`telegram`](docs/connectors/telegram.md) | connector (verbs + source) | `telegram` | **No — never in core.** Add it here. | Telegram Bot API: send message/photo/document, edit/delete, answer callbacks, set webhook + message/callback_query source (secret-token verified). Bot token. |
 | [`matrix`](docs/connectors/matrix.md) | connector (verbs + source) | `matrix` | **No — never in core.** Add it here. | Matrix Client-Server: send messages/notices/events, join/leave/invite/redact, room state + a `/sync` long-poll source (message/invite). Access token. |
 | [`homeassistant`](docs/connectors/homeassistant.md) | connector (verbs + source) | `homeassistant` | **No — never in core.** Add it here. | Home Assistant: `call_service`, get/set state, `fire_event`, `render_template`, history/logbook + an inbound webhook source. Long-lived access token. |
+| [`proxmox`](docs/connectors/proxmox.md) | connector (verbs + source) | `proxmox` | **No — never in core.** Add it here. | Proxmox VE: nodes, `qemu` VMs + `lxc` containers (start/stop/shutdown/reboot/clone), cluster resources, storage, snapshots, `vzdump` backups, tasks + generic `api`, plus a task poll source (fires on a finished/failed backup or migration). API-token header; `insecure_skip_verify` for self-signed certs. |
+| [`truenas`](docs/connectors/truenas.md) | connector (verbs + source) | `truenas` | **No — never in core.** Add it here. | TrueNAS SCALE: pools, datasets, snapshots, replication, apps, services, system info + generic `api`, plus an alert poll source. Bearer API key; `insecure_skip_verify`. |
+| [`opnsense`](docs/connectors/opnsense.md) | connector (verbs) | `opnsense` | **No — never in core.** Add it here. | OPNsense firewall/router: firmware, services (restart/start/stop), firewall aliases (+ apply), interfaces, DHCP leases, gateway status, unbound DNS, reboot + generic `api`. HTTP Basic (key+secret); `insecure_skip_verify`. |
+| [`tailscale`](docs/connectors/tailscale.md) | connector (verbs) | `tailscale` | **No — never in core.** Add it here. | Tailscale mesh VPN: devices (authorize/tags/routes/delete), auth keys, ACL get/set, DNS + generic `api`. Uses **managed OAuth2** (client-credentials) or a plain `api_key`. |
 | [`ifttt`](docs/connectors/ifttt.md) | connector (verbs + source) | `ifttt` | **No — never in core.** Add it here. | IFTTT Maker Webhooks: `trigger` / `trigger_json` + an inbound webhook source (token-verified, fail-closed). Maker key. |
 | [`healthchecks`](docs/connectors/healthchecks.md) | connector (verbs + source) | `healthchecks` | **No — never in core.** Add it here. | Healthchecks.io: check CRUD + `ping` (success/fail/start) + a check up/down webhook source. Management API key + ping URLs. |
 | [`git`](docs/connectors/git.md) | connector (verbs) | `git` | **No — never in core.** Add it here. | The `git` CLI with **configurable credentials**: clone/fetch/pull/push/checkout/commit/branch/tag/merge/reset/… + `rev_parse`/`ls_remote`/`status` parsing. SSH key or HTTPS token (kept out of argv via GIT_ASKPASS), commit identity. |

@@ -158,6 +158,10 @@ binaries + `checksums.txt`.
 | `telegram` | connector (verbs + source) | [connectors/telegram.md](connectors/telegram.md) |
 | `matrix` | connector (verbs + source) | [connectors/matrix.md](connectors/matrix.md) |
 | `homeassistant` | connector (verbs + source) | [connectors/homeassistant.md](connectors/homeassistant.md) |
+| `proxmox` | connector (verbs + source) | [connectors/proxmox.md](connectors/proxmox.md) |
+| `truenas` | connector (verbs + source) | [connectors/truenas.md](connectors/truenas.md) |
+| `opnsense` | connector (verbs) | [connectors/opnsense.md](connectors/opnsense.md) |
+| `tailscale` | connector (verbs) | [connectors/tailscale.md](connectors/tailscale.md) |
 | `ifttt` | connector (verbs + source) | [connectors/ifttt.md](connectors/ifttt.md) |
 | `healthchecks` | connector (verbs + source) | [connectors/healthchecks.md](connectors/healthchecks.md) |
 | `git` | connector (verbs) | [connectors/git.md](connectors/git.md) |
