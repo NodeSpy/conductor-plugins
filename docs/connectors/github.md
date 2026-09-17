@@ -158,13 +158,59 @@ templates (`{{.field}}`) read. `repo` and `number`/`pr` are always available.
 `author_is_bot` is true when the actor's account type is `Bot` or its login ends
 in `[bot]` — the usual way to skip automated actors.
 
+### Filtering
+
+A trigger's `filter:` matches an event's published fields (the table above),
+plus `repo` and `number`/`pr` which every event carries. The grammar:
+
+- A key set to a value must match; a **list matches any of** its values —
+  `repo: [acme/api, acme/infra]`.
+- Prefix **`not_`** to negate a field — `not_author_is_bot: true` skips bots,
+  `not_repo: [acme/sandbox]` excludes.
+- **`expr:` / `not_expr:`** take an expression over the fields —
+  `not_expr: "startswith(comment_body, '/skip')"`.
+- Keys within one filter object are **AND**ed. A top-level **array** of filter
+  objects is **OR** across them (one arm per rule).
+
+### Examples
+
+Scope a trigger to specific repos and re-request review from the author when they
+ask for changes:
+
 ```yaml
 triggers:
   - on: gh.changes_requested
-    filter: { author_is_bot: false }        # ignore bot reviewers
+    filter:
+      repo: [acme/api, acme/infra]          # any of these repos
+    steps:
+      - uses: gh.rerequest_review
+        options: { repo: "{{.repo}}", pr: "{{.pr}}", reviewers: ["{{.author}}"] }
+```
+
+Act on new PR comments, but ignore automated ones:
+
+```yaml
+triggers:
+  - on: gh.new_comment
+    filter:
+      not_author_is_bot: true               # skip github-actions[bot] & friends
+    steps:
+      - uses: gh.comment
+        options: { repo: "{{.repo}}", pr: "{{.pr}}", body: "on it" }
+```
+
+Different rules per org, as an OR of arms (each arm ANDs its own keys):
+
+```yaml
+triggers:
+  - on: gh.changes_requested
+    filter:
+      - repo: [globex/web]                  # globex: any change request
+      - repo: [acme/api, acme/infra]        # acme: only from humans
+        not_author_is_bot: true
     steps:
       - uses: gh.pr_diff
-        options: { repo: acme/app, pr: "{{.number}}" }
+        options: { repo: "{{.repo}}", pr: "{{.pr}}" }
 ```
 
 > `sweep` (the catch-up reconciliation source) is a daemon-global operation and
