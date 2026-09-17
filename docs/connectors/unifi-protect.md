@@ -95,38 +95,45 @@ JSON. The raw bytes are base64-encoded into `image_base64`, alongside
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema.
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `meta` | `GET /meta/info` | `result` |
-| `cameras` | `GET /cameras` | `items` |
-| `camera_get` | `GET /cameras/{camera_id}` | `result` |
-| `camera_snapshot` | `GET /cameras/{camera_id}/snapshot` (`high_quality`) | `image_base64`, `content_type` |
-| `camera_ptz` | `POST /cameras/{camera_id}/ptz/goto/{slot}` \| `/ptz/patrol/start/{slot}` \| `/ptz/patrol/stop` (`action`\*, `slot`) | `result` |
-| `nvrs` | `GET /nvrs` | `result` |
-| `viewers` | `GET /viewers` | `items` |
-| `lights` | `GET /lights` | `items` |
-| `sensors` | `GET /sensors` | `items` |
-| `chimes` | `GET /chimes` | `items` |
-| `api` | `method` + `path` (under the integration v1 base) + `query` + `body` — escape hatch for anything without a first-class verb | `result` (object response) or `items` (array response) |
+- Every verb returns `status_code`. List endpoints (`cameras`, `viewers`,
+  `lights`, `sensors`, `chimes`) return a bare JSON array hoisted into
+  `items` (even an empty list is returned as `items: []`, never omitted);
+  singular/object endpoints return `result`.
+- `camera_snapshot` is the one exception: its response is a JPEG image, not
+  JSON — the raw bytes are base64-encoded into `image_base64` (no
+  `result`/`items` for this verb).
+- There is no first-class verb for looking up a single viewer, light,
+  sensor, or chime by ID (the API supports
+  `GET /{viewers,lights,sensors,chimes}/{id}`, but v1 keeps the connector's
+  surface to what's specified below); reach one with the `api` escape
+  hatch, e.g. `path: /viewers/abc123`.
 
-`camera_snapshot` sets `?highQuality=true` only when `high_quality: true` is
-passed; otherwise the console's default resolution is used.
+Required options are marked `*`.
 
-`camera_ptz`'s `action` selects which of the three confirmed PTZ endpoints to
-call: `goto` and `patrol_start` move to a saved preset `slot` (both require
-`slot`); `patrol_stop` halts an active patrol and takes no `slot`.
+### Meta & NVR
 
-`nvrs` has no path parameter and returns a single object — one UniFi OS
-console has exactly one NVR, so the Integration API exposes it as a
-singleton rather than a list.
+- **`meta`** — Protect application/API version info (`GET /meta/info`). → `result`, `status_code`.
+- **`nvrs`** — this console's NVR details: arm mode, doorbell settings, identification (`GET /nvrs`). No path parameter — one UniFi OS console has exactly one NVR, so the Integration API exposes it as a singleton rather than a list. → `result`, `status_code`.
 
-There is no first-class verb for looking up a single viewer, light, sensor,
-or chime by ID (the API supports `GET /{viewers,lights,sensors,chimes}/{id}`,
-but v1 keeps the connector's surface to what's specified); reach one with the
-`api` escape hatch, e.g. `path: /viewers/abc123`.
+### Cameras
+
+- **`cameras`** — list all cameras (`GET /cameras`). → `items`, `status_code`.
+- **`camera_get`** — get one camera's details (`GET /cameras/{camera_id}`). `camera_id`*. → `result`, `status_code`.
+- **`camera_snapshot`** — capture a still snapshot from a camera (`GET /cameras/{camera_id}/snapshot`). `camera_id`*, `high_quality` (boolean — request a higher-resolution snapshot via `?highQuality=true`; otherwise the console's default resolution is used). → `image_base64` (the JPEG, base64-encoded), `content_type`, `status_code`.
+- **`camera_ptz`** — control a PTZ camera: move to a preset, or start/stop a patrol (`POST /cameras/{camera_id}/ptz/goto/{slot}` \| `/ptz/patrol/start/{slot}` \| `/ptz/patrol/stop`). `camera_id`*, `action`* (`goto` | `patrol_start` | `patrol_stop` — `goto` and `patrol_start` move to a saved preset `slot` and require it; `patrol_stop` halts an active patrol and takes no `slot`), `slot` (integer — PTZ preset slot number, required for `goto` and `patrol_start`). → `result`, `status_code`.
+
+### Accessories
+
+- **`viewers`** — list all Protect viewers (view-only displays) (`GET /viewers`). → `items`, `status_code`.
+- **`lights`** — list all Protect lights (`GET /lights`). → `items`, `status_code`.
+- **`sensors`** — list all Protect sensors (`GET /sensors`). → `items`, `status_code`.
+- **`chimes`** — list all Protect chimes (`GET /chimes`). → `items`, `status_code`.
+
+### Raw access
+
+- **`api`** — raw escape hatch: any Protect Integration API endpoint under `/proxy/protect/integration/v1`, for anything without a first-class verb. `method` (HTTP method, default `GET`), `path`* (path under the integration v1 base, e.g. `/viewers/abc123`), `query` (map of query-string parameters), `body` (any — JSON request body). → `result` (object response), `items` (array response), `status_code`.
 
 ## No source (yet): live detection events need a WebSocket client
 

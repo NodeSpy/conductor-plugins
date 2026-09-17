@@ -137,33 +137,85 @@ so a redelivered notification doesn't fire the same trigger twice.
 plus every top-level key from the posted JSON body, and `payload` (the full
 posted JSON, verbatim) for anything not lifted to a named field.
 
+### Filtering
+
+`filter:` matches an event's published fields (`actions`/`users`/
+`media_types` as any-of lists, or the scalar `action`/`user`/`media_type`,
+plus anything else your notification template posts). A key set to a value
+must match; a **list matches any of** its values — `actions: [play, resume]`.
+Prefix **`not_`** to negate a field — `not_users: [service_account]`
+excludes. **`expr:` / `not_expr:`** take an expression over the fields. Keys
+within one filter object are **AND**ed. A top-level **array** of filter
+objects is **OR** across them.
+
+### Example
+
+Pull recent playback history whenever a stream starts:
+
+```yaml
+triggers:
+  - on: tt.event
+    filter:
+      actions: [play]
+    steps:
+      - uses: tt.history
+        options: { user: "{{.user}}", length: 5 }
+```
+
 ## Verbs
 
-| verb | cmd | outputs | notes |
-|------|-----|---------|-------|
-| `activity` | `get_activity` | `result` | current Plex activity (active streams, transcode sessions) |
-| `history` | `get_history` | `items` | options: `user`, `section_id`, `length`, `start` |
-| `home_stats` | `get_home_stats` | `result` | home page stat blocks |
-| `libraries` | `get_libraries` | `items` | configured Plex libraries |
-| `users` | `get_users` | `items` | known Plex users |
-| `metadata` | `get_metadata` | `result` | options: `rating_key` (required) |
-| `recently_added` | `get_recently_added` | `items` | options: `count`, `section_id` |
-| `server_info` | `get_server_info` | `result` | connected Plex Media Server identity/version |
-| `notify` | `notify` | `result` | send a notification through a configured Tautulli notifier — options: `notifier_id`, `subject`, `body` (all required) |
-| `terminate_session` | `terminate_session` | `result` | options: `session_key` (required), `message` |
-| `api` | *(caller-supplied)* | `result` | escape hatch — options: `cmd` (required), `params` (map of additional query parameters) |
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-Every verb also returns `status_code` (the HTTP status). A verb producing
-`items` hoists it from `data` directly when the command's data is already a
-list, or from a well-known nested key (`data`/`recently_added`) when Tautulli
-wraps the rows one level down — this covers `get_history` (`data.data`) and
-`get_recently_added` (`data.recently_added`) as well as the commands that
-return a bare list.
+- Every verb is a `GET` to `{base_url}/api/v2` with `apikey` and `cmd` as
+  query parameters, plus whatever parameters the command itself takes. The
+  response is always the envelope `{"response": {"result":
+  "success"|"error", "message": ..., "data": ...}}`; a `result: "error"` is
+  surfaced as a plugin error carrying `message`.
+- Every verb returns `status_code` (the HTTP status) alongside its listed
+  outputs.
+- **`result` vs `items`** — a verb whose response is naturally a list
+  returns `items`, hoisted from `data` directly when it's already a list, or
+  from a well-known nested key when Tautulli wraps the rows one level down
+  (`get_history` → `data.data`, `get_recently_added` →
+  `data.recently_added`); everything else returns `result`.
 
-See `Describe()` in
-[`connectors/tautulli/main.go`](../../connectors/tautulli/main.go) for each
-verb's full option schema.
+Required options are marked `*`.
 
+### Activity & history
+
+- **`activity`** — current Plex activity (active streams, transcode
+  sessions). → `result`.
+- **`history`** — playback history. `user` (string, filter to one user),
+  `section_id` (string, filter to one library section), `length` (integer,
+  max rows), `start` (integer, row offset). → `items`.
+- **`home_stats`** — the home page's "most watched"/"recently added" style
+  stat blocks. → `result`.
+
+### Libraries, users & metadata
+
+- **`libraries`** — configured Plex libraries. → `items`.
+- **`users`** — known Plex users. → `items`.
+- **`metadata`** — metadata for a single Plex item. `rating_key`* (the
+  item's Plex rating key). → `result`.
+- **`recently_added`** — recently added media. `count` (integer, max rows),
+  `section_id` (string, filter to one library section). → `items`.
+- **`server_info`** — the connected Plex Media Server's identity/version. →
+  `result`.
+
+### Notifications & sessions
+
+- **`notify`** — send a notification through a configured Tautulli
+  notifier. `notifier_id`* (integer, id of the notifier agent to use),
+  `subject`*, `body`*. → `result`.
+- **`terminate_session`** — terminate an active Plex playback session.
+  `session_key`* (the Plex session key), `message` (string, shown to the
+  user). → `result`.
+
+### Escape hatch
+
+- **`api`** — call any Tautulli API command not covered above. `cmd`* (the
+  Tautulli command, e.g. `get_plex_log`), `params` (map, additional query
+  parameters for the command). → `result`.
 ## Capabilities & security
 
 Declares **no** egress — Tautulli is always self-hosted, so unlike a

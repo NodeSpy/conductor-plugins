@@ -115,29 +115,42 @@ triggers:
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb returns `result` (the raw decoded JSON response, or
-`nil` on an empty body) and `status_code`; several also extract commonly-used
-fields.
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | purpose |
-|------|---------|
-| `create_issue` | create an issue (`project`, `summary`, `issuetype`, optional `description`/`labels`/`assignee_id`/`priority`/`fields` override) → `key`, `id`, `url` |
-| `add_comment` | add a comment to an issue → `id` |
-| `transition` | move an issue through a workflow transition, by `transition_id` or a looked-up `transition_name` |
-| `list_transitions` | list the transitions available on an issue → `transitions` |
-| `get_issue` | read an issue, optionally scoped to `fields` |
-| `update_issue` | edit an issue's fields (`summary`/`description` shortcuts, or a raw `fields` map) |
-| `assign` | assign an issue to an Atlassian `account_id` |
-| `add_labels` | add labels to an issue |
-| `search` | JQL search (`jql`, `max_results`, `fields`) → `issues` |
-| `api` | escape hatch: any `method` + `path` (relative to `/rest/api/3`), with `query`/`body` |
+- **`key`** — the issue key (e.g. `PROJ-1`); required on every issue-scoped
+  verb.
+- Every verb returns `result` (the raw decoded JSON response, or `nil` on an
+  empty body) and `status_code`; several also extract commonly-used fields.
+  Omitted below for brevity — every verb returns both.
+- `description` and comment `body` are plain text; the connector wraps them
+  into a minimal Atlassian Document Format (ADF) document — a single
+  paragraph, one text node — since Jira's v3 API requires ADF for rich-text
+  fields. Pass a full ADF document yourself via the `fields` override on
+  `create_issue`/`update_issue` if you need richer formatting.
 
-`description` and comment `body` are plain text; the connector wraps them
-into a minimal Atlassian Document Format (ADF) document — a single paragraph,
-one text node — since Jira's v3 API requires ADF for rich-text fields. Pass a
-full ADF document yourself via the `fields` override on `create_issue` /
-`update_issue` if you need richer formatting.
+Required options are marked `*`.
+
+### Issues
+
+- **`create_issue`** — create an issue. `project`* (project key), `summary`*, `issuetype`* (issue type name, e.g. `Bug`, `Task`, `Story`), `description` (plain text; wrapped into ADF), `labels` (list), `assignee_id` (Atlassian account id), `priority` (priority name, e.g. `High`), `fields` (map, raw Jira fields merged in last, overriding the shortcuts above). → `key`, `id`, `url`.
+- **`get_issue`** — read an issue. `key`*, `fields` (list, field names to return; default: Jira's navigable field set).
+- **`update_issue`** — edit an issue's fields. `key`*, `summary`, `description` (plain text; wrapped into ADF), `fields` (map, raw Jira fields merged in last, overriding the shortcuts above).
+- **`assign`** — assign an issue. `key`*, `account_id`* (Atlassian account id; use `"-1"` for automatic, or Jira's own convention for unassigned).
+- **`add_labels`** — add labels to an issue. `key`*, `labels`* (list).
+
+### Comments & transitions
+
+- **`add_comment`** — add a comment to an issue. `key`*, `body`* (plain text; wrapped into ADF). → `id`.
+- **`transition`** — move an issue through a workflow transition, by id or looked-up name. `key`*, `transition_id` (the transition id; see `list_transitions`), `transition_name` (the transition's display name, looked up case-insensitively; alternative to `transition_id`).
+- **`list_transitions`** — list the workflow transitions available on an issue. `key`*. → `transitions`.
+
+### Search
+
+- **`search`** — search issues with JQL. `jql`*, `max_results` (integer), `fields` (list). → `issues`.
+
+### Escape hatch
+
+- **`api`** — call any Jira REST v3 endpoint not covered by a first-class verb. `method`* (`GET` | `POST` | `PUT` | `DELETE`), `path`* (path relative to `/rest/api/3`, e.g. `issue/PROJ-1`), `query` (map, query string parameters), `body` (any, JSON request body).
 
 ## Capabilities & security
 

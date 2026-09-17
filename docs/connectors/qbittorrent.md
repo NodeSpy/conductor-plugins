@@ -85,44 +85,67 @@ client.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema.
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | maps to | notes |
-|------|---------|-------|
-| `torrents` | `GET /torrents/info` | `filter`, `category`, `tag`, `sort`, `hashes` (hash, list, or omit for all); outputs `items` |
-| `torrent_properties` | `GET /torrents/properties` | `hash` required |
-| `add` | `POST /torrents/add` | `urls` (magnet/URL, or list — sent newline-joined); `category`, `tags`, `paused`, `savepath`, `rename`. **Magnet/URL adds only** — uploading a `.torrent` file's raw bytes is out of scope for this verb |
-| `delete` | `POST /torrents/delete` | `hashes` (hash, list, or `"all"`), `delete_files` |
-| `pause` | `POST /torrents/pause` | `hashes` |
-| `resume` | `POST /torrents/resume` | `hashes` |
-| `recheck` | `POST /torrents/recheck` | `hashes` |
-| `set_category` | `POST /torrents/setCategory` | `hashes`, `category` |
-| `add_tags` | `POST /torrents/addTags` | `hashes`, `tags` |
-| `remove_tags` | `POST /torrents/removeTags` | `hashes`, `tags` |
-| `set_speed_limits` | `POST /transfer/setDownloadLimit` and/or `POST /transfer/setUploadLimit` | `download`/`upload` (bytes/sec); each provided limit is applied with its own API call |
-| `transfer_info` | `GET /transfer/info` | global transfer stats and current limits |
-| `app_version` | `GET /app/version` | plain-text version string, surfaced as `result` |
-| `api` | any `/api/v2/<path>` | escape hatch: `method` (GET/POST), `path` (relative to `/api/v2`), `params` (query for GET, form fields for POST) |
+- Every verb is a plain HTTP call to `{base_url}/api/v2/<path>`, over the
+  cookie-authenticated session described above.
+- **`hashes`**, **`tags`**, and **`urls`** all accept either a bare string or
+  a list — lists are joined with the separator qBittorrent's API expects
+  (`|` for hashes, `,` for tags, newline for `urls`).
+- Every verb returns `status_code` (the HTTP status) and `result` — the
+  decoded JSON body (object or array), or the raw trimmed text for
+  qBittorrent's plain-text responses (`Ok.`, a bare version string, …).
+  `items` is set alongside `result` when the response is a JSON array (e.g.
+  `torrents`). A non-2xx response is a connector error carrying the status
+  and response body, not a data output.
 
-`hashes`, `tags`, and `urls` all accept either a bare string or a list — lists
-are joined with the separator qBittorrent's API expects (`|` for hashes, `,`
-for tags, newline for `urls`).
+Required options are marked `*`.
 
-### Outputs
+### Torrents
 
-Every verb returns:
+- **`torrents`** — list torrents. `filter` (string, one of
+  `all`|`downloading`|`seeding`|`completed`|`paused`|`active`|`inactive`|`resumed`|`stalled`|`stalled_uploading`|`stalled_downloading`|`errored`),
+  `category` (string), `tag` (string), `sort` (string, e.g. `added_on`,
+  `name`, `size`), `hashes` (a hash or list of hashes, restricts the
+  result). → `result`, `items`.
+- **`torrent_properties`** — a single torrent's detailed properties. `hash`*.
+  → `result`.
+- **`add`** — add torrents by magnet link or URL. Magnet/URL adds only —
+  uploading a `.torrent` file's raw bytes is out of scope for this verb.
+  `urls`* (a magnet/URL, or a list of them, sent newline-joined), `category`
+  (string), `tags` (a tag or list of tags), `paused` (boolean, add without
+  starting), `savepath` (string, download destination path), `rename`
+  (string, rename the added torrent — single-URL adds only). → `result`.
+- **`delete`** — delete torrents. `hashes`* (a hash, list of hashes, or
+  `"all"`), `delete_files` (boolean, also delete the downloaded files). →
+  `result`.
+- **`pause`** — pause torrents. `hashes`*. → `result`.
+- **`resume`** — resume torrents. `hashes`*. → `result`.
+- **`recheck`** — force-recheck torrents. `hashes`*. → `result`.
+- **`set_category`** — set torrents' category. `hashes`*, `category`*. →
+  `result`.
+- **`add_tags`** — add tags to torrents. `hashes`*, `tags`* (a tag or list
+  of tags). → `result`.
+- **`remove_tags`** — remove tags from torrents. `hashes`*, `tags`* (a tag
+  or list of tags). → `result`.
 
-- `result` — the decoded JSON body (object or array), or the raw trimmed text
-  for qBittorrent's plain-text responses (`Ok.`, a bare version string, …)
-- `items` — set alongside `result` when the response is a JSON array (e.g.
-  `torrents`)
-- `status_code` — the HTTP status qBittorrent returned
+### Transfer & speed limits
 
-A non-2xx response is a connector error carrying the status and response
-body, not a data output — inspect it via the invocation's error, not
-`status_code`.
+- **`set_speed_limits`** — set the global download and/or upload speed
+  limit; at least one of `download`/`upload` is required, and each provided
+  limit is applied with its own API call (`setDownloadLimit` /
+  `setUploadLimit`). `download` (integer, bytes/sec, `0` = unlimited),
+  `upload` (integer, bytes/sec, `0` = unlimited). → `result`.
+- **`transfer_info`** — global transfer statistics and current speed
+  limits. → `result`.
+- **`app_version`** — the qBittorrent application version. → `result`.
 
+### Escape hatch
+
+- **`api`** — call any qBittorrent WebUI API v2 endpoint not covered above.
+  `method`* (`GET` | `POST`), `path`* (relative to `/api/v2`, e.g.
+  `sync/maindata`), `params` (map, GET query parameters or POST form
+  fields). → `result`.
 ## Capabilities & security
 
 Declares **no** egress — qBittorrent is self-hosted with no fixed public

@@ -88,32 +88,50 @@ reverse proxy with ACME/Let's Encrypt) when possible.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`; the rest return
-either `result` (a single object) or `items` (a bare JSON array, hoisted
-automatically).
+Selected by `uses: <name>.<verb>`. Every verb's outputs include
+`status_code`; the rest return either `result` (a single object) or `items`
+(a bare JSON array, hoisted automatically). Required options are marked `*`.
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `info` | `GET /api/v1/info` | `result` |
-| `charts` | `GET /api/v1/charts` | `result` |
-| `chart` | `GET /api/v1/chart` (`chart`\*) | `result` |
-| `data` | `GET /api/v1/data` (`chart`\*, `after`, `before`, `points`, `dimensions`, `format`) | `result` |
-| `alarms` | `GET /api/v1/alarms` (`all`) | `result` |
-| `alarm_log` | `GET /api/v1/alarm_log` (`after`) | `items` |
-| `alerts` | `GET /api/v2/alerts` | `result` |
-| `contexts` | `GET /api/v1/contexts` | `result` |
-| `api` | `method` + `path` (under `base_url`) + `query` + `body` — escape hatch for anything without a first-class verb | `result` (object response) or `items` (array response) |
+### Agent info
 
-Notes:
+- **`info`** — agent identity and build info. No options. → `result`,
+  `status_code`.
+- **`contexts`** — list every metric context the agent tracks. No options.
+  → `result`, `status_code`.
 
-- `data`'s `dimensions` is a list; it is joined into a single comma-separated
-  `?dimensions=` value, matching how Netdata expects a dimension list.
-- `alarms`' `all` selects `?all=true` (every configured alarm, raised or
-  not); the default (`all` unset or `false`) sends `?active=true` (only
-  currently raised alarms) — the same distinction the poll source relies on.
-- `alarm_log` returns a bare JSON array, so it comes back as `items` rather
-  than `result`.
+### Charts & data
+
+- **`charts`** — list every chart the agent collects. No options. →
+  `result`, `status_code`.
+- **`chart`** — get one chart's definition. `chart`* (chart id, e.g.
+  `system.cpu`). → `result`, `status_code`.
+- **`data`** — time-series data for one chart. `chart`* (chart id, e.g.
+  `system.cpu`), `after` (integer, start time: unix seconds or a negative
+  relative offset), `before` (integer, end time: unix seconds or a negative
+  relative offset), `points` (integer, number of points to return),
+  `dimensions` (list, restrict to these dimensions — joined into a single
+  comma-separated `?dimensions=` value), `format` (enum `json` | `json2` |
+  `csv` | `tsv` | `ssv` | `datatable` | `datasource` | `array` | `html`,
+  default `json`). → `result`, `status_code`.
+
+### Alarms
+
+- **`alarms`** — currently configured alarms. `all` (boolean, return every
+  configured alarm — `?all=true` — instead of only active/raised ones —
+  `?active=true`, the default). → `result`, `status_code`.
+- **`alarm_log`** — the alarm transition log; returns a bare JSON array. `after`
+  (integer, unix timestamp; only entries after this time). → `items`,
+  `status_code`.
+- **`alerts`** — the newer v2 alerts API. No options. → `result`,
+  `status_code`.
+
+### Escape hatch
+
+- **`api`** — raw escape hatch for any Netdata API endpoint without a
+  first-class verb. `method` (HTTP method, default `GET`), `path`* (path
+  under `base_url`, e.g. `/api/v1/info`), `query` (map, query string
+  parameters), `body` (any, JSON request body). → `result` (object response)
+  or `items` (array response), `status_code`.
 
 ## Source — the `alarm` event
 
@@ -146,6 +164,19 @@ when the daemon cancels it.
 |--------|------|---------|
 | `statuses` | list | `status` is one of these (e.g. `WARNING`, `CRITICAL`) |
 | `charts` | list | `chart` is one of these |
+
+### Filtering
+
+A trigger's `filter:`/`filters:` matches an event's published context fields
+(the table above). The grammar:
+
+- A key set to a value must match; a **list matches any of** its values —
+  `statuses: [WARNING, CRITICAL]`.
+- Prefix **`not_`** to negate a field — `not_charts: [system.cpu]` excludes.
+- **`expr:` / `not_expr:`** take an expression over the fields —
+  `expr: "status == 'CRITICAL'"`.
+- Keys within one filter object are **AND**ed. A top-level **array** of
+  filter objects is **OR** across them (one arm per rule).
 
 ```yaml
 connectors:

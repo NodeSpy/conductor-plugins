@@ -82,40 +82,67 @@ reached over a trusted network, and prefer installing a real certificate
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`; the rest return
-either `result` (a single object) or `items` (a bare JSON array, hoisted
-automatically).
+Selected by `uses: <name>.<verb>`. Every verb's outputs include
+`status_code`; the rest return either `result` (a single object) or `items`
+(a bare JSON array, hoisted automatically). Required options are marked `*`.
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `health` | `GET /api/health` | `result` |
-| `search` | `GET /api/search` (`query`, `type`: `dash-db`\|`dash-folder`, `tag`) | `items` |
-| `dashboard_get` | `GET /api/dashboards/uid/{uid}` | `result` |
-| `dashboard_create` | `POST /api/dashboards/db` (`dashboard`\*, `folder_uid`, `overwrite`) | `result` |
-| `dashboard_delete` | `DELETE /api/dashboards/uid/{uid}` | `result` |
-| `datasources` | `GET /api/datasources` | `items` |
-| `datasource_get` | `GET /api/datasources/uid/{uid}` | `result` |
-| `folders` | `GET /api/folders` | `items` |
-| `folder_create` | `POST /api/folders` (`title`\*) | `result` |
-| `alert_rules` | `GET /api/v1/provisioning/alert-rules` | `items` |
-| `annotations` | `GET /api/annotations` (`from`, `to`, `tags`) | `items` |
-| `annotation_create` | `POST /api/annotations` (`dashboard_uid`, `panel_id`, `time`, `time_end`, `tags`, `text`\*) | `result` |
-| `org` | `GET /api/org` | `result` |
-| `api` | `method` + `path` (under `base_url`) + `query` + `body` — escape hatch for anything without a first-class verb | `result` (object response) or `items` (array response) |
+### Health & search
 
-Notes:
+- **`health`** — check API health. No options. → `result`, `status_code`.
+- **`search`** — search dashboards/folders. `query` (search text), `type`
+  (enum `dash-db` | `dash-folder`, restrict to dashboards or folders), `tag`
+  (list, restrict to results carrying **all** of these tags — each value is
+  sent as its own repeated `?tag=` parameter). → `items`, `status_code`.
 
-- `search`'s `tag` and `annotations`' `tags` are lists — each value is sent
-  as its own repeated query parameter (`?tag=a&tag=b`), matching how Grafana
-  expects multiple tag filters.
-- `dashboard_create`'s `dashboard` option is the full dashboard JSON model,
-  passed through verbatim as the request body's `dashboard` field;
-  `folder_uid` and `overwrite` map to Grafana's `folderUid`/`overwrite` body
-  fields.
-- `annotation_create`'s snake_case options map to Grafana's camelCase body
-  fields (`dashboard_uid` → `dashboardUID`, `panel_id` → `panelId`,
-  `time_end` → `timeEnd`).
+### Dashboards
+
+- **`dashboard_get`** — get one dashboard by uid. `uid`*. → `result`,
+  `status_code`.
+- **`dashboard_create`** — create or update a dashboard. `dashboard`* (the
+  full dashboard JSON model, passed through verbatim as the request body's
+  `dashboard` field), `folder_uid` (destination folder uid; empty = General;
+  maps to Grafana's `folderUid`), `overwrite` (boolean, overwrite an existing
+  dashboard on a uid/version conflict). → `result`, `status_code`.
+- **`dashboard_delete`** — delete a dashboard by uid. `uid`*. → `result`,
+  `status_code`.
+
+### Datasources & folders
+
+- **`datasources`** — list datasources. No options. → `items`, `status_code`.
+- **`datasource_get`** — get one datasource by uid. `uid`*. → `result`,
+  `status_code`.
+- **`folders`** — list folders. No options. → `items`, `status_code`.
+- **`folder_create`** — create a folder. `title`*. → `result`, `status_code`.
+
+### Alerting
+
+- **`alert_rules`** — list provisioned alert rules. No options. → `items`,
+  `status_code`.
+
+### Annotations
+
+- **`annotations`** — search annotations. `from` (integer, epoch millis
+  range start), `to` (integer, epoch millis range end), `tags` (list,
+  restrict to annotations carrying **all** of these tags — each value sent as
+  its own repeated `?tags=` parameter). → `items`, `status_code`.
+- **`annotation_create`** — create an annotation. `dashboard_uid` (attach to
+  this dashboard; maps to `dashboardUID`), `panel_id` (integer, attach to
+  this panel within the dashboard; maps to `panelId`), `time` (integer,
+  epoch millis, defaults to now on the server), `time_end` (integer, epoch
+  millis, makes the annotation a region; maps to `timeEnd`), `tags` (list),
+  `text`*. → `result`, `status_code`.
+
+### Org
+
+- **`org`** — the authenticated org. No options. → `result`, `status_code`.
+
+### Escape hatch
+
+- **`api`** — raw escape hatch for any Grafana API endpoint without a
+  first-class verb. `method` (HTTP method, default `GET`), `path`* (path
+  under `base_url`, e.g. `/api/dashboards/uid/abc123`), `query` (map, query
+  string parameters), `body` (any, JSON request body). → `result` (object
+  response) or `items` (array response), `status_code`.
 
 ## Source — the `alert` event
 
@@ -143,6 +170,19 @@ daemon cancels it.
 |--------|------|---------|
 | `severities` | list | `labels.severity` is one of these |
 | `alertnames` | list | `labels.alertname` is one of these |
+
+### Filtering
+
+A trigger's `filter:`/`filters:` matches an event's published context fields
+(the table above). The grammar:
+
+- A key set to a value must match; a **list matches any of** its values —
+  `severities: [critical, warning]`.
+- Prefix **`not_`** to negate a field — `not_severities: [info]` excludes.
+- **`expr:` / `not_expr:`** take an expression over the fields —
+  `expr: "alertname == 'HighCPU'"`.
+- Keys within one filter object are **AND**ed. A top-level **array** of
+  filter objects is **OR** across them (one arm per rule).
 
 ```yaml
 connectors:

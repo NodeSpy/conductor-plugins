@@ -127,43 +127,83 @@ one-element list, `nil` when the payload carries neither), `quality` (the
 release/track-file quality name, when present), and `payload` (the full
 posted JSON, verbatim).
 
+### Filtering
+
+`filter:` matches an event's published fields (`event_types`, `artists`, plus
+the context fields above). A key set to a value must match; a **list matches
+any of** its values — `event_types: [Grab, Download]`. Prefix **`not_`** to
+negate a field — `not_artists: [Some Artist]` excludes. **`expr:` /
+`not_expr:`** take an expression over the fields. Keys within one filter
+object are **AND**ed. A top-level **array** of filter objects is **OR** across
+them.
+
+### Example
+
+List an artist's albums whenever a download completes:
+
+```yaml
+triggers:
+  - on: lr.event
+    filter:
+      event_types: [Download]
+    steps:
+      - uses: lr.albums
+        options: { artist_id: "{{.mbid}}" }
+```
+
 ## Verbs
 
-| verb | request | outputs | notes |
-|------|---------|---------|-------|
-| `artists` | `GET /artist` | `items` | all artists known to Lidarr |
-| `artist_get` | `GET /artist/{id}` | `result` | options: `id` (required) |
-| `lookup` | `GET /artist/lookup?term=` | `items` | search for an artist to add (MusicBrainz search) — options: `term` (required, e.g. an artist name or `mbid:<musicbrainz-id>`) |
-| `add_artist` | `POST /artist` | `result` | see below |
-| `delete_artist` | `DELETE /artist/{id}` | `result` | options: `id` (required), `delete_files`, `add_import_exclusion` |
-| `albums` | `GET /album?artistId=` | `items` | options: `artist_id` (required) |
-| `album_get` | `GET /album/{id}` | `result` | options: `id` (required) |
-| `command` | `POST /command` | `result` | see below |
-| `queue` | `GET /queue` | `result` | current download queue |
-| `calendar` | `GET /calendar` | `items` | options: `start`, `end` (ISO-8601 dates) |
-| `api` | any `method`/`path`/`query`/`body` | `result` (+ `items` when the response is a JSON array) | escape hatch for any endpoint not covered above |
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-Every verb also returns `status_code` (the HTTP status).
+- Every verb is a plain HTTP call to `{base_url}/api/v1/<resource>`,
+  authenticated with the `X-Api-Key` header.
+- Every verb returns `status_code` (the HTTP status) alongside its listed
+  outputs.
+- **`result` vs `items`** — a verb whose response is naturally a list returns
+  `items`; everything else returns `result`.
 
-**`add_artist`** either builds the request from individual options —
-`foreign_artist_id` (a MusicBrainz artist id), `quality_profile_id`,
-`root_folder_path` (all required unless `artist` is given), `monitored`
-(default `true`), `metadata_profile_id`, `search_for_missing` (becomes
-`addOptions.searchForMissingAlbums`) — or, when `artist` (a map) is given,
-sends that map to `POST /artist` verbatim, ignoring the individual fields.
-Use the full passthrough when you already have an artist object from
-`lookup` and want to add it unmodified (or with your own edits).
+Required options are marked `*`.
 
-**`command`** posts `{name, ...}` to `POST /command`. `name` is required
-(e.g. `ArtistSearch`, `AlbumSearch`, `RefreshArtist`, `RescanFolders`); the
-convenience options `artist_id` → `artistId`, `album_ids` → `albumIds` are
-merged in when present, and `params` (a map) is merged in last for anything
-else a given command needs.
+### Artists
 
-See `Describe()` in
-[`connectors/lidarr/main.go`](../../connectors/lidarr/main.go) for each
-verb's full option schema.
+- **`artists`** — list all artists known to Lidarr. → `items`.
+- **`artist_get`** — a single artist by id. `id`*. → `result`.
+- **`lookup`** — search for an artist to add (MusicBrainz search). `term`*
+  (an artist name, or `mbid:<musicbrainz-id>`). → `items`.
+- **`add_artist`** — add an artist to Lidarr. Either pass `foreign_artist_id`
+  (MusicBrainz artist id; required unless `artist` is given),
+  `quality_profile_id` (required unless `artist` is given),
+  `root_folder_path` (required unless `artist` is given), `monitored`
+  (boolean, default `true`), `metadata_profile_id` (integer),
+  `search_for_missing` (boolean → `addOptions.searchForMissingAlbums`) — or
+  pass the full `artist` map (sent verbatim to `POST /artist` instead of the
+  individual fields; typically a `lookup` result, unmodified or edited). →
+  `result`.
+- **`delete_artist`** — remove an artist from Lidarr. `id`*, `delete_files`
+  (boolean, also delete the artist's files on disk), `add_import_exclusion`
+  (boolean, add to the import list exclusion list). → `result`.
 
+### Albums
+
+- **`albums`** — list albums for an artist. `artist_id`*. → `items`.
+- **`album_get`** — a single album by id. `id`*. → `result`.
+
+### Commands, queue & calendar
+
+- **`command`** — run a Lidarr command. `name`* (e.g. `ArtistSearch`,
+  `AlbumSearch`, `RefreshArtist`, `RescanFolders`), `artist_id` (integer →
+  `artistId`), `album_ids` (list → `albumIds`), `params` (map, merged in
+  verbatim for anything else the command needs). → `result`.
+- **`queue`** — the current download queue. → `result`.
+- **`calendar`** — albums releasing in a date range. `start`, `end`
+  (ISO-8601 dates). → `items`.
+
+### Escape hatch
+
+- **`api`** — call any Lidarr API v1 endpoint not covered above. `method`
+  (default `GET`), `path`* (relative to `/api/v1`, e.g. `/system/status`),
+  `query` (map), `body` (any, marshaled to JSON). → `result` (+ `items` when
+  the response decodes to a JSON array).
 ## Capabilities & security
 
 Declares **no** egress — Lidarr is always self-hosted, so unlike a connector

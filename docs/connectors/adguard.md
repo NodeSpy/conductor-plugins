@@ -79,37 +79,55 @@ verb-only: it declares no `Events` and does not implement `StartSource`.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`; most also return
-`result` (the full decoded response), and list-shaped endpoints
-additionally (or instead) return `items`.
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `status` | `GET /control/status` | `result` |
-| `stats` | `GET /control/stats` | `result` |
-| `querylog` | `GET /control/querylog` (`older_than`, `limit`, `search`) | `result` + `items` (hoisted from `result.data`) |
-| `protection` | `POST /control/protection` (`enabled`\*, `duration`) | `status_code` (+ `result` if the body is non-empty) |
-| `filtering_status` | `GET /control/filtering/status` | `result` |
-| `filtering_add_url` | `POST /control/filtering/add_url` (`name`\*, `url`\*, `whitelist`) | `status_code` (+ `result` if the body is non-empty) |
-| `filtering_remove_url` | `POST /control/filtering/remove_url` (`url`\*, `whitelist`) | `status_code` (+ `result` if the body is non-empty) |
-| `filtering_set_rules` | `POST /control/filtering/set_rules` (`rules`\*, replaces the full custom rule set) | `status_code` (+ `result` if the body is non-empty) |
-| `rewrites` | `GET /control/rewrite/list` | `items` (bare array response) |
-| `rewrite_add` | `POST /control/rewrite/add` (`domain`\*, `answer`\*) | `status_code` (+ `result` if the body is non-empty) |
-| `rewrite_delete` | `POST /control/rewrite/delete` (`domain`\*, `answer`\*) | `status_code` (+ `result` if the body is non-empty) |
-| `clients` | `GET /control/clients` | `result` + `items` (hoisted from `result.clients`) |
-| `dns_info` | `GET /control/dns_info` | `result` |
-| `dns_config` | `POST /control/dns_config` (`config`\*, a map of DNS config fields to update) | `status_code` (+ `result` if the body is non-empty) |
-| `safebrowsing_toggle` | `POST /control/safebrowsing/enable` or `.../disable` (`enabled`\*) | `status_code` (+ `result` if the body is non-empty) |
-| `parental_toggle` | `POST /control/parental/enable` or `.../disable` (`enabled`\*) | `status_code` (+ `result` if the body is non-empty) |
-| `api` | `method` + `path` (under `/control`) + `query` + `body` — escape hatch for anything without a first-class verb | `result` (object response) or `items` (array response) |
+- Every verb returns `status_code`; most also return `result` (the full
+  decoded response), and list-shaped endpoints additionally (or instead)
+  return `items`.
+- `protection`'s current state (whether protection is active, and any pause
+  duration) is surfaced by the `status` verb, not `protection` itself —
+  `protection` is a fire-and-forget toggle.
+- `safebrowsing_toggle` and `parental_toggle` pick the AdGuard Home
+  `enable`/`disable` endpoint based on the boolean `enabled` option, since
+  AdGuard Home models these as two separate action endpoints rather than a
+  single settable field.
 
-`protection`'s current state (whether protection is active, and any pause
-duration) is surfaced by the `status` verb, not `protection` itself —
-`protection` is a fire-and-forget toggle. `safebrowsing_toggle` and
-`parental_toggle` pick the AdGuard Home `enable`/`disable` endpoint based on
-the boolean `enabled` option, since AdGuard Home models these as two
-separate action endpoints rather than a single settable field.
+Required options are marked `*`.
+
+### Status & stats
+
+- **`status`** — server status: version, ports, protection state, running (`GET /control/status`). → `result`, `status_code`.
+- **`stats`** — query statistics: counts, top domains/clients, processing time (`GET /control/stats`). → `result`, `status_code`.
+- **`querylog`** — the DNS query log (`GET /control/querylog`). `older_than` (string — return entries older than this RFC3339 timestamp), `limit` (integer — max number of entries), `search` (string — search/filter term). → `result`, `items` (hoisted from `result.data`), `status_code`.
+
+### Protection
+
+- **`protection`** — enable/disable protection, optionally for a fixed duration (`POST /control/protection`). `enabled`* (boolean — true to enable protection, false to disable), `duration` (integer — pause duration in milliseconds; 0/omitted = indefinite). → `status_code` (+ `result` if the body is non-empty).
+- **`safebrowsing_toggle`** — enable/disable the safe browsing filter (`POST /control/safebrowsing/enable` or `.../disable`). `enabled`* (boolean). → `status_code` (+ `result` if the body is non-empty).
+- **`parental_toggle`** — enable/disable AdGuard parental control (`POST /control/parental/enable` or `.../disable`). `enabled`* (boolean). → `status_code` (+ `result` if the body is non-empty).
+
+### Filtering
+
+- **`filtering_status`** — filtering config: enabled, update interval, filter lists, custom rules (`GET /control/filtering/status`). → `result`, `status_code`.
+- **`filtering_add_url`** — add a filter (block-list or allow-list) subscription (`POST /control/filtering/add_url`). `name`* — display name for the filter list, `url`* — filter list URL, `whitelist` (boolean — true to add as an allow-list instead of a block-list). → `status_code` (+ `result` if the body is non-empty).
+- **`filtering_remove_url`** — remove a filter subscription (`POST /control/filtering/remove_url`). `url`* — filter list URL to remove, `whitelist` (boolean — true if the URL is an allow-list filter). → `status_code` (+ `result` if the body is non-empty).
+- **`filtering_set_rules`** — replace the custom (user-defined) filtering rules (`POST /control/filtering/set_rules`). `rules`* (list) — full list of custom filtering rules, replacing the current set. → `status_code` (+ `result` if the body is non-empty).
+
+### DNS rewrites
+
+- **`rewrites`** — list DNS rewrites (`GET /control/rewrite/list`). → `items` (bare array response), `status_code`.
+- **`rewrite_add`** — add a DNS rewrite (`POST /control/rewrite/add`). `domain`* — domain to rewrite, `answer`* — IP address or CNAME target to answer with. → `status_code` (+ `result` if the body is non-empty).
+- **`rewrite_delete`** — delete a DNS rewrite (`POST /control/rewrite/delete`). `domain`* — domain of the rewrite to delete, `answer`* — answer of the rewrite to delete. → `status_code` (+ `result` if the body is non-empty).
+
+### Clients & DNS config
+
+- **`clients`** — list configured and auto-discovered clients (`GET /control/clients`). → `result`, `items` (hoisted from `result.clients`), `status_code`.
+- **`dns_info`** — current DNS server configuration (`GET /control/dns_info`). → `result`, `status_code`.
+- **`dns_config`** — update DNS server configuration (`POST /control/dns_config`). `config`* (map) — DNS config fields to update, e.g. `{upstream_dns, bootstrap_dns, ratelimit, blocking_mode, cache_enabled, dnssec_enabled, ...}`. → `status_code` (+ `result` if the body is non-empty).
+
+### Raw access
+
+- **`api`** — raw escape hatch: any AdGuard Home API endpoint under `/control`, for anything without a first-class verb. `method` (HTTP method, default `GET`), `path`* (path under `/control`, e.g. `/filtering/status`), `query` (map of query-string parameters), `body` (any — JSON request body). → `result` (object response), `items` (array response), `status_code`.
 
 ## Capabilities & security
 

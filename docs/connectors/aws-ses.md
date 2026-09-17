@@ -100,26 +100,36 @@ vector's own published values, not merely checked for self-consistency.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`; most also return
-either `result` (a single object) or `items` (a list).
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `send_email` | `POST /v2/email/outbound-emails` (`from`\*, `to`\*, `cc`, `bcc`, `subject`\*, `text`, `html` — one of `text`/`html` required, `reply_to`) | `result` |
-| `send_templated_email` | `POST /v2/email/outbound-emails` (`from`\*, `to`\*, `cc`, `bcc`, `template_name`\*, `template_data`, `reply_to`) | `result` |
-| `identities` | `GET /v2/email/identities` | `items` (hoisted from `EmailIdentities`) |
-| `identity_get` | `GET /v2/email/identities/{email_identity}` | `result` |
-| `create_identity` | `POST /v2/email/identities` (`email_identity`\*) | `result` |
-| `get_send_quota` | `GET /v2/email/account` | `result` |
-| `suppressed_list` | `GET /v2/email/suppression/addresses` | `items` (hoisted from `SuppressedDestinationSummaries`) |
-| `suppress` | `PUT /v2/email/suppression/addresses/{email}` (`email`\*, `reason`\* — `BOUNCE` or `COMPLAINT`) | `status_code` (+ `result` if the body is non-empty) |
-| `unsuppress` | `DELETE /v2/email/suppression/addresses/{email}` (`email`\*) | `status_code` (+ `result` if the body is non-empty) |
-| `api` | `method` + `path` (under the SES v2 endpoint) + `query` + `body` — escape hatch for anything without a first-class verb | `result` (object response) or `items` (array response) |
+- Every verb's outputs include `status_code`; most also return either
+  `result` (a single object) or `items` (a list).
+- A non-2xx response is returned as an error carrying the status code and
+  AWS error body — nothing is swallowed.
 
-`template_data` (for `send_templated_email`) accepts either a JSON object
-(encoded to the JSON string SES v2's `TemplateData` field requires) or a
-string that is already JSON, used as-is.
+Required options are marked `*`.
+
+### Sending
+
+- **`send_email`** — send a simple (non-template) email. `POST /v2/email/outbound-emails`. `from`* (`FromEmailAddress`), `to`* (list, `Destination.ToAddresses`), `cc` (list, `Destination.CcAddresses`), `bcc` (list, `Destination.BccAddresses`), `subject`* (`Content.Simple.Subject.Data`), `text` (`Content.Simple.Body.Text.Data`; text or html required), `html` (`Content.Simple.Body.Html.Data`; text or html required), `reply_to` (list, `ReplyToAddresses`). → `result`, `status_code`.
+- **`send_templated_email`** — send an email rendered from an SES template. `POST /v2/email/outbound-emails`. `from`* (`FromEmailAddress`), `to`* (list, `Destination.ToAddresses`), `cc` (list, `Destination.CcAddresses`), `bcc` (list, `Destination.BccAddresses`), `template_name`* (`Content.Template.TemplateName`), `template_data` (`Content.Template.TemplateData`: a JSON object, encoded to a JSON string, or a JSON string used as-is), `reply_to` (list, `ReplyToAddresses`). → `result`, `status_code`.
+
+### Identities
+
+- **`identities`** — list email identities. `GET /v2/email/identities`. No options. → `items` (hoisted from `EmailIdentities`), `status_code`.
+- **`identity_get`** — get one email identity's details. `GET /v2/email/identities/{email_identity}`. `email_identity`*. → `result`, `status_code`.
+- **`create_identity`** — create (start verifying) an email identity. `POST /v2/email/identities`. `email_identity`*. → `result`, `status_code`.
+
+### Account & suppression list
+
+- **`get_send_quota`** — the account's sending quota and stats. `GET /v2/email/account`. No options. → `result`, `status_code`.
+- **`suppressed_list`** — list the account-level suppressed destinations. `GET /v2/email/suppression/addresses`. No options. → `items` (hoisted from `SuppressedDestinationSummaries`), `status_code`.
+- **`suppress`** — add an address to the account-level suppression list. `PUT /v2/email/suppression/addresses/{email}`. `email`*, `reason`* (`BOUNCE` | `COMPLAINT`). → `result`, `status_code`.
+- **`unsuppress`** — remove an address from the account-level suppression list. `DELETE /v2/email/suppression/addresses/{email}`. `email`*. → `status_code`.
+
+### Escape hatch
+
+- **`api`** — raw escape hatch: any SES v2 endpoint. `method` (HTTP method, default `GET`), `path`* (path under the SES v2 endpoint, e.g. `/v2/email/identities`), `query` (map of query string parameters), `body` (any, JSON request body). → `result` (object response) or `items` (array response), `status_code`.
 
 ## Capabilities & security
 

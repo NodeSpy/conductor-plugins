@@ -103,45 +103,79 @@ Deliveries are deduplicated on `event` + `rating_key` + the receiving second,
 so a webhook redelivered in the same instant doesn't fire the same trigger
 twice.
 
-### Event
+### The `playback` event
 
-| event | fires when |
-|-------|-----------|
-| `playback` | a Plex webhook notification fired — the specific event (`media.play`, `media.pause`, `media.resume`, `media.stop`, `media.scrobble`, `media.rate`, …) depends entirely on which notification types are enabled for the webhook in Plex |
+Fires once per Plex webhook delivery — the specific event (`media.play`,
+`media.pause`, `media.resume`, `media.stop`, `media.scrobble`, `media.rate`,
+…) depends entirely on which notification types are enabled for the webhook
+in Plex's own Settings > Webhooks.
 
-**Filters:** `events`, `media_types`, `accounts` (list-contains), or the
-scalar `event`, `media_type`, `account`.
+| context | notes |
+|---------|-------|
+| `event` | e.g. `media.play`, `media.pause`, `media.resume`, `media.stop`, `media.scrobble`, `media.rate` |
+| `account` | `Account.title` — the Plex user |
+| `player` | `Player.title` — the playing client |
+| `server` | `Server.title` |
+| `media_type` | `Metadata.type` — `movie`, `episode`, `track`, … |
+| `title` | `Metadata.title` |
+| `library` | `Metadata.librarySectionTitle` |
+| `rating_key` | `Metadata.ratingKey` |
 
-**Context:** `event`, `account` (`Account.title`), `player` (`Player.title`),
-`server` (`Server.title`), `media_type` (`Metadata.type`), `title`
-(`Metadata.title`), `library` (`Metadata.librarySectionTitle`), `rating_key`
-(`Metadata.ratingKey`).
+| filter | type | matches |
+|--------|------|---------|
+| `events` | list | `event` is one of these |
+| `media_types` | list | `media_type` is one of these |
+| `accounts` | list | `account` is one of these |
+| `event` | string | `event` equals this |
+| `media_type` | string | `media_type` equals this |
+| `account` | string | `account` equals this |
+
+**Filtering:** a list matches any of its values (OR); the scalar form
+(`event`/`media_type`/`account`) matches a single exact value.
+
+```yaml
+connectors:
+  plex: { use: plex, base_url: http://plex:32400, token: ${PLEX_TOKEN}, webhook: { listen: ":9096", secret: ${PLEX_WEBHOOK_TOKEN} } }
+triggers:
+  - on: plex.playback
+    filters: { events: [media.play, media.resume] }
+    steps:
+      - uses: plex.metadata
+        options: { rating_key: "{{.rating_key}}" }
+```
 
 ## Verbs
 
-| verb | request | outputs | notes |
-|------|---------|---------|-------|
-| `sessions` | `GET /status/sessions` | `items` | current playback sessions |
-| `library_sections` | `GET /library/sections` | `items` | configured library sections |
-| `scan_library` | `GET /library/sections/{section_id}/refresh` | `result` | options: `section_id` (required) |
-| `search` | `GET /search?query=...` | `items` | options: `query` (required) |
-| `metadata` | `GET /library/metadata/{rating_key}` | `result` | options: `rating_key` (required) |
-| `recently_added` | `GET /library/recentlyAdded` or `GET /library/sections/{section_id}/recentlyAdded` | `items` | options: `section_id` (optional — server-wide when omitted) |
-| `mark_watched` | `GET /:/scrobble?identifier=com.plexapp.plugins.library&key={rating_key}` | `result` | options: `rating_key` (required) |
-| `mark_unwatched` | `GET /:/unscrobble?identifier=com.plexapp.plugins.library&key={rating_key}` | `result` | options: `rating_key` (required) |
-| `refresh_metadata` | `PUT /library/metadata/{rating_key}/refresh` | `result` | options: `rating_key` (required) |
-| `identity` | `GET /identity` | `result` | server identity/version |
-| `playlists` | `GET /playlists` | `items` | configured playlists |
-| `api` | any method/path | `result`/`items` | escape hatch — options: `method` (default `GET`), `path` (required), `query` (map), `body` (JSON-encoded) |
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-Every verb also returns `status_code` (the HTTP status) and both `result`
-(the unwrapped `MediaContainer` object) and `items` (its list child, or
-empty) — the table above names the one that's meaningful for that verb, but
-both are always populated so a trigger can reach either.
+- Every verb returns `status_code` plus both `result` (the unwrapped
+  `MediaContainer` object) and `items` (its list child — `Video`/`Directory`/
+  `Metadata`/`Playlist`/… — or empty); the descriptions below name whichever
+  is meaningful for that verb, but both are always populated so a trigger can
+  reach either.
 
-See `Describe()` in [`connectors/plex/main.go`](../../connectors/plex/main.go)
-for each verb's full option schema.
+Required options are marked `*`.
 
+### Sessions & libraries
+
+- **`sessions`** — current Plex playback sessions (`GET /status/sessions`). → `items`.
+- **`library_sections`** — configured library sections (`GET /library/sections`). → `items`.
+- **`scan_library`** — trigger a library section scan/refresh (`GET /library/sections/{section_id}/refresh`). `section_id`*. → `result`.
+- **`search`** — search the server's libraries (`GET /search?query=...`). `query`*. → `items`.
+- **`recently_added`** — recently added media, server-wide or for one section (`GET /library/recentlyAdded` or `GET /library/sections/{section_id}/recentlyAdded`). `section_id` (limit to one library section; default server-wide). → `items`.
+- **`playlists`** — configured playlists (`GET /playlists`). → `items`.
+- **`identity`** — the connected Plex Media Server's identity/version (`GET /identity`). → `result`.
+
+### Metadata & watch state
+
+- **`metadata`** — metadata for a single Plex item (`GET /library/metadata/{rating_key}`). `rating_key`* (the item's Plex rating key). → `result`.
+- **`mark_watched`** — mark an item watched / scrobble (`GET /:/scrobble?identifier=com.plexapp.plugins.library&key={rating_key}`). `rating_key`*. → `result`.
+- **`mark_unwatched`** — mark an item unwatched / unscrobble (`GET /:/unscrobble?identifier=com.plexapp.plugins.library&key={rating_key}`). `rating_key`*. → `result`.
+- **`refresh_metadata`** — refresh a single item's metadata from its agent (`PUT /library/metadata/{rating_key}/refresh`). `rating_key`*. → `result`.
+
+### Escape hatch
+
+- **`api`** — call any Plex Media Server endpoint not covered above. `method` (`GET` | `POST` | `PUT` | `DELETE`, default `GET`), `path`* (e.g. `/library/sections/1/all`), `query` (map of additional query parameters), `body` (JSON-encoded request body, for POST/PUT). → `result`, `items`.
 ## Capabilities & security
 
 Declares **no** egress — Plex is always self-hosted/LAN, so unlike a

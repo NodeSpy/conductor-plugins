@@ -95,25 +95,32 @@ of `Describe().Connection`.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`. A non-2xx
-response is returned as an error carrying the status code and response body
-— nothing is swallowed.
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `files` | `GET /files` (`q`, `pageSize`, `fields`, `orderBy`, `spaces`, `pageToken`) | `items` (hoisted from `files`), `result` (full decoded response, so `nextPageToken` is reachable) |
-| `file_get` | `GET /files/{file_id}` (`fields`) | `result` |
-| `file_download` | `GET /files/{file_id}?alt=media` | `content_base64` (base64-encoded raw bytes), `content_type` (response `Content-Type`) |
-| `file_upload` | `POST {upload_base}/files?uploadType=multipart` — reads a local file (`path`) and sends it as a `multipart/related` body: part 1 is JSON metadata (`name`, `parents`, `mimeType`), part 2 is the file's raw bytes | `result` |
-| `file_create_folder` | `POST /files` (body `{name, mimeType: "application/vnd.google-apps.folder", parents}`) | `result` |
-| `file_update_metadata` | `PATCH /files/{file_id}` (body is the `metadata` option, a map of Drive file fields) | `result` |
-| `file_delete` | `DELETE /files/{file_id}` | — |
-| `permissions` | `GET /files/{file_id}/permissions` | `items` (hoisted from `permissions`) |
-| `permission_create` | `POST /files/{file_id}/permissions` (body `{role, type, emailAddress}`) | `result` |
-| `api` | `method` + `path` (under `api_base`) + `query` + `body` — escape hatch for anything without a first-class verb, including writes | `result` (object response) or `items` (array response) |
+- Every verb returns `status_code`. A non-2xx response is returned as an
+  error carrying the status code and response body — nothing is swallowed.
+- Every request sends `Authorization: Bearer <injected token>`.
 
-Every request sends `Authorization: Bearer <injected token>`.
+Required options are marked `*`.
+
+### Files
+
+- **`files`** — list/search files. `q` (Drive query string, e.g. `"'root' in parents and trashed = false"`), `pageSize` (integer), `fields` (string; partial-response fields mask), `orderBy` (string, e.g. `"modifiedTime desc"`), `spaces` (string; comma-separated spaces to search, e.g. `"drive"`), `pageToken` (string; continuation token from a previous call's `nextPageToken`). → `result` (full decoded response, so `nextPageToken` is reachable), `items` (hoisted from `result.files`).
+- **`file_get`** — get one file's metadata. `file_id`*, `fields` (partial-response fields mask). → `result`.
+- **`file_download`** — download a file's raw content. `file_id`*. → `content_base64` (base64-encoded file content), `content_type` (response `Content-Type` header).
+- **`file_upload`** — upload a local file's content (multipart/related), creating a new Drive file. `path`* (local file path to read and upload), `name` (Drive file name; defaults to the local file's base name), `parents` (list of parent folder ids), `mime_type` (MIME type of the file content; guessed from the path's extension if omitted, else `application/octet-stream`). → `result`.
+- **`file_create_folder`** — create a folder. `name`*, `parents` (list of parent folder ids). → `result`.
+- **`file_update_metadata`** — update a file's metadata. `file_id`*, `metadata`* (map; Drive file metadata fields to update, e.g. `{"name": "new name.txt"}`). → `result`.
+- **`file_delete`** — delete a file. `file_id`*. → `status_code` only.
+
+### Permissions
+
+- **`permissions`** — list a file's permissions. `file_id`*. → `items`.
+- **`permission_create`** — grant a permission on a file. `file_id`*, `role`* (e.g. `reader`, `writer`, `commenter`, `owner`), `type`* (e.g. `user`, `group`, `domain`, `anyone`), `emailAddress` (required when `type` is `user` or `group`). → `result`.
+
+### Escape hatch
+
+- **`api`** — raw escape hatch: any Drive v3 API endpoint (enables writes). `method` (HTTP method, default GET), `path`* (path under `api_base`, e.g. `/files`), `query` (map of query string parameters), `body` (JSON request body). → `result` (object response) or `items` (array response).
 
 ### `file_upload`'s multipart/related body
 

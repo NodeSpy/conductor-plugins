@@ -89,32 +89,39 @@ sees — it is not part of `Describe().Connection`.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Sheets API v4 responses are JSON objects, not bare arrays, so
-every first-class verb hoists its decoded body straight into `result`; every
-verb also returns `status_code`.
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `get` | `GET /{spreadsheet_id}` (`include_grid_data`, `ranges`) | `result` |
-| `values_get` | `GET /{spreadsheet_id}/values/{range}` (`value_render_option`, `major_dimension`) | `result` (has a `values` field) |
-| `values_update` | `PUT /{spreadsheet_id}/values/{range}?valueInputOption=USER_ENTERED` (body `{values}` from the `values` option) | `result` |
-| `values_append` | `POST /{spreadsheet_id}/values/{range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS` (body `{values}`) | `result` |
-| `values_clear` | `POST /{spreadsheet_id}/values/{range}:clear` | `result` |
-| `values_batch_get` | `GET /{spreadsheet_id}/values:batchGet` (`ranges`, repeated) | `result` |
-| `batch_update` | `POST /{spreadsheet_id}:batchUpdate` (body `{requests}` from the `requests` option) | `result` |
-| `create` | `POST /` (body `{properties: {title}, sheets}` from the `title`/`sheets` options) | `result` |
-| `api` | `method` + `path` (under the spreadsheets resource root) + `query` + `body` — escape hatch for anything without a first-class verb, including writes | `result` (object response) or `items` (array response) |
+- Sheets API v4 responses are JSON objects, not bare arrays, so every
+  first-class verb hoists its decoded body straight into `result`. Every verb
+  also returns `status_code`.
+- `spreadsheet_id` is required on every verb except `create` (and the raw
+  `api` escape hatch, which takes an arbitrary `path` instead).
+- Every request sends `Authorization: Bearer <injected token>` and
+  `Accept: application/json`. A non-2xx response is returned as an error
+  carrying the status code and response body — nothing is swallowed.
 
-Required options are validated locally before any request is made:
-`spreadsheet_id` for every verb except `create` (and the raw `api` escape
-hatch, which takes an arbitrary `path` instead); `range` for the `values_get`,
-`values_update`, `values_append`, and `values_clear` verbs; `values` for
-`values_update` and `values_append`; `requests` for `batch_update`.
+Required options are marked `*`.
 
-Every request sends `Authorization: Bearer <injected token>` and
-`Accept: application/json`. A non-2xx response is returned as an error
-carrying the status code and response body — nothing is swallowed.
+### Spreadsheets
+
+- **`get`** — get a spreadsheet's metadata (and optionally grid data). `spreadsheet_id`*, `include_grid_data` (boolean; include cell data in the response), `ranges` (list of A1 ranges to limit the response to, e.g. `["Sheet1!A1:C10"]`). → `result`.
+- **`create`** — create a new spreadsheet. `title` (spreadsheet title), `sheets` (list of Sheets API Sheet objects to seed the spreadsheet with). → `result`.
+
+### Values
+
+- **`values_get`** — get the values of a single A1 range. `spreadsheet_id`*, `range`* (A1 range, e.g. `Sheet1!A1:C10`), `value_render_option` (`FORMATTED_VALUE` (default) | `UNFORMATTED_VALUE` | `FORMULA`), `major_dimension` (`ROWS` (default) | `COLUMNS`). → `result` (has a `values` field: a 2D array of cell values).
+- **`values_update`** — overwrite the values of a single A1 range. `spreadsheet_id`*, `range`*, `values`* (2D array of cell values, rows of columns). Sent as `PUT ...?valueInputOption=USER_ENTERED`. → `result`.
+- **`values_append`** — append rows of values after the last row of a range. `spreadsheet_id`*, `range`* (A1 range to search for a table within, e.g. `Sheet1!A1:C10`), `values`* (2D array of cell values to append). Sent as `POST ...:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`. → `result`.
+- **`values_clear`** — clear the values of a single A1 range (formatting is untouched). `spreadsheet_id`*, `range`*. → `result`.
+- **`values_batch_get`** — get the values of multiple A1 ranges in one call. `spreadsheet_id`*, `ranges` (list of A1 ranges, e.g. `["Sheet1!A1:C10", "Sheet2!A:A"]`). → `result`.
+
+### Structural updates
+
+- **`batch_update`** — apply one or more structural/formatting update requests atomically. `spreadsheet_id`*, `requests`* (list of Sheets API Request objects, e.g. `[{"addSheet": {...}}]`). → `result`.
+
+### Escape hatch
+
+- **`api`** — raw escape hatch: any Sheets API v4 endpoint (enables writes). `method` (HTTP method, default GET), `path`* (path under `https://sheets.googleapis.com/v4/spreadsheets`, e.g. `/{spreadsheetId}/values/A1:B2`), `query` (map of query string parameters), `body` (JSON request body). → `result` (object response) or `items` (array response).
 
 ## Capabilities & security
 

@@ -94,29 +94,62 @@ not add one for you.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`.
+Selected by `uses: <name>.<verb>`. Every verb's outputs include
+`status_code`. Required options are marked `*`. `user_id` (on the `user_*`
+verbs) is a path parameter, URL-escaped before use.
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `users` | `GET /core/users/` (`search`, `is_active`, `ordering`) | `result` + `items` (hoisted from `result.results`) |
-| `user_get` | `GET /core/users/{user_id}/` | `result` |
-| `user_create` | `POST /core/users/` (`username`\*, `name`, `email`, `is_active`, `groups`, `path`, `type`, `attributes`) | `result` |
-| `user_update` | `PATCH /core/users/{user_id}/` (`username`, `name`, `email`, `is_active`, `groups`, `path`, `type`, `attributes`) | `result` |
-| `user_delete` | `DELETE /core/users/{user_id}/` | `status_code` (+ `result` if the response carries a body) |
-| `groups` | `GET /core/groups/` | `result` + `items` |
-| `applications` | `GET /core/applications/` | `result` + `items` |
-| `providers` | `GET /providers/all/` | `result` + `items` |
-| `flows` | `GET /flows/instances/` | `result` + `items` |
-| `events` | `GET /events/events/` (`action`, `username`) | `result` + `items` |
-| `tokens` | `GET /core/tokens/` | `result` + `items` |
-| `api` | `method` + `path` (under `/api/v3`) + `query` + `body` — escape hatch for anything without a first-class verb | `result` (object response, with `items` hoisted from `result.results` when present) or `items` (bare array response) |
+### Users
 
-`user_id` is a path parameter, URL-escaped before use. `user_create` and
-`user_update` fields are passed through verbatim (preserving whatever JSON
-type the caller supplied — bool, list, map, string), so authentik itself
-does the actual validation; `username` is the only field authentik requires
-to create a user.
+- **`users`** — list users. `search` (free-text search), `is_active`
+  (boolean, filter by active state), `ordering` (field to order by, e.g.
+  `username` or `-username`). → `result`, `items` (hoisted from
+  `result.results`).
+- **`user_get`** — get one user's details. `user_id`* (scoped option). →
+  `result`.
+- **`user_create`** — create a user. `username`* — plus these fields, passed
+  through verbatim (preserving whatever JSON type the caller supplied: bool,
+  list, map, string) so authentik itself does the validation: `name`
+  (display name), `email`, `is_active` (boolean), `groups` (list, group
+  PKs/UUIDs this user belongs to), `path` (authentik user path, default
+  `"users"`), `type` (user type, e.g. `internal`, `external`,
+  `service_account`), `attributes` (map, arbitrary user attributes). →
+  `result`. `username` is the only field authentik requires to create a
+  user.
+- **`user_update`** — partially update a user (PATCH). `user_id`* (scoped
+  option), `username`, plus the same optional fields as `user_create`
+  (`name`, `email`, `is_active`, `groups`, `path`, `type`, `attributes`). →
+  `result`.
+- **`user_delete`** — delete a user. `user_id`* (scoped option). →
+  `status_code` (+ `result` if the response carries a body).
+
+### Groups, applications, providers & flows
+
+- **`groups`** — list groups. No options. → `result`, `items` (hoisted from
+  `result.results`).
+- **`applications`** — list applications. No options. → `result`, `items`
+  (hoisted from `result.results`).
+- **`providers`** — list all providers (any type). No options. → `result`,
+  `items` (hoisted from `result.results`).
+- **`flows`** — list flow instances. No options. → `result`, `items`
+  (hoisted from `result.results`).
+
+### Events & tokens
+
+- **`events`** — list events (audit log). `action` (filter by event action),
+  `username` (filter by the acting user's username). → `result`, `items`
+  (hoisted from `result.results`).
+- **`tokens`** — list tokens. No options. → `result`, `items` (hoisted from
+  `result.results`).
+
+### Escape hatch
+
+- **`api`** — raw escape hatch for any authentik API v3 endpoint without a
+  first-class verb. `method` (HTTP method, default `GET`), `path`* (path
+  under `/api/v3`, e.g. `/core/users/` — include the trailing slash
+  authentik's routers require), `query` (map, query string parameters),
+  `body` (any, JSON request body). → `result` (object response, with `items`
+  hoisted from `result.results` when present) or `items` (bare array
+  response).
 
 ## Capabilities & security
 

@@ -102,27 +102,39 @@ invalid, mask-less request to Google.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`; `connections`,
-`search`, and `other_contacts` hoist Google's list array into `items`; the
-rest return `result`.
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `connections` | `GET /people/me/connections` (`personFields`, `pageSize`, `pageToken`, `sortOrder`) | `items` |
-| `contact_get` | `GET /{resource_name}` (`personFields`) | `result` |
-| `contact_create` | `POST /people:createContact` — body from a `person` map option, or convenience `given_name`/`family_name`/`email`/`phone` fields | `result` |
-| `contact_update` | `PATCH /{resource_name}:updateContact` (`updatePersonFields`) — body is the `person` map option (required) | `result` |
-| `contact_delete` | `DELETE /{resource_name}:deleteContact` | `status_code` only |
-| `search` | `GET /people:searchContacts` (`query` required, `readMask`) | `items` |
-| `other_contacts` | `GET /otherContacts` (`readMask`, `pageSize`) | `items` |
-| `api` | raw escape hatch: `method` + `path` (under `/v1`) + `query` + `body`, for anything without a first-class verb | `result` (object response) or `items` (array response) |
+- **`resource_name`** — identifies a single contact, e.g.
+  `"people/c1234567890"` (exactly as returned in a prior verb's
+  `resourceName` field); required on every single-contact verb.
+- Field-mask options (`personFields`, `updatePersonFields`, `readMask`) all
+  default to `"names,emailAddresses,phoneNumbers,organizations"` when
+  omitted — see [Field masks](#field-masks).
+- Every verb returns `status_code`; `connections`, `search`, and
+  `other_contacts` hoist Google's list array into `items`; the rest return
+  `result`.
+- Every request sends `Authorization: Bearer <injected token>` and
+  `Accept: application/json`. A non-2xx response is returned as an error
+  carrying the status code and response body — nothing is swallowed.
 
-`resource_name` identifies a single contact, e.g. `"people/c1234567890"`
-(exactly as returned in a prior verb's `resourceName` field). Every request
-sends `Authorization: Bearer <injected token>` and `Accept: application/json`.
-A non-2xx response is returned as an error carrying the status code and
-response body — nothing is swallowed.
+Required options are marked `*`.
+
+### Contacts
+
+- **`connections`** — list the authenticated user's contacts. `personFields` (comma-separated Person fields to return), `pageSize` (integer), `pageToken` (string; page token from a previous response), `sortOrder` (`LAST_MODIFIED_ASCENDING` | `LAST_MODIFIED_DESCENDING` | `FIRST_NAME_ASCENDING` | `LAST_NAME_ASCENDING`). → `items`.
+- **`contact_get`** — get one contact. `resource_name`*, `personFields`. → `result`.
+- **`contact_create`** — create a contact. `person` (map; a full Person resource body, overrides the convenience fields below when set), `given_name` (convenience: contact given/first name), `family_name` (convenience: contact family/last name), `email` (convenience: contact email address), `phone` (convenience: contact phone number). → `result`.
+- **`contact_update`** — patch an existing contact. `resource_name`*, `person`* (map; the fields to patch, as a Person resource fragment — must include `etag`), `updatePersonFields` (comma-separated Person fields being updated). → `result`.
+- **`contact_delete`** — delete a contact. `resource_name`*. → `status_code` only.
+
+### Search
+
+- **`search`** — search the authenticated user's contacts. `query`* (search query text), `readMask` (comma-separated Person fields to return). → `items`.
+- **`other_contacts`** — list "other contacts" (auto-saved from interactions, not in the user's contacts). `readMask` (comma-separated Person fields to return), `pageSize` (integer). → `items`.
+
+### Escape hatch
+
+- **`api`** — raw escape hatch: any Google People API v1 endpoint (enables writes). `method` (HTTP method, default GET), `path`* (path under `https://people.googleapis.com/v1`, e.g. `/people/me/connections`), `query` (map of query string parameters), `body` (JSON request body). → `result` (object response) or `items` (array response).
 
 ## Capabilities & security
 

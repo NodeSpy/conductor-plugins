@@ -98,42 +98,48 @@ does not implement `StartSource`.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`; list-shaped
-endpoints hoist the envelope's `data` into `items`, object-shaped endpoints
-hoist it into `result`.
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `firewall_rules` | `GET /api/v2/firewall/rules` | `items` |
-| `rule_get` | `GET /api/v2/firewall/rule?id=` | `result` |
-| `rule_create` | `POST /api/v2/firewall/rule` (`rule`\*, a map of rule fields) | `result` |
-| `rule_delete` | `DELETE /api/v2/firewall/rule?id=` | `result` |
-| `firewall_apply` | `POST /api/v2/firewall/apply` | `result` |
-| `aliases` | `GET /api/v2/firewall/aliases` | `items` |
-| `alias_get` | `GET /api/v2/firewall/alias?id=` | `result` |
-| `interfaces` | `GET /api/v2/status/interfaces` | `items` |
-| `services` | `GET /api/v2/status/services` | `items` |
-| `service_control` | `POST /api/v2/status/service` (`name`\*, `action`\* one of `start`/`stop`/`restart`) | `result` |
-| `dhcp_leases` | `GET /api/v2/status/dhcp_server/leases` | `items` |
-| `system_status` | `GET /api/v2/status/system` | `result` |
-| `gateways` | `GET /api/v2/status/gateways` | `items` |
-| `api` | `method` + `path` (under `/api/v2`) + `query` + `body` — escape hatch for anything without a first-class verb | `result` (object `data`) or `items` (list `data`) |
+- Every verb returns `status_code`; list-shaped endpoints hoist the
+  envelope's `data` into `items`, object-shaped endpoints hoist it into
+  `result`.
+- `id` (`rule_get`/`rule_delete`/`alias_get`) is sent as a query-string
+  parameter, matching the REST API's convention for identifying a single
+  object on its singular endpoints (`/firewall/rule`, `/firewall/alias`) —
+  firewall rule and alias IDs are array indices.
+- `interfaces`, `services`, and `service_control` live under
+  `/api/v2/status/...` in the real API (`StatusInterfacesEndpoint`,
+  `StatusServicesEndpoint`, `StatusServiceEndpoint`) rather than bare
+  `/api/v2/interfaces` or `/api/v2/service/{action}` paths — this connector
+  targets the endpoints the pfSense-pkg-RESTAPI package actually exposes.
 
-`id` (`rule_get`/`rule_delete`/`alias_get`) is sent as a query-string
-parameter, matching the REST API's convention for identifying a single
-object on its singular endpoints (`/firewall/rule`, `/firewall/alias`) —
-firewall rule and alias IDs are array indices. `rule_create`'s `rule` option
-is posted as-is (its fields map directly onto the `FirewallRule` model,
-e.g. `{type, interface, ipprotocol, protocol, source, destination, descr}`).
-`service_control` maps directly onto the `Service` model's `action` field
-(`start`, `stop`, or `restart`).
+Required options are marked `*`.
 
-Note: `interfaces`, `services`, and `service_control` live under
-`/api/v2/status/...` in the real API (`StatusInterfacesEndpoint`,
-`StatusServicesEndpoint`, `StatusServiceEndpoint`) rather than bare
-`/api/v2/interfaces` or `/api/v2/service/{action}` paths — this connector
-targets the endpoints the pfSense-pkg-RESTAPI package actually exposes.
+### Firewall rules
+
+- **`firewall_rules`** — list all firewall rules (`GET /api/v2/firewall/rules`). → `items`, `status_code`.
+- **`rule_get`** — get one firewall rule's details (`GET /api/v2/firewall/rule?id=`). `id`* — rule ID (array index). → `result`, `status_code`.
+- **`rule_create`** — create a firewall rule (`POST /api/v2/firewall/rule`). `rule`* (map) — rule fields, e.g. `{type, interface, ipprotocol, protocol, source, destination, descr}` (posted as-is onto the `FirewallRule` model). → `result`, `status_code`.
+- **`rule_delete`** — delete a firewall rule (`DELETE /api/v2/firewall/rule?id=`). `id`* — rule ID (array index). → `result`, `status_code`.
+- **`firewall_apply`** — apply pending firewall changes (`POST /api/v2/firewall/apply`). → `result`, `status_code`.
+
+### Firewall aliases
+
+- **`aliases`** — list all firewall aliases (`GET /api/v2/firewall/aliases`). → `items`, `status_code`.
+- **`alias_get`** — get one firewall alias's details (`GET /api/v2/firewall/alias?id=`). `id`* — alias ID (array index) or name. → `result`, `status_code`.
+
+### Interfaces, services & status
+
+- **`interfaces`** — interface status: link state, addresses, stats (`GET /api/v2/status/interfaces`). → `items`, `status_code`.
+- **`services`** — list known services and their running state (`GET /api/v2/status/services`). → `items`, `status_code`.
+- **`service_control`** — start, stop, or restart a service (`POST /api/v2/status/service`, mapping onto the `Service` model). `name`* — service name, e.g. `unbound`, `openvpn`; `action`* — one of `start`, `stop`, `restart`. → `result`, `status_code`.
+- **`dhcp_leases`** — list DHCP server leases (`GET /api/v2/status/dhcp_server/leases`). → `items`, `status_code`.
+- **`system_status`** — system status: versions, temp, load, memory, disk (`GET /api/v2/status/system`). → `result`, `status_code`.
+- **`gateways`** — gateway monitoring status (`GET /api/v2/status/gateways`). → `items`, `status_code`.
+
+### Raw access
+
+- **`api`** — raw escape hatch: any pfSense REST API v2 endpoint under `/api/v2`, for anything without a first-class verb. `method` (HTTP method, default `GET`), `path`* (path under `/api/v2`, e.g. `/firewall/rules`), `query` (map of query-string parameters), `body` (any — JSON request body). → `result` (object `data`), `items` (list `data`), `status_code`.
 
 ## Capabilities & security
 

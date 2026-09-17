@@ -119,42 +119,54 @@ verb-only: it declares no `Events` and does not implement `StartSource`.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`.
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-UniFi wraps every response as `{"meta": {...}, "data": [...]}`. This
-connector hoists `data` into `items` when it is a list (the common case —
-even an empty list is returned as `items: []`, never omitted), or into
-`result` when it is present but not a list. A response with no `data`
-envelope at all falls back to `result`.
+- Every verb returns `status_code` (the HTTP status). UniFi wraps every
+  response as `{"meta": {...}, "data": [...]}`: this connector hoists `data`
+  into `items` when it is a list (the common case — even an empty list is
+  returned as `items: []`, never omitted), or into `result` when it is
+  present but not a list. A response with no `data` envelope at all also
+  falls back to `result`.
+- `site` is a **connection**-level setting (`site:` in the connector
+  config), not a per-verb option — every verb targets the one site the
+  connector instance is configured for. Point a second connector instance at
+  a different `site` if you manage more than one.
+- `device_restart`, `client_block`, `client_unblock`, and `client_reconnect`
+  all issue a controller "command" — UniFi's `cmd/devmgr` and `cmd/stamgr`
+  endpoints, which take a JSON body naming the action (`cmd`) rather than
+  exposing one endpoint per action.
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `sites` | `GET {prefix}/api/self/sites` | `items` |
-| `devices` | `GET {prefix}/api/s/{site}/stat/device` | `items` |
-| `device_restart` | `POST {prefix}/api/s/{site}/cmd/devmgr` (`mac`\*) — `{cmd: "restart", mac}` | `items` |
-| `clients` | `GET {prefix}/api/s/{site}/stat/sta` | `items` |
-| `client_block` | `POST {prefix}/api/s/{site}/cmd/stamgr` (`mac`\*) — `{cmd: "block-sta", mac}` | `items` |
-| `client_unblock` | `POST {prefix}/api/s/{site}/cmd/stamgr` (`mac`\*) — `{cmd: "unblock-sta", mac}` | `items` |
-| `client_reconnect` | `POST {prefix}/api/s/{site}/cmd/stamgr` (`mac`\*) — `{cmd: "kick-sta", mac}` | `items` |
-| `wlans` | `GET {prefix}/api/s/{site}/rest/wlanconf` | `items` |
-| `networks` | `GET {prefix}/api/s/{site}/rest/networkconf` | `items` |
-| `port_forwards` | `GET {prefix}/api/s/{site}/rest/portforward` | `items` |
-| `firewall_rules` | `GET {prefix}/api/s/{site}/rest/firewallrule` | `items` |
-| `health` | `GET {prefix}/api/s/{site}/stat/health` | `items` |
-| `alarms` | `GET {prefix}/api/s/{site}/list/alarm` | `items` |
-| `events` | `GET {prefix}/api/s/{site}/stat/event` | `items` |
-| `api` | `method` + `path` (joined after `{prefix}`) + `query` + `body` — escape hatch for anything without a first-class verb | `items` (list `data`) or `result` (non-list `data`/no envelope) |
+Required options are marked `*`.
 
-`device_restart`, `client_block`, `client_unblock`, and `client_reconnect`
-all take a required `mac` option (the target device or client's MAC
-address) and issue a controller "command" — UniFi's `cmd/devmgr` and
-`cmd/stamgr` endpoints, which take a JSON body naming the action (`cmd`)
-rather than exposing one endpoint per action.
+### Sites & devices
 
-`site` is a **connection**-level setting, not a per-verb option: every verb
-targets the one site the connector instance is configured for. Point a
-second connector instance at a different `site` if you manage more than one.
+- **`sites`** — list sites this account can see (`GET {prefix}/api/self/sites`). → `items`, `status_code`.
+- **`devices`** — list UniFi devices (APs, switches, gateways) adopted to the site (`GET {prefix}/api/s/{site}/stat/device`). → `items`, `status_code`.
+- **`device_restart`** — restart one adopted device (`POST {prefix}/api/s/{site}/cmd/devmgr` `{cmd:"restart", mac}`). `mac`* — device MAC address. → `items`, `status_code`.
+
+### Clients
+
+- **`clients`** — list currently connected clients (`GET {prefix}/api/s/{site}/stat/sta`). → `items`, `status_code`.
+- **`client_block`** — block a client from the network (`POST {prefix}/api/s/{site}/cmd/stamgr` `{cmd:"block-sta", mac}`). `mac`* — client MAC address. → `items`, `status_code`.
+- **`client_unblock`** — unblock a previously blocked client (`POST {prefix}/api/s/{site}/cmd/stamgr` `{cmd:"unblock-sta", mac}`). `mac`* — client MAC address. → `items`, `status_code`.
+- **`client_reconnect`** — force-reconnect (kick) a client (`POST {prefix}/api/s/{site}/cmd/stamgr` `{cmd:"kick-sta", mac}`). `mac`* — client MAC address. → `items`, `status_code`.
+
+### Network configuration
+
+- **`wlans`** — list configured WLANs (`GET {prefix}/api/s/{site}/rest/wlanconf`). → `items`, `status_code`.
+- **`networks`** — list configured networks (VLANs/subnets) (`GET {prefix}/api/s/{site}/rest/networkconf`). → `items`, `status_code`.
+- **`port_forwards`** — list port-forwarding rules (`GET {prefix}/api/s/{site}/rest/portforward`). → `items`, `status_code`.
+- **`firewall_rules`** — list firewall rules (`GET {prefix}/api/s/{site}/rest/firewallrule`). → `items`, `status_code`.
+
+### Monitoring
+
+- **`health`** — per-subsystem health summary (`GET {prefix}/api/s/{site}/stat/health`). → `items`, `status_code`.
+- **`alarms`** — list alarms (`GET {prefix}/api/s/{site}/list/alarm`). → `items`, `status_code`.
+- **`events`** — list recent site events (`GET {prefix}/api/s/{site}/stat/event`). → `items`, `status_code`.
+
+### Raw access
+
+- **`api`** — raw escape hatch: any UniFi Network API endpoint under `{prefix}` (`/proxy/network` on UniFi OS, none on a legacy controller), for anything without a first-class verb. `method` (HTTP method, default `GET`), `path`* (path joined after the prefix, e.g. `/api/s/default/stat/device`), `query` (map of query-string parameters), `body` (any — JSON request body). → `result` (non-list `data`/no envelope), `items` (list `data`), `status_code`.
 
 ## Capabilities & security
 

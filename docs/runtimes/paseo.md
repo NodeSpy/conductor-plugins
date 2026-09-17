@@ -62,19 +62,24 @@ launches is paseo's own configuration, not this plugin's.
 
 ## Verbs
 
-| verb | shells to | key options | outputs |
-|------|-----------|-------------|---------|
-| `run` | `paseo run <args…>` | `args` * (list) | `output`, `agentId` |
-| `list_agents` | `paseo ls --json [--label k=v …]` | `labels` (map) | `agents` (list) |
-| `inspect` | `paseo inspect <id> --json` | `id` * | `cwd`, `lastUsage`, `updatedAt`, `createdAt`, `pendingPermissions` |
-| `archive_agent` | `paseo archive <id>` | `id` * | — |
-| `archive_workspace` | `paseo workspace archive <id>` | `id` * | — |
-| `create_worktree` | `paseo workspace create --mode …` | `isolation` *, `path` *, `strategy` * (`checkout-pr`/`branch-off`), `prNumber`, `forge`, `newBranch`, `baseRef` | `workspaceId`, `cwd` |
-| `create_workspace` | `paseo workspace create --isolation …` | `isolation` *, `path` *, `title` | `workspaceId` |
-| `list_workspaces` | `paseo workspace ls --json` | — | `workspaces` (list) |
-| `clone` | `paseo clone` | `repo` *, `dir` *, `protocol` | — |
-| `send` | `paseo send <id> <prompt> [--json]` | `id` *, `prompt` *, `json` | `output` |
-| `wait` | `paseo wait <id>` | `id` * | — |
+Each verb is a `paseo …` shell-out (the command it runs is shown). `*` marks a
+required option. This is the same operation set the CLI-direct backend drives —
+an alternate, opt-in transport, not a different feature set. Conductor drives
+these itself for agent dispatch; you rarely call them by hand.
 
-`*` required. This is the same operation set the CLI-direct backend drives — an
-alternate, opt-in transport, not a different feature set.
+### Agents
+
+- **`run`** — launch (or re-launch) a coding-agent turn (`paseo run <args…>`). `args`* (list) — the full `paseo run` argument list (everything after `run` itself). → `output`, `agentId`.
+- **`send`** — queue a follow-up prompt to a live agent (`paseo send <id> <prompt>`). `id`*, `prompt`*, `json` (ask for JSON output). → `output`.
+- **`wait`** — block until an agent goes idle (`paseo wait <id>`). `id`*.
+- **`inspect`** — inspect one agent (`paseo inspect <id> --json`). `id`*. → `cwd`, `lastUsage`, `updatedAt`, `createdAt`, `pendingPermissions` (outstanding permission prompts — empty means it isn't waiting on the user).
+- **`list_agents`** — list non-archived agents (`paseo ls --json`). `labels` (map — exact-match label filters). → `agents`.
+- **`archive_agent`** — soft-delete one agent (`paseo archive <id>`). `id`*.
+
+### Workspaces
+
+- **`create_worktree`** — create an isolated PR/branch worktree workspace (`paseo workspace create --mode …`). `isolation`*, `path`*, `strategy`* (`checkout-pr` | `branch-off`), `prNumber` (with `checkout-pr`), `forge`, `newBranch` (with `branch-off`), `baseRef`. → `workspaceId`, `cwd`.
+- **`create_workspace`** — create a plain (non-worktree) workspace (`paseo workspace create --isolation …`). `isolation`*, `path`*, `title`. → `workspaceId`.
+- **`list_workspaces`** — list every workspace (`paseo workspace ls --json`). → `workspaces`.
+- **`archive_workspace`** — soft-delete a workspace, reclaiming any worktree it owns (`paseo workspace archive <id>`). `id`*.
+- **`clone`** — clone a repo and register it with paseo (`paseo clone`). `repo`*, `dir`*, `protocol` (`https` | `ssh`).

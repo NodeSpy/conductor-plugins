@@ -87,76 +87,53 @@ self-signed lab box doesn't force you to disable TLS globally.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`; most also return
-either `result` (a single object) or `items` (a list — **many TrueNAS list
-endpoints return a bare JSON array**, which is hoisted straight into `items`).
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `system_info` | `GET /system/info` | `result` |
-| `pools` | `GET /pool` | `items` |
-| `pool_get` | `GET /pool/id/{id}` | `result` |
-| `datasets` | `GET /pool/dataset` | `items` |
-| `dataset_get` | `GET /pool/dataset/id/{id}` | `result` |
-| `snapshots` | `GET /zfs/snapshot` | `items` |
-| `snapshot_create` | `POST /zfs/snapshot` | `result` |
-| `replication` | `GET /replication` | `items` |
-| `apps` | `GET /app` | `items` |
-| `alerts` | `GET /alert/list` | `items` |
-| `alert_dismiss` | `POST /alert/dismiss` | `result` |
-| `services` | `GET /service` | `items` |
-| `service_control` | `POST /service/start` or `/service/stop` | `result` |
-| `api` | any `/api/v2.0` path | `result` or `items` |
+- Every verb returns `status_code` (the HTTP status) plus either `result` (a
+  single object) or `items` (a list) — **most TrueNAS list endpoints return a
+  bare JSON array**, which is hoisted straight into `items`.
+- `pool_id` / `dataset_id` / `uuid` / `service` options are **scoped**
+  (`scope: pool|dataset|alert|service`), so conductor gates which resource an
+  agent-driven dispatch may name.
 
-### `pool_get` / `dataset_get` — resource ids
+Required options are marked `*`.
 
-`pool_get` takes `pool_id` *. `dataset_get` takes `dataset_id` * — a ZFS
-dataset path such as `tank/data` — and **URL-encodes it** before building the
-path, so `tank/data` becomes `.../pool/dataset/id/tank%2Fdata` on the wire, as
-the middleware's route requires.
+### System & storage
+
+- **`system_info`** — system identity/version/hardware info (`GET /system/info`). → `result`.
+- **`pools`** — list storage pools (`GET /pool`). → `items`.
+- **`pool_get`** — get one pool's details (`GET /pool/id/{id}`). `pool_id`*. → `result`.
+- **`datasets`** — list ZFS datasets (`GET /pool/dataset`). → `items`.
+- **`dataset_get`** — get one dataset's details (`GET /pool/dataset/id/{id}`). `dataset_id`* (a ZFS dataset path, e.g. `tank/data` — **URL-encoded** on the wire, so `tank/data` becomes `.../pool/dataset/id/tank%2Fdata`). → `result`.
+
+### Snapshots & replication
+
+- **`snapshots`** — list ZFS snapshots (`GET /zfs/snapshot`). → `items`.
+- **`snapshot_create`** — create a ZFS snapshot (`POST /zfs/snapshot`). `dataset`* (e.g. `tank/data`), `name`* (snapshot name). → `result`.
+- **`replication`** — list replication tasks (`GET /replication`). → `items`.
+
+### Apps, alerts & services
+
+- **`apps`** — list SCALE apps (`GET /app`). → `items`.
+- **`alerts`** — list current alerts (`GET /alert/list`). → `items`.
+- **`alert_dismiss`** — dismiss an alert (`POST /alert/dismiss`). `uuid`*. → `result`. Unlike every other write verb here, the request body is **the bare uuid as a JSON string** (`"a1b2c3"`), not a `{uuid: ...}` object — that is what `/alert/dismiss` expects.
+- **`services`** — list services and their running state (`GET /service`). → `items`.
+- **`service_control`** — start or stop a service (`POST /service/start` or `/service/stop`). `service`* (e.g. `cifs`, `ssh`, `nfs`), `action`* (`start` | `stop`). → `result`.
+
+### Escape hatch
+
+- **`api`** — any TrueNAS API endpoint not covered above. `method` (HTTP method, default `GET`), `path`* (path under `/api/v2.0`, e.g. `/pool/dataset`), `query` (map of query string parameters), `body` (JSON request body). → `result` (or `items` when the response is a bare JSON array), `status_code`.
 
 ```yaml
 uses: nas.dataset_get
 options: { dataset_id: tank/data }
 ```
 
-### `snapshot_create` — take a ZFS snapshot
-
-`dataset` * (e.g. `tank/data`), `name` * (the snapshot name).
-
-```yaml
-uses: nas.snapshot_create
-options: { dataset: tank/data, name: pre-upgrade }
-```
-
-### `alert_dismiss` — dismiss one alert
-
-`uuid` *. Unlike every other write verb here, the request body is **the bare
-uuid as a JSON string** (`"a1b2c3"`), not a `{uuid: ...}` object — that is
-what `/alert/dismiss` expects.
-
-### `service_control` — start or stop a service
-
-`service` * (e.g. `cifs`, `ssh`, `nfs`), `action` * (`start` or `stop`).
-
 ```yaml
 uses: nas.service_control
 options: { service: cifs, action: start }
 # → POST /api/v2.0/service/start  {"service": "cifs"}
 ```
-
-### `api` — raw escape hatch
-
-`method` (default `GET`), `path` * (under `/api/v2.0`), `query` (map), `body`
-(any JSON). A bare-array response is hoisted into `items`; anything else
-lands in `result`.
-
-```yaml
-uses: nas.api
-options: { path: /pool, query: { limit: "1" } }
-```
-
 ## Source — the `alert` event
 
 Every `poll_interval`, the source runs `GET /alert/list` and emits **one
@@ -184,6 +161,10 @@ Every `poll_interval`, the source runs `GET /alert/list` and emits **one
 |--------|------|---------|
 | `levels` | list | `level` is one of these |
 | `klasses` | list | `klass` is one of these |
+
+**Filtering:** each filter is a list; an alert matches when its corresponding
+field is one of the listed values (OR within the list). Filters given
+together are ANDed.
 
 ```yaml
 connectors:
