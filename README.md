@@ -91,10 +91,14 @@ github.com/NodeSpy/conductor-plugins/connectors/uptimerobot
 github.com/NodeSpy/conductor-plugins/connectors/wiz
 github.com/NodeSpy/conductor-plugins/connectors/xero
 github.com/NodeSpy/conductor-plugins/connectors/zapier
+github.com/NodeSpy/conductor-plugins/engines/cel
 github.com/NodeSpy/conductor-plugins/engines/go-embed
+github.com/NodeSpy/conductor-plugins/engines/jq
 github.com/NodeSpy/conductor-plugins/engines/js
 github.com/NodeSpy/conductor-plugins/engines/lua
 github.com/NodeSpy/conductor-plugins/engines/risor
+github.com/NodeSpy/conductor-plugins/engines/starlark
+github.com/NodeSpy/conductor-plugins/engines/wasm
 github.com/NodeSpy/conductor-plugins/runtimes/paseo
 ```
 
@@ -213,6 +217,10 @@ egress, no filesystem, no spawns.
 | [`go-embed`](engines/go-embed) | engine | `go-embed` | **Yes — still bundled today.** Additive. | Real Go on `traefik/yaegi`, no toolchain needed. Snippet defines `func run(ctx map[string]any) (any, error)`. Sandboxed to a **data-shaping stdlib allowlist** (no `os`, `net`, `io`, `reflect`, `unsafe`) with `GoPath` pinned off-disk; ctx faces are `import "conductor/store"` / `"conductor/sql"` / `"conductor/memory"`. |
 | [`risor`](engines/risor) | engine | `risor` | **Yes — still bundled today.** Additive. | `risor-io/risor` — pure-Go, Go-flavored scripting. `ctx` is the step inputs, the final expression is the outputs. Opts out of risor's default globals (which include `os`/`exec`/`http`/`net`) and grants a data-shaping allowlist plus `store()`, `sql()` and `memory`. |
 | [`lua`](engines/lua) | engine | `lua` | **Yes — still bundled today.** Additive. | Lua 5.1 on `yuin/gopher-lua` (pure Go, no cgo). `ctx` is the step inputs as a table, the script `return`s its outputs. Only base/table/string/math are opened, and `dofile`/`loadfile`/`load`/`loadstring` are removed; ctx faces are `ctx.store(…)`, `ctx.sql(…)`, `ctx.memory`. |
+| [`starlark`](engines/starlark) | engine | `starlark` | **No — never in core.** Add it here. | Deterministic Python-dialect on `go.starlark.net` (pure Go). `ctx` is the step inputs (a dict), the script assigns a global `output` which becomes the step outputs. Sandbox = the language: no import/open/exec; only `ctx` + `json` are predeclared; `timeout:` cancels the thread. |
+| [`cel`](engines/cel) | engine | `cel` | **No — never in core.** Add it here. | CEL expression steps on `cel.dev/cel-go`. `ctx` is the step inputs (a map var); the expression's result is the outputs (map → named, scalar/list → `value`). Non-Turing-complete, no I/O; cost-limited and `timeout:`-cancellable. Ideal for computed fields / conditions. |
+| [`jq`](engines/jq) | engine | `jq` | **No — never in core.** Add it here. | jq JSON-transform steps on `itchyny/gojq` (pure Go). The step inputs are the jq input document, the program is `code:`; one result → outputs, many → a `value` list. Pure data transform, no I/O; `timeout:`-cancellable. |
+| [`wasm`](engines/wasm) | engine | `wasm` | **No — never in core.** Add it here. | Run an arbitrary WebAssembly module as a step on `wazero` (pure Go, no cgo). `code:` is a base64 WASI command module; step inputs are fed as JSON on stdin and its stdout JSON is the outputs. No filesystem/network — only stdin/stdout/stderr/args/env; `timeout:` closes the module. Any language → wasm. |
 
 ### What the source plugins do NOT replace
 
