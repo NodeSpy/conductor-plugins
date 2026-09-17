@@ -28,6 +28,34 @@ triggers:
         options: { issue_id: "{{.id}}", body: "Thanks for filing this!" }
 ```
 
+## Setup
+
+You'll end up with a Linear personal API key conductor sends raw in the
+`Authorization` header of every GraphQL call.
+
+**Prerequisites:** a Linear account with (or granted) permission to create
+personal API keys for the workspace.
+
+1. Sign in, open **Settings → Account → Security & access**.
+2. Under **Personal API keys**, click **Create key** (or "New API key").
+3. Name it, optionally restrict it to specific teams or a read/write/admin
+   scope, then click **Create**.
+4. Copy the key immediately — Linear shows it only once.
+
+```yaml
+connectors:
+  lin:
+    use: linear
+    api_key: ${LINEAR_API_KEY}
+    network: ["api.linear.app:443"]
+```
+
+For the webhook source, register it under the workspace's **Settings → API
+→ Webhooks → New webhook**, select the resource types (Issues, Comments,
+Projects) to send, and paste its signing secret into `webhook.secret` below —
+see `## Source events` above for the HMAC verification model and `smee`
+fallback when there's no public listener URL.
+
 ## Connection
 
 | key | type | purpose |

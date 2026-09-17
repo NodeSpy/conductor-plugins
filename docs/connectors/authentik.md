@@ -19,6 +19,34 @@ connectors:
     network: ["authentik.example.com:443"]   # narrow the declared egress to your instance
 ```
 
+## Setup
+
+Mint an API token for a dedicated service account so this connector can call
+the authentik REST API without borrowing a personal admin login.
+
+**Prerequisites:** admin access to the authentik instance.
+
+1. Log in to the authentik admin interface (`https://authentik.example.com/if/admin/`).
+2. Recommended: create a dedicated service account first —
+   **Directory → Users → Create Service Account** — rather than issuing a
+   token against your own admin user.
+3. Go to **Directory → Tokens and App passwords → Create**.
+4. Set **Identifier** (e.g. `conductor-automation`), **User** to the service
+   account, **Intent** to `API Token`, and turn **Expiring** off (an expired
+   token auto-rotates and the old value stops matching what you configured
+   here).
+5. Save, then copy the generated token — it's shown once.
+
+**Configure:**
+
+```yaml
+connectors:
+  idp:
+    use: authentik
+    base_url: https://authentik.example.com
+    api_token: ${AUTHENTIK_API_TOKEN}
+```
+
 ## Connection
 
 | key | type | purpose |

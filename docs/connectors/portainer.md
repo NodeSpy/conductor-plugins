@@ -29,6 +29,28 @@ steps:
     with: { endpoint_id: "1", container_id: "{{.web_container_id}}", action: restart }
 ```
 
+## Setup
+
+Produces a Portainer access token the connector sends as `X-API-Key`.
+
+**Prerequisites:** a running Portainer instance and admin (or sufficiently
+privileged) access to it.
+
+1. Log into the Portainer UI and click your user icon (top right) > **My
+   account**.
+2. Open the **Access tokens** tab and click **Add access token**.
+3. Give it a description and an optional expiry, then click **Add access
+   token**.
+4. Copy the generated token — it's shown once.
+
+```yaml
+connectors:
+  pt:
+    use: portainer
+    base_url: https://portainer.example.com
+    api_key: ${PORTAINER_API_KEY}
+```
+
 ## Connection
 
 | key | type | purpose |

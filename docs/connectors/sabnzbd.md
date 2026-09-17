@@ -26,6 +26,26 @@ triggers:
         options: { url: "https://example.com/release.nzb", category: tv }
 ```
 
+## Setup
+
+You'll end up with a SABnzbd API key for verb calls.
+
+**Prerequisites:** a running SABnzbd instance, reachable from wherever
+conductor runs, and admin access to its UI.
+
+1. Open SABnzbd and go to **Config > General**.
+2. Scroll to the **Security** section.
+3. Copy the **API Key** — not the **NZB Key** next to it, which only permits
+   adding jobs to the queue — using **Generate new API Key** if none is set.
+
+```yaml
+connectors:
+  sab:
+    use: sabnzbd
+    base_url: http://sab:8080
+    api_key: ${SAB_API_KEY}
+```
+
 ## Connection
 
 | key | type | purpose |

@@ -30,6 +30,34 @@ In Uptime Kuma, add a **Webhook** notification pointed at
 `http://<listen>/uptimekuma` (or `?token=<secret>` appended to the URL if you
 cannot set a custom header) and attach it to the monitors you want to watch.
 
+## Setup
+
+Uptime Kuma has no API token — its dashboard configures notifications
+directly.
+
+**Prerequisites:** admin access to the Uptime Kuma instance.
+
+1. Go to **Settings → Notifications → Add New Notification**.
+2. Set **Notification Type** to **Webhook**, set **Post URL** to
+   `http://<host>:<port>/uptimekuma` (append `?token=<secret>` if you can't
+   set a custom header, otherwise add `X-Conductor-Token: <secret>` under
+   **Custom Headers**), and save.
+3. On each monitor to forward, open **Edit → Notifications** and enable the
+   new Webhook notification (or toggle **Default enabled** so new monitors
+   pick it up automatically).
+
+```yaml
+connectors:
+  myuptimekuma:
+    use: uptimekuma
+    listen: ":9096"
+    secret: ${UPTIMEKUMA_TOKEN}
+```
+
+No public URL? Set `smee: https://smee.io/<channel>` instead of (or
+alongside) `listen`. See **Events** below for the `monitor` payload and
+status mapping.
+
 ## Connection
 
 | key | type | purpose |

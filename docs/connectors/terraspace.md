@@ -28,6 +28,22 @@ triggers:
         options: { stack: vpc }
 ```
 
+## Setup
+
+Installs Ruby + the Terraspace gem, plus the Terraform/OpenTofu engine it drives underneath.
+
+**Prerequisites:** `terraspace` on PATH (override with `binary`), plus `terraform` or `tofu` on PATH (Terraspace shells to whichever the project's config selects).
+
+1. Install Ruby (2.7+) via your distro/`rbenv`/`asdf`, then `gem install terraspace` — see [Terraspace's install docs](https://terraspace.cloud/docs/install/).
+2. Install Terraform or OpenTofu the normal way (see the `terraform` connector's Setup).
+3. Configure provider credentials exactly as you would for bare Terraform — an AWS profile/SSO, `GOOGLE_APPLICATION_CREDENTIALS`, etc. — then pass them through `env`, since Terraspace's own environment is what reaches the underlying engine.
+4. Select the target environment with `ts_env` (sets `TS_ENV`); confirm with `terraspace info` run by hand from the project root (`dir`).
+
+```yaml
+connectors:
+  ts: { use: terraspace, dir: infra, ts_env: prod, env: { AWS_PROFILE: prod-deploy } }
+```
+
 ## Connection
 
 Every field is optional. Credentials are read from the process environment

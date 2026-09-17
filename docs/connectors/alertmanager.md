@@ -25,6 +25,42 @@ triggers:
     steps: [ ... ]
 ```
 
+## Setup
+
+Alertmanager has no webhook-registration UI — routing is entirely config-file
+driven.
+
+**Prerequisites:** write access to `alertmanager.yml` (or Grafana's unified
+alerting config) and the ability to reload/restart Alertmanager.
+
+1. Add a `webhook_configs` receiver pointing at the connector's endpoint:
+   ```yaml
+   receivers:
+     - name: conductor
+       webhook_configs:
+         - url: http://<host>:<port>/alertmanager
+           send_resolved: true
+   ```
+2. Wire the receiver into a `route:` (top-level or a matched sub-route) so
+   the alerts you care about reach it.
+3. Optional shared token: most versions support `authorization: {
+   credentials: <token> }` on the `webhook_config` (or front the listener
+   with a reverse proxy that injects `Authorization: Bearer <token>`) — set
+   the same value as `secret` below. Grafana unified alerting: add the
+   equivalent under **Alerting → Contact points → Webhook**.
+4. Reload Alertmanager (`SIGHUP` or `POST /-/reload`) to pick up the change.
+
+```yaml
+connectors:
+  am:
+    use: alertmanager
+    listen: ":9097"
+    secret: ${ALERTMANAGER_BEARER_TOKEN}
+```
+
+No public URL? Set `smee: https://smee.io/<channel>` instead of (or
+alongside) `listen`. See **Events** below for the `alert` payload.
+
 ## Connection
 
 | key | type | purpose |

@@ -30,6 +30,41 @@ steps:
     with: { id: "{{ steps.user_create.id }}", value: "{{ secrets.temp_password }}", temporary: true }
 ```
 
+## Setup
+
+Register a confidential OAuth2 client with service-account roles so this
+connector can authenticate to the Admin REST API on its own.
+
+**Prerequisites:** admin access to the Keycloak instance (or at least the
+realm you'll manage).
+
+1. In the Keycloak admin console, pick the realm the client should live in
+   (often the same realm you'll manage) → **Clients** → **Create client**.
+2. Set a **Client ID** (e.g. `conductor-admin`), leave type `OpenID Connect`,
+   click **Next**.
+3. Under **Capability config**, turn on **Client authentication** and
+   **Service accounts roles**; leave Standard/Direct access flows off unless
+   you need them separately. Save.
+4. Open the client's **Service accounts roles** tab → **Assign role** →
+   filter by client **realm-management** → grant only what this connector
+   instance needs (e.g. `manage-users`), not `realm-admin`.
+5. Open the client's **Credentials** tab and copy the **Client secret**.
+6. Note the realm the client authenticates against (`auth_realm`) versus the
+   realm it operates on (`realm`) — identical in most setups.
+
+**Configure:**
+
+```yaml
+connectors:
+  kc:
+    use: keycloak
+    base_url: https://keycloak.example.com
+    realm: corp
+    auth_realm: corp
+    client_id: ${KEYCLOAK_CLIENT_ID}
+    client_secret: ${KEYCLOAK_CLIENT_SECRET}
+```
+
 ## Connection
 
 | key | type | purpose |

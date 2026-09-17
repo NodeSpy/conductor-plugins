@@ -44,6 +44,47 @@ triggers:
           body: "Saw this from {{.from}}: {{.body}}"
 ```
 
+## Setup
+
+No vendor API — the credential is just your mail account's login (SMTP for
+sending, IMAP for the inbox source).
+
+**Prerequisites:** a mailbox on a provider that exposes SMTP and/or IMAP.
+
+1. If the account has 2-step verification (the default for Gmail and
+   Microsoft 365), the normal login password won't work over SMTP/IMAP —
+   generate an **app password** instead: Gmail →
+   https://myaccount.google.com/apppasswords → name it → **Create**;
+   Microsoft 365 → https://myaccount.microsoft.com → **Security info** →
+   **Add method** → **App password**. Copy the password shown once.
+2. Note the provider's SMTP/IMAP hostnames and ports (Gmail:
+   `smtp.gmail.com:587` STARTTLS, `imap.gmail.com:993`; Microsoft 365:
+   `smtp.office365.com:587` STARTTLS, `outlook.office365.com:993`).
+3. Store the app password as a secret, referenced via `${ENV}`.
+
+Configure:
+
+```yaml
+connectors:
+  mail:
+    use: email
+    smtp:
+      host: smtp.gmail.com
+      username: bot@example.com
+      password: ${SMTP_PASSWORD}
+      from: bot@example.com
+    imap:
+      host: imap.gmail.com
+      username: bot@example.com
+      password: ${SMTP_PASSWORD}
+      mailbox: INBOX
+    network: ["smtp.gmail.com:587", "imap.gmail.com:993"]
+```
+
+`smtp.password`/`imap.password` are usually the same app password. For the
+inbox source, see **Source: `message`** below for polling behavior, context
+fields, and filters.
+
 ## Connection
 
 | key | type | purpose |

@@ -21,6 +21,29 @@ connectors:
     network: ["opnsense.example.com:443"]   # narrow the declared egress to your instance
 ```
 
+## Setup
+
+Produces an OPNsense API key/secret pair the connector sends as HTTP Basic auth.
+
+**Prerequisites:** a running OPNsense instance and admin access to its web UI.
+
+1. Log into the OPNsense web UI and open **System > Access > Users**.
+2. Either create a dedicated automation user (recommended — grant only the
+   privileges the workflow needs) or edit an existing one.
+3. On the user's edit page, scroll to **API keys** and click **+** to
+   generate a new key.
+4. OPNsense downloads a `.txt` file containing the `key` and `secret` — save
+   both; the secret is not shown again.
+
+```yaml
+connectors:
+  fw:
+    use: opnsense
+    base_url: https://opnsense.example.com
+    api_key: ${OPNSENSE_API_KEY}
+    api_secret: ${OPNSENSE_API_SECRET}
+```
+
 ## Connection
 
 | key | type | purpose |

@@ -29,6 +29,41 @@ steps:
       text: "Your order is on its way."
 ```
 
+## Setup
+
+Credentials are a plain IAM access key pair — no OAuth, no console app registration.
+
+**Prerequisites:** an AWS account, and an IAM identity (user or role) with
+permission to create access keys.
+
+1. Sign in to the [AWS Console](https://console.aws.amazon.com/) → **IAM** →
+   **Users** → **Create user** (or pick an existing user).
+2. Attach a policy granting at least `ses:SendEmail` and
+   `ses:SendRawEmail` (add `ses:GetEmailIdentity`,
+   `ses:CreateEmailIdentity`, or the suppression-list actions if the workflow
+   uses those verbs too).
+3. Open the user → **Security credentials** tab → **Access keys** → **Create
+   access key** → choose **Third-party service** → **Create access key**.
+   Copy the access key ID and secret access key now — the secret is shown
+   only once.
+4. In the SES console (same region as `region` below), go to **Identities**
+   → **Create identity**, verify a sender email address or domain, and open
+   the verification link SES emails you. New accounts start in the **SES
+   sandbox**: you can only send to other verified identities until you
+   request production access (SES console → **Account dashboard** → **Request
+   production access**).
+
+Configure:
+
+```yaml
+connectors:
+  ses:
+    use: aws-ses
+    access_key_id: ${AWS_ACCESS_KEY_ID}
+    secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+    region: us-east-1
+```
+
 ## Connection
 
 | key | type | purpose |

@@ -28,6 +28,34 @@ triggers:
         options: { from: "+15551234567", to: "{{.from}}", body: "got it" }
 ```
 
+## Setup
+
+Grab your account credentials from the Twilio Console, and a phone number to
+send/receive from.
+
+**Prerequisites:** a Twilio account.
+
+1. Log in to the [Twilio Console](https://console.twilio.com/).
+2. On the Console dashboard (**Account Info** panel, or **Account** → **Account
+   info**), copy the **Account SID** and **Auth Token** — the latter is
+   `auth_token` above.
+3. Buy or use an existing number under **Phone Numbers** → **Manage** →
+   **Active numbers** (or provision a **Messaging Service** for higher
+   throughput/sender pools).
+4. For inbound SMS/voice, see [Source events](#source-events) below — point
+   the number's **Messaging** webhook (or the Messaging Service's **Incoming
+   messages** webhook) at `webhook.public_url` + `path`.
+
+**Configure:**
+
+```yaml
+connectors:
+  sms:
+    use: twilio
+    account_sid: ${TWILIO_ACCOUNT_SID}
+    auth_token: ${TWILIO_AUTH_TOKEN}
+```
+
 ## Connection
 
 | key | type | purpose |

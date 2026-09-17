@@ -19,6 +19,31 @@ connectors:
     network: ["abs.example.com:443"]   # narrow the declared egress to your instance
 ```
 
+## Setup
+
+You'll end up with an ABS API token and your server's base URL.
+
+**Prerequisites:** a running Audiobookshelf instance and an admin account on
+it.
+
+1. Log into the Audiobookshelf web UI as an admin.
+2. Go to **Settings → Users**.
+3. Click the user whose token you want (yourself, or a dedicated automation
+   user).
+4. On that user's account page, copy the **API Token** shown there.
+5. Note the server's root URL (no trailing `/api`) for `base_url`.
+
+**Configure:**
+
+```yaml
+connectors:
+  abs:
+    use: audiobookshelf
+    base_url: https://abs.example.com
+    token: ${ABS_TOKEN}
+    network: ["abs.example.com:443"]
+```
+
 ## Connection
 
 | key | type | purpose |

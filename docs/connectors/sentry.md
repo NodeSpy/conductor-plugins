@@ -25,6 +25,33 @@ triggers:
     steps: [ ... ]
 ```
 
+## Setup
+
+Sentry webhooks are configured per **Internal Integration**, not per-project.
+
+**Prerequisites:** an Organization Owner/Manager in the Sentry org.
+
+1. In Sentry, go to **Settings → Developer Settings → Internal Integrations**
+   (`/settings/<org>/developer-settings/`) and click **New Internal
+   Integration**.
+2. Give it a name, enable **Webhooks**, and set the **Webhook URL** to
+   `http://<host>:<port>/sentry` (the connector's `listen` + `path`).
+3. Save — Sentry generates a **Client Secret** once; copy it. It signs every
+   delivery via `Sentry-Hook-Signature`.
+4. Wire the integration's alert action into the Issue Alerts / Metric Alerts
+   you want forwarded, or install it org-wide.
+
+```yaml
+connectors:
+  mysentry:
+    use: sentry
+    listen: ":9099"
+    client_secret: ${SENTRY_CLIENT_SECRET}
+```
+
+No public URL yet? Set `smee: https://smee.io/<channel>` instead of (or
+alongside) `listen`. See **Events** below for the alert payloads this emits.
+
 ## Connection
 
 | key | type | purpose |

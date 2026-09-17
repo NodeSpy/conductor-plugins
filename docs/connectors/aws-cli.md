@@ -25,6 +25,25 @@ triggers:
         options: { subcommand: sync, src: ./dist, dst: "s3://my-bucket/release", delete: true }
 ```
 
+## Setup
+
+Installs and authenticates the AWS CLI itself — this connector never stores credentials.
+
+**Prerequisites:** the `aws` CLI (v2) on PATH; override the binary with `binary` if it isn't.
+
+1. Install the AWS CLI v2 — see the [official install guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) (`brew install awscli` on macOS, or the bundled installer on Linux).
+2. Authenticate with one of:
+   - `aws configure` — access key + secret, stored in `~/.aws/credentials`.
+   - `aws configure sso` — an SSO-backed profile (recommended for IAM Identity Center orgs).
+   - Ambient credentials — an EC2/ECS instance role, or `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` env vars — need no local config at all.
+3. Verify with `aws sts get-caller-identity --profile <name>`.
+4. Point the connector at the resulting profile/region:
+
+```yaml
+connectors:
+  a: { use: aws-cli, profile: prod-deploy, region: us-east-1 }
+```
+
 ## Connection
 
 Every field is optional. **Credentials are never carried by this connector** —

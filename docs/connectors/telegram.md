@@ -19,6 +19,34 @@ connectors:
     network: ["api.telegram.org:443"]   # narrow the declared egress
 ```
 
+## Setup
+
+Create a bot with Telegram's own bot, then grab its token.
+
+**Prerequisites:** a Telegram account.
+
+1. In Telegram, open a chat with [@BotFather](https://t.me/BotFather).
+2. Send `/newbot` and follow the prompts (display name, then a unique
+   `_bot`-suffixed username). BotFather replies with the bot token
+   (`123456:ABC-...`) — this is `token`.
+3. To get a `chat_id` for testing: send your new bot a message, then open
+   `https://api.telegram.org/bot<token>/getUpdates` in a browser and read
+   `message.chat.id` from the JSON, or message
+   [@userinfobot](https://t.me/userinfobot) to get your own user id.
+
+**Configure:**
+
+```yaml
+connectors:
+  tg:
+    use: telegram
+    token: ${TELEGRAM_BOT_TOKEN}
+```
+
+For the inbound source (receiving messages/callback queries), see
+[Source events](#source-events) below — it needs `webhook.secret` set and
+`set_webhook` called once to point Telegram at your listener.
+
 ## Connection
 
 | key | type | purpose |

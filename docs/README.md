@@ -204,7 +204,7 @@ binaries + `checksums.txt`.
 | `ntfy` | connector (verbs + source) | [connectors/ntfy.md](connectors/ntfy.md) |
 | `terraform` | connector (verbs) | [connectors/terraform.md](connectors/terraform.md) |
 | `terraspace` | connector (verbs) | [connectors/terraspace.md](connectors/terraspace.md) |
-| `github` | connector (verbs + source) | [connectors/github.md](connectors/github.md) |
+| `github` | connector (verbs + source) | [connectors/github.md](connectors/github.md) · [GitHub App setup](connectors/github-app-setup.md) |
 | `sentry` | connector (source) | [connectors/sentry.md](connectors/sentry.md) |
 | `pagerduty` | connector (source) | [connectors/pagerduty.md](connectors/pagerduty.md) |
 | `twilio` | connector (verbs + source) | [connectors/twilio.md](connectors/twilio.md) |

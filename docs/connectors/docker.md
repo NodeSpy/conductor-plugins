@@ -23,6 +23,23 @@ triggers:
         options: { image: myapp:latest, cmd: [make, deploy], remove: true }
 ```
 
+## Setup
+
+Installs the container engine CLI this connector shells out to — Docker or Podman.
+
+**Prerequisites:** `docker` (or `podman`) on PATH; override with `binary`, or select the engine with `engine: podman`.
+
+1. Install Docker Engine — see [Install Docker Engine](https://docs.docker.com/engine/install/) (or Docker Desktop on macOS/Windows) — or Podman via your distro's package manager (`dnf install podman` / `apt install podman`).
+2. For a **local** engine, no further auth is needed — the connector talks to the default socket.
+3. For a **remote** engine, set up its own transport first: an SSH key already trusted by the host (`ssh://user@host`), client certs per [Docker's TLS guide](https://docs.docker.com/engine/security/protect-access/) (`tcp://` + `cert_path`), or `docker context create prod --docker "host=ssh://user@host"`.
+4. For private registries, `docker login <registry>` on the host running conductor — this connector does not manage registry credentials itself.
+
+```yaml
+connectors:
+  prod: { use: docker, docker_host: "ssh://ci@build-box" }
+  pod:  { use: docker, engine: podman }
+```
+
 ## Connection
 
 Every field is optional. Credentials/targets are read per-invocation from the

@@ -36,6 +36,21 @@ triggers:
 2. **Reading a device needs raw access.** `sudo: true` prepends `sudo` to the
    command line rather than requiring the daemon itself to run as root.
 
+## Setup
+
+Installs `smartmontools`, which provides `smartctl`; reading most devices needs root.
+
+**Prerequisites:** `smartctl` on PATH (override with `binary`); `sudo` on PATH if using `sudo: true`.
+
+1. Install smartmontools: `apt install smartmontools` (Debian/Ubuntu), `brew install smartmontools` (macOS), or `yum install smartmontools` (RHEL/CentOS).
+2. Confirm device access: `sudo smartctl --scan` should list attached drives.
+3. If the daemon doesn't run as root, grant it passwordless access to just this binary via a sudoers rule (e.g. `conductor ALL=(root) NOPASSWD: /usr/sbin/smartctl`), then set `sudo: true`.
+
+```yaml
+connectors:
+  disks: { use: smart, sudo: true, devices: [/dev/sda, /dev/sdb] }
+```
+
 ## Connection
 
 Every field is optional.

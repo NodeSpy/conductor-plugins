@@ -23,6 +23,27 @@ triggers:
         options: { remote: origin, branch: main, ff_only: true }
 ```
 
+## Setup
+
+Installs `git` itself; authentication is whatever the remote's transport requires — an SSH key or an HTTPS token — configured on the connector, not the CLI's global config.
+
+**Prerequisites:** `git` on PATH (override with `binary`); `ssh` on PATH for SSH remotes.
+
+1. Install git — usually preinstalled on Linux/macOS; otherwise your distro's package or [git-scm.com](https://git-scm.com/downloads).
+2. For an **SSH** remote: generate a deploy key (`ssh-keygen -t ed25519 -f deploy_key -N ""`) and add the public half to the remote host (e.g. a GitHub deploy key); point the connector at the private half with `ssh_key_path` (or inline it via `ssh_key`).
+3. For an **HTTPS** remote: mint a personal access token (or a GitHub App installation token) from the provider, and pass it as `token` (with `username`, e.g. `x-access-token` for GitHub Apps).
+4. Set commit identity (`user_name`/`user_email`) if the connector will create commits.
+
+```yaml
+connectors:
+  repo:
+    use: git
+    ssh_key_path: /etc/conductor/deploy_key
+    strict_host_key_checking: accept-new
+    user_name: conductor-bot
+    user_email: bot@example.com
+```
+
 ## Connection
 
 Every field is optional. Credentials/targets are read per-invocation from the

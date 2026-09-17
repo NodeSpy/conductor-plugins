@@ -28,6 +28,32 @@ triggers:
           priority: 1
 ```
 
+## Setup
+
+You need two separate credentials: your account's user key, and an
+application's API token.
+
+**Prerequisites:** a Pushover account (and the Pushover app installed on a
+device, to receive notifications).
+
+1. Log in to the [Pushover dashboard](https://pushover.net/).
+2. Your **User Key** is shown right on the dashboard — copy it (this is
+   `user`).
+3. Scroll to the bottom of the dashboard and click **Create an
+   Application/API Token**. Name it (e.g. "conductor") and submit.
+4. Open the new application's detail page and copy its **API Token/Key**
+   (this is `token`).
+
+**Configure:**
+
+```yaml
+connectors:
+  notify:
+    use: pushover
+    token: ${PUSHOVER_APP_TOKEN}
+    user: ${PUSHOVER_USER_KEY}
+```
+
 ## Connection
 
 | key | type | purpose |

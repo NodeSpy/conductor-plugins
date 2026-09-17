@@ -22,6 +22,37 @@ connectors:
       secret: ${HEALTHCHECKS_WEBHOOK_TOKEN}
 ```
 
+## Setup
+
+Two independent surfaces: a management API key, and a webhook integration
+for check-state-change events.
+
+**Prerequisites:** access to a Healthchecks.io project (owner or member).
+
+1. **API key:** open the project, go to **Settings → API Access**, and
+   create (or copy) the **read-write** key for `api_key`.
+2. **Webhook:** on the project's **Integrations** page, **Add Integration →
+   Webhook**. Set the request URL to
+   `http://<host>:<port>/healthchecks?token=<secret>` (or add
+   `X-Conductor-Token: <secret>` as a custom header instead), and set the
+   POST body to the exact JSON template from **Source events** below.
+3. Save, then attach the new integration to each check you want to forward
+   (per-check **Integrations** tab, or enable it by default for new checks).
+
+```yaml
+connectors:
+  hc:
+    use: healthchecks
+    api_key: ${HEALTHCHECKS_API_KEY}
+    webhook:
+      listen: ":9097"
+      secret: ${HEALTHCHECKS_WEBHOOK_TOKEN}
+```
+
+Self-hosted? Also set `api_base`/`ping_base` (see **Connection** below). No
+public URL? Set `webhook.smee: https://smee.io/<channel>` instead of (or
+alongside) `webhook.listen`.
+
 ## Connection
 
 | key | type | purpose |

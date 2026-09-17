@@ -26,6 +26,31 @@ triggers:
         options: { filter: completed }
 ```
 
+## Setup
+
+You'll end up with WebUI credentials the connector uses for its cookie-based
+login.
+
+**Prerequisites:** a running qBittorrent instance, reachable from wherever
+conductor runs, and access to its desktop/GUI to enable the Web UI once.
+
+1. In the qBittorrent app, go to **Tools > Options > Web UI**.
+2. Check **Enable the Web User Interface (Remote control)**.
+3. Set/confirm the **IP address** and **Port** (default `8080`).
+4. Under **Authentication**, set a **Username** and **Password** — change
+   these from the `admin`/`adminadmin` default before exposing the port
+   anywhere reachable.
+5. Click **OK** to save; the WebUI is now reachable at `http://<host>:<port>`.
+
+```yaml
+connectors:
+  qbit:
+    use: qbittorrent
+    base_url: http://qbit:8080
+    username: admin
+    password: ${QBIT_PASSWORD}
+```
+
 ## Connection
 
 | key | type | purpose |

@@ -20,6 +20,40 @@ connectors:
     network: ["gitlab.com:443"]   # narrow the declared egress to your instance
 ```
 
+## Setup
+
+You'll end up with a GitLab access token conductor can use to call the REST
+v4 API, plus (optionally) a webhook secret for the source side.
+
+**Prerequisites:** a GitLab account with at least Developer access on the
+project(s) you want to act on (Maintainer if you need `create_branch` or MR
+merge on protected branches).
+
+1. Sign in, click your avatar (top right) → **Edit profile**.
+2. Left sidebar → **Access Tokens**.
+3. Click **Add new token**, give it a name and expiration date, and select
+   the `api` scope (full read/write REST access). Prefer a **project** or
+   **group** access token instead (Project/Group → Settings → Access Tokens)
+   when you only need one project's worth of access.
+4. Click **Create personal access token** and copy it immediately — GitLab
+   shows it only once.
+5. Self-managed instance: use its base URL instead of `https://gitlab.com`
+   and confirm the token was created on that instance.
+
+```yaml
+connectors:
+  gl:
+    use: gitlab
+    url: https://gitlab.com
+    token: ${GITLAB_TOKEN}
+```
+
+For the webhook source, add the URL under the project's **Settings → Webhooks**,
+paste the same value into **Secret token** as `webhook.secret` below, and
+select the trigger events (Push, Merge request, Pipeline, Note, Issues) you
+want delivered — see `## Source events` for the shared-secret verification
+model and `smee` fallback when there's no public listener URL.
+
 ## Connection
 
 | key | type | purpose |

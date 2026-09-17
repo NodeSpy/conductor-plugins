@@ -23,6 +23,21 @@ triggers:
         options: { input: raw.mp4, output: clip.mp4, start: "00:00:10", duration: "30" }
 ```
 
+## Setup
+
+Installs `ffmpeg` and `ffprobe`; there is no auth — purely local media processing.
+
+**Prerequisites:** `ffmpeg` and `ffprobe` on PATH (override with `binary` / `ffprobe_binary`).
+
+1. Install the `ffmpeg` package, which bundles `ffprobe`: `apt install ffmpeg` (Debian/Ubuntu), `brew install ffmpeg` (macOS), or a static build from [ffmpeg.org/download](https://ffmpeg.org/download.html).
+2. Confirm both binaries resolve: `ffmpeg -version && ffprobe -version`.
+3. If inputs/outputs are relative paths, set `dir` to the working directory they should resolve against.
+
+```yaml
+connectors:
+  f: { use: ffmpeg, dir: /var/media }
+```
+
 ## Connection
 
 Every field is optional. Credentials/targets are read per-invocation from the

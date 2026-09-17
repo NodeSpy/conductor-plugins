@@ -28,6 +28,32 @@ triggers:
         options: { summary: "{{.title}}" }
 ```
 
+## Setup
+
+Produces a Grafana service account token the connector sends as a Bearer token.
+
+**Prerequisites:** a running Grafana instance and admin access to it.
+
+1. Log into Grafana and open **Administration > Users and access > Service
+   accounts**.
+2. Click **Add service account**, give it a name, and set its role (e.g.
+   `Viewer` or `Editor`, scoped to what the workflow needs).
+3. Open the new service account and click **Add service account token**.
+4. Give the token a name (and optional expiry), click **Generate token**,
+   and copy it — it's shown once. (Legacy **API keys** still work but are
+   deprecated in favor of service account tokens.)
+
+```yaml
+connectors:
+  monitoring:
+    use: grafana
+    base_url: https://grafana.example.com
+    api_key: ${GRAFANA_API_KEY}
+```
+
+See **Source — the `alert` event** below for the poll source that watches
+the Grafana-managed Alertmanager.
+
 ## Connection
 
 | key | type | purpose |

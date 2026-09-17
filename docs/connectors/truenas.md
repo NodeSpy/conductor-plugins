@@ -21,6 +21,37 @@ connectors:
     insecure_skip_verify: true   # common with a self-signed SCALE web UI cert
     poll_interval: 1m
     network: ["truenas.example.com:443"]   # narrow the declared egress to your instance
+```
+
+## Setup
+
+You'll end up with a TrueNAS SCALE API key and your instance's base URL.
+
+**Prerequisites:** a running TrueNAS SCALE instance and admin access to it.
+
+1. Log into the TrueNAS SCALE web UI.
+2. Click the account icon in the top-right toolbar and choose **My API
+   Keys** (or go to **Credentials → Users**, select your user, and click
+   **View API Keys**).
+3. Click **Add**, give the key a descriptive name, and click **Add** again
+   to create it.
+4. Copy the key from the confirmation dialog — it is shown only once.
+5. Note your instance's base URL (e.g. `https://truenas.example.com`).
+
+**Configure:**
+
+```yaml
+connectors:
+  nas:
+    use: truenas
+    base_url: https://truenas.example.com
+    api_key: ${TRUENAS_API_KEY}
+    network: ["truenas.example.com:443"]
+```
+
+For the `alert` poll source, see **Source — the `alert` event** below.
+
+```yaml
 triggers:
   - on: nas.alert
     filters: { levels: [WARNING, CRITICAL] }
