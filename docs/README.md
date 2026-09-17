@@ -150,6 +150,8 @@ binaries + `checksums.txt`.
 | `plex` | connector (verbs + source) | [connectors/plex.md](connectors/plex.md) |
 | `sonarr` | connector (verbs + source) | [connectors/sonarr.md](connectors/sonarr.md) |
 | `radarr` | connector (verbs + source) | [connectors/radarr.md](connectors/radarr.md) |
+| `lidarr` | connector (verbs + source) | [connectors/lidarr.md](connectors/lidarr.md) |
+| `prowlarr` | connector (verbs + source) | [connectors/prowlarr.md](connectors/prowlarr.md) |
 | `audiobookshelf` | connector (verbs) | [connectors/audiobookshelf.md](connectors/audiobookshelf.md) |
 | `datadog` | connector (verbs + source) | [connectors/datadog.md](connectors/datadog.md) |
 | `jira` | connector (verbs + source) | [connectors/jira.md](connectors/jira.md) |
@@ -172,6 +174,7 @@ binaries + `checksums.txt`.
 | `pushover` | connector (verbs) | [connectors/pushover.md](connectors/pushover.md) |
 | `notifiarr` | connector (verbs) | [connectors/notifiarr.md](connectors/notifiarr.md) |
 | `zapier` | connector (verbs + source) | [connectors/zapier.md](connectors/zapier.md) |
+| `xero` | connector (verbs) | [connectors/xero.md](connectors/xero.md) |
 | `helm` | connector (verbs) | [connectors/helm.md](connectors/helm.md) |
 | `kubernetes` | connector (verbs) | [connectors/kubernetes.md](connectors/kubernetes.md) |
 | `notion` | connector (verbs) | [connectors/notion.md](connectors/notion.md) |
