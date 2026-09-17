@@ -1,0 +1,94 @@
+# `google-calendar` connector
+
+Google Calendar as a connector: the user's calendar list, events (list, get,
+create, update, delete), quick-add natural-language events, free/busy
+queries, and a raw `api` escape hatch, over the Calendar API v3
+(`https://www.googleapis.com/calendar/v3`). Built on the standard library's
+`net/http` only.
+
+- **Kind:** connector (verbs only — no source)
+- **Source:** [`connectors/google-calendar/main.go`](../../connectors/google-calendar/main.go)
+- **Provides:** `google-calendar`
+- **Capabilities:** egress `["www.googleapis.com:443"]`
+
+## Managed OAuth2 — this plugin never talks to Google's OAuth2 endpoints
+
+`google-calendar` authenticates via conductor's **managed OAuth2**, not its
+own token exchange. `Describe().Auth` bakes in Google's OAuth2 endpoints; the
+daemon runs the actual authorization-code flow against
+`accounts.google.com` / `oauth2.googleapis.com` and injects a fresh,
+auto-rotated bearer token into every verb call. The plugin's only egress is
+`www.googleapis.com` — it never sees a client secret and never makes a
+token-exchange request itself.
+
+```yaml
+connectors:
+  google-calendar:
+    use: google-calendar
+    auth:
+      grant: authorization_code
+      client_id: ${GOOGLE_CLIENT_ID}
+      client_secret: ${GOOGLE_CLIENT_SECRET}
+      token_vault: google-calendar   # where the daemon persists the rotated token
+```
+
+After the connector is configured, run the one-time browser login:
+
+```sh
+conductor connector auth google-calendar
+```
+
+If no token has been configured/logged in yet, every verb fails fast with a
+`CodeInvalidParams` error pointing back at this command, rather than sending
+an unauthenticated request.
+
+The connector's auth spec requests `access_type=offline` and
+`prompt=consent`: without `access_type=offline` Google never returns a
+refresh token, so the daemon would be unable to keep the connection alive
+past the first access token's expiry.
+
+## Connection
+
+| key | type | purpose |
+|-----|------|---------|
+| `calendar_id` | string | Default calendar for every verb. Optional — defaults to `"primary"`. A verb's own `calendar_id` option overrides it for that call. |
+| `api_base` | string | Overrides `https://www.googleapis.com/calendar/v3` (tests only). |
+
+The `auth:` block (grant, client credentials, token vault) is daemon-managed
+configuration, not a connection field this plugin ever sees — it is not part
+of `Describe().Connection`.
+
+## Verbs
+
+Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
+option schema. Every verb's outputs include `status_code`; `calendars` and
+`events` hoist Google's `items` array into `items`; the rest return `result`.
+
+| verb | endpoint | outputs |
+|------|----------|---------|
+| `calendars` | `GET /users/me/calendarList` | `items` |
+| `events` | `GET /calendars/{calendar_id}/events` (`timeMin`, `timeMax`, `q`, `maxResults`, `singleEvents`, `orderBy`) | `items` |
+| `event_get` | `GET /calendars/{calendar_id}/events/{event_id}` | `result` |
+| `event_create` | `POST /calendars/{calendar_id}/events` — body from an `event` map option, or convenience `summary`/`start`/`end`/`description`/`attendees` fields | `result` |
+| `event_update` | `PATCH /calendars/{calendar_id}/events/{event_id}` — body is the `event` map option (required) | `result` |
+| `event_delete` | `DELETE /calendars/{calendar_id}/events/{event_id}` | `status_code` only |
+| `quick_add` | `POST /calendars/{calendar_id}/events/quickAdd?text=...` — natural-language event text | `result` |
+| `freebusy` | `POST /freeBusy` — body `{timeMin, timeMax, items:[{id}]}`; `items` defaults to the connection's `calendar_id` if omitted | `result` |
+| `api` | raw escape hatch: `method` + `path` (under `/calendar/v3`) + `query` + `body`, for anything without a first-class verb | `result` (object response) or `items` (array response) |
+
+Every verb except `calendars` accepts a per-call `calendar_id` option that
+overrides the connection's default. `event_create`'s convenience `start`/`end`
+options accept either an RFC3339 dateTime string (shorthand for
+`{"dateTime": "..."}`) or a full `{dateTime|date, timeZone}` map, matching
+Google's Event resource shape; `attendees` accepts a plain list of email
+addresses. Every request sends `Authorization: Bearer <injected token>` and
+`Accept: application/json`. A non-2xx response is returned as an error
+carrying the status code and response body — nothing is swallowed.
+
+## Capabilities & security
+
+Declares egress `www.googleapis.com:443` only — the daemon, not this plugin,
+talks to Google's OAuth2 endpoints for the token exchange. Scope the `auth:`
+block's requested scopes to the least privilege the workflow needs; the
+default scope, `https://www.googleapis.com/auth/calendar`, grants full
+read/write access to the authenticated user's calendars.

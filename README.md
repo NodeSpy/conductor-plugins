@@ -26,6 +26,7 @@ github.com/NodeSpy/conductor-plugins/connectors/adguard
 github.com/NodeSpy/conductor-plugins/connectors/alertmanager
 github.com/NodeSpy/conductor-plugins/connectors/audiobookshelf
 github.com/NodeSpy/conductor-plugins/connectors/aws-cli
+github.com/NodeSpy/conductor-plugins/connectors/aws-ses
 github.com/NodeSpy/conductor-plugins/connectors/aws-sns
 github.com/NodeSpy/conductor-plugins/connectors/cloudflare
 github.com/NodeSpy/conductor-plugins/connectors/datadog
@@ -36,6 +37,10 @@ github.com/NodeSpy/conductor-plugins/connectors/git
 github.com/NodeSpy/conductor-plugins/connectors/gitea
 github.com/NodeSpy/conductor-plugins/connectors/github
 github.com/NodeSpy/conductor-plugins/connectors/gitlab
+github.com/NodeSpy/conductor-plugins/connectors/gmail
+github.com/NodeSpy/conductor-plugins/connectors/google-calendar
+github.com/NodeSpy/conductor-plugins/connectors/google-drive
+github.com/NodeSpy/conductor-plugins/connectors/google-sheets
 github.com/NodeSpy/conductor-plugins/connectors/grafana
 github.com/NodeSpy/conductor-plugins/connectors/healthchecks
 github.com/NodeSpy/conductor-plugins/connectors/helm
@@ -72,6 +77,7 @@ github.com/NodeSpy/conductor-plugins/connectors/terraspace
 github.com/NodeSpy/conductor-plugins/connectors/truenas
 github.com/NodeSpy/conductor-plugins/connectors/twilio
 github.com/NodeSpy/conductor-plugins/connectors/unifi
+github.com/NodeSpy/conductor-plugins/connectors/unifi-protect
 github.com/NodeSpy/conductor-plugins/connectors/uptimekuma
 github.com/NodeSpy/conductor-plugins/connectors/uptimerobot
 github.com/NodeSpy/conductor-plugins/connectors/wiz
@@ -111,6 +117,7 @@ from the public module proxy. No `replace` directive.
 | [`paseo`](docs/runtimes/paseo.md) | runtime | `paseo` | **Yes — still bundled.** This is additive, opt-in. | The paseo-daemon operations `internal/dispatch.Backend` needs, by shelling to the `paseo` CLI. Driven by conductor's `rpcBackend`. |
 | [`alertmanager`](docs/connectors/alertmanager.md) | connector (source) | `alertmanager` | **No — never in core.** Add it here. | Prometheus Alertmanager **and** Grafana unified-alerting webhooks → one `alert` event per alert (status/severity/labels/annotations). Optional bearer-token auth, fail-closed. |
 | [`aws-sns`](docs/connectors/aws-sns.md) | connector (source) | `aws-sns` | **No — never in core.** Add it here. | AWS SNS HTTP(S) subscriber: **auto-confirms** the subscription (gated on signature verification), verifies SNS message signatures (v1/v2, `SigningCertURL` host-allowlisted), emits a `notification` event per message. Optional **smee.io** SSE transport for endpoints with no public URL. |
+| [`aws-ses`](docs/connectors/aws-ses.md) | connector (verbs) | `aws-ses` | **No — never in core.** Add it here. | AWS SES v2 email: `send_email`, `send_templated_email`, identities, send quota, suppression list + generic `api`. Pure-Go **SigV4** signing (no `aws` CLI dependency). |
 | [`aws-cli`](docs/connectors/aws-cli.md) | connector (verbs) | `aws-cli` | **No — never in core.** Add it here. | AWS via the `aws` CLI: a generic `run` (any service/operation, params → flags, JSON parsed into `result`), plus `s3` (cp/sync/mv/rm/ls/mb/rb), `lambda_invoke`, `sts_identity`, and a `cli` escape hatch. `profile`/`region` select the target; credentials come from the ambient AWS environment. |
 | [`docker`](docs/connectors/docker.md) | connector (verbs) | `docker` | **No — never in core.** Add it here. | The container-engine lifecycle as verbs (`run`, `exec`, `build`, `pull`, `push`, `ps`, `images`, `logs`, `stop`, `start`, `rm`, `inspect`, `compose`, `buildx`, `bake`, `cli`) by shelling to the `docker` (or `podman`) CLI. Local by default; `docker_host: ssh://…` / `context:` reach a remote engine. `buildx`/`bake` are docker-only. |
 | [`libation`](docs/connectors/libation.md) | connector (verbs) | `libation` | **No — never in core.** Add it here. | Libation ([getlibation.com](https://getlibation.com)): download DRM-free M4B copies of an Audible library by shelling to `LibationCli` — `scan`, `export` (manifest, optionally parsed), `liberate` (with run limits), `set_status` (seeding), `search`, `list_accounts`, `cli`. The download half of an Audible→Audiobookshelf pipeline; compose with the `audiobookshelf` connector for the import half. 60m default timeout. |
@@ -132,6 +139,7 @@ from the public module proxy. No `replace` directive.
 | [`opnsense`](docs/connectors/opnsense.md) | connector (verbs) | `opnsense` | **No — never in core.** Add it here. | OPNsense firewall/router: firmware, services (restart/start/stop), firewall aliases (+ apply), interfaces, DHCP leases, gateway status, unbound DNS, reboot + generic `api`. HTTP Basic (key+secret); `insecure_skip_verify`. |
 | [`tailscale`](docs/connectors/tailscale.md) | connector (verbs) | `tailscale` | **No — never in core.** Add it here. | Tailscale mesh VPN: devices (authorize/tags/routes/delete), auth keys, ACL get/set, DNS + generic `api`. Uses **managed OAuth2** (client-credentials) or a plain `api_key`. |
 | [`unifi`](docs/connectors/unifi.md) | connector (verbs) | `unifi` | **No — never in core.** Add it here. | UniFi Network controller: sites, devices (+ restart), clients (block/unblock/reconnect), WLANs, networks, port-forwards, firewall rules, health, alarms, events + generic `api`. Cookie login (UniFi OS or legacy). |
+| [`unifi-protect`](docs/connectors/unifi-protect.md) | connector (verbs) | `unifi-protect` | **No — never in core.** Add it here. | UniFi Protect NVR/cameras (Integration API): cameras, snapshot (JPEG→base64), PTZ, NVR, viewers, lights, sensors, chimes + generic `api`. `X-API-KEY`. |
 | [`pihole`](docs/connectors/pihole.md) | connector (verbs) | `pihole` | **No — never in core.** Add it here. | Pi-hole v6: summary/history/queries/top stats, blocking enable/disable, allow/deny domains, lists, groups, clients, gravity update + generic `api`. Password → session (SID). |
 | [`adguard`](docs/connectors/adguard.md) | connector (verbs) | `adguard` | **No — never in core.** Add it here. | AdGuard Home: status/stats/query-log, protection toggle, filter lists, rewrites, clients, DNS config, safebrowsing/parental + generic `api`. HTTP Basic. |
 | [`portainer`](docs/connectors/portainer.md) | connector (verbs) | `portainer` | **No — never in core.** Add it here. | Portainer: endpoints, stacks (start/stop/delete), containers (actions/logs) + images via the Docker proxy, status + generic `api`. `X-API-Key`. |
@@ -153,6 +161,10 @@ from the public module proxy. No `replace` directive.
 | [`notifiarr`](docs/connectors/notifiarr.md) | connector (verbs) | `notifiarr` | **No — never in core.** Add it here. | Notifiarr passthrough Discord notifications (title/message/color/channel/ping/fields) + generic `api`. API key. |
 | [`zapier`](docs/connectors/zapier.md) | connector (verbs + source) | `zapier` | **No — never in core.** Add it here. | Zapier: `send` to a Catch-Hook URL (host-validated to hooks.zapier.com) + an inbound webhook source (token-verified, fail-closed). |
 | [`xero`](docs/connectors/xero.md) | connector (verbs) | `xero` | **No — never in core.** Add it here. | Xero accounting: invoices, contacts, accounts, payments, bank transactions, items, organisation, connections + raw `api`. Uses conductor's **managed OAuth2** — add an `auth:` block and run `conductor connector auth xero`; conductor injects the token, so plugin egress is `api.xero.com` only. |
+| [`google-calendar`](docs/connectors/google-calendar.md) | connector (verbs) | `google-calendar` | **No — never in core.** Add it here. | Google Calendar v3: calendars, events (list/get/create/update/delete), quick_add, freebusy + `api`. **Managed OAuth2** (browser login; `conductor connector auth google-calendar`). |
+| [`gmail`](docs/connectors/gmail.md) | connector (verbs) | `gmail` | **No — never in core.** Add it here. | Gmail v1: messages (list/get/send), labels, drafts, threads, modify/trash + `api`. **Managed OAuth2**; `send` builds the MIME itself. |
+| [`google-drive`](docs/connectors/google-drive.md) | connector (verbs) | `google-drive` | **No — never in core.** Add it here. | Google Drive v3: files (list/get/upload/download/delete), folders, permissions + `api`. **Managed OAuth2**; multipart/related upload. |
+| [`google-sheets`](docs/connectors/google-sheets.md) | connector (verbs) | `google-sheets` | **No — never in core.** Add it here. | Google Sheets v4: values (get/update/append/clear/batch), batch_update, create + `api`. **Managed OAuth2**. |
 | [`ntfy`](docs/connectors/ntfy.md) | connector (verbs + source) | `ntfy` | **No — never in core.** Add it here. | ntfy pub/sub: `publish` notifications (title/priority/tags/click/attach) + a topic-subscribe source (JSON stream) emitting `message` events. ntfy.sh or self-hosted. |
 | [`terraspace`](docs/connectors/terraspace.md) | connector (verbs) | `terraspace` | **No — never in core.** Add it here. | Terraspace (Terraform/OpenTofu framework) as verbs: `up`/`down`/`plan` per stack, `all_up`/`all_down`, `output`, `import`, `logs`, `list`, `new`, … via the `terraspace` CLI. `TS_ENV` selects the environment. |
 | [`twilio`](docs/connectors/twilio.md) | connector (verbs + source) | `twilio` | **No — never in core.** Add it here. | Twilio: `send_sms`/`send_whatsapp`/`make_call` + an inbound SMS/voice webhook source (`X-Twilio-Signature` HMAC-verified). Basic auth (account SID + token). |

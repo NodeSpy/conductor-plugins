@@ -142,6 +142,7 @@ binaries + `checksums.txt`.
 | `alertmanager` | connector (source) | [connectors/alertmanager.md](connectors/alertmanager.md) |
 | `aws-cli` | connector (verbs) | [connectors/aws-cli.md](connectors/aws-cli.md) |
 | `aws-sns` | connector (source) | [connectors/aws-sns.md](connectors/aws-sns.md) |
+| `aws-ses` | connector (verbs) | [connectors/aws-ses.md](connectors/aws-ses.md) |
 | `cloudflare` | connector (verbs) | [connectors/cloudflare.md](connectors/cloudflare.md) |
 | `docker` | connector (verbs) | [connectors/docker.md](connectors/docker.md) |
 | `smart` | connector (verbs + source) | [connectors/smart.md](connectors/smart.md) |
@@ -163,6 +164,7 @@ binaries + `checksums.txt`.
 | `opnsense` | connector (verbs) | [connectors/opnsense.md](connectors/opnsense.md) |
 | `tailscale` | connector (verbs) | [connectors/tailscale.md](connectors/tailscale.md) |
 | `unifi` | connector (verbs) | [connectors/unifi.md](connectors/unifi.md) |
+| `unifi-protect` | connector (verbs) | [connectors/unifi-protect.md](connectors/unifi-protect.md) |
 | `pihole` | connector (verbs) | [connectors/pihole.md](connectors/pihole.md) |
 | `adguard` | connector (verbs) | [connectors/adguard.md](connectors/adguard.md) |
 | `portainer` | connector (verbs) | [connectors/portainer.md](connectors/portainer.md) |
@@ -184,6 +186,10 @@ binaries + `checksums.txt`.
 | `notifiarr` | connector (verbs) | [connectors/notifiarr.md](connectors/notifiarr.md) |
 | `zapier` | connector (verbs + source) | [connectors/zapier.md](connectors/zapier.md) |
 | `xero` | connector (verbs) | [connectors/xero.md](connectors/xero.md) |
+| `google-calendar` | connector (verbs) | [connectors/google-calendar.md](connectors/google-calendar.md) |
+| `gmail` | connector (verbs) | [connectors/gmail.md](connectors/gmail.md) |
+| `google-drive` | connector (verbs) | [connectors/google-drive.md](connectors/google-drive.md) |
+| `google-sheets` | connector (verbs) | [connectors/google-sheets.md](connectors/google-sheets.md) |
 | `helm` | connector (verbs) | [connectors/helm.md](connectors/helm.md) |
 | `kubernetes` | connector (verbs) | [connectors/kubernetes.md](connectors/kubernetes.md) |
 | `notion` | connector (verbs) | [connectors/notion.md](connectors/notion.md) |
