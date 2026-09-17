@@ -19,6 +19,34 @@ connectors:
     subscribe: [alerts, ci]
 ```
 
+## Setup
+
+Topics on ntfy.sh are public and unauthenticated by default; an access token
+is only needed for a reserved/private topic or a self-hosted server with
+auth enabled.
+
+**Prerequisites:** an ntfy.sh account (or a self-hosted ntfy server), if you
+need authenticated publish/subscribe.
+
+1. Sign up / log in at [ntfy.sh/app](https://ntfy.sh/app) (or your
+   self-hosted server's web app).
+2. Go to **Account** in the side menu, scroll to **Access tokens**, and click
+   **Create access token**. Give it a label and expiration, then create it.
+3. Copy the token — it's shown only once.
+
+**Configure:**
+
+```yaml
+connectors:
+  notify:
+    use: ntfy
+    token: ${NTFY_TOKEN}
+    subscribe: [alerts, ci]
+```
+
+For the inbound source (subscribing to topics), see [Source: `message`](#source-message)
+below.
+
 ## Connection
 
 | key | type | purpose |

@@ -38,6 +38,41 @@ forwards each delivery to this connector over Server-Sent Events, so
 `listen`/a public URL is not required. `listen` and `smee` may both be set at
 once — the connector runs whichever transports are configured.
 
+## Setup
+
+No API key — this connector authenticates inbound deliveries by verifying
+the SNS message signature, not by presenting a credential of its own.
+
+**Prerequisites:** an AWS account and an SNS topic to subscribe to (existing,
+or create one).
+
+1. In the [AWS Console](https://console.aws.amazon.com/) → **SNS** →
+   **Topics**, either pick an existing topic or **Create topic** (Standard
+   type).
+2. Run the connector first so you have an endpoint to subscribe: either a
+   public `listen` address reachable from AWS, or a `smee` channel URL from
+   https://smee.io/new.
+3. In the topic, go to **Subscriptions** → **Create subscription** → set
+   **Protocol** to `HTTPS` (or `HTTP` for a plaintext `listen` endpoint) →
+   **Endpoint** = the connector's public URL (e.g.
+   `https://your-host:9097/sns`) or the smee.io channel URL.
+4. Click **Create subscription**. AWS immediately POSTs a
+   `SubscriptionConfirmation` message; with `auto_confirm` (default `true`)
+   the connector fetches `SubscribeURL` itself and the subscription flips to
+   **Confirmed** with no manual step.
+
+Configure:
+
+```yaml
+connectors:
+  orders:
+    use: aws-sns
+    listen: ":9097"
+```
+
+Register the trigger against the `notification` event — see **Events** below
+for the event shape, context fields, and filters.
+
 ## Connection
 
 | key | type | purpose |

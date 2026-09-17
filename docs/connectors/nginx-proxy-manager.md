@@ -32,6 +32,31 @@ steps:
         forward_port: 8080
 ```
 
+## Setup
+
+Produces the NPM admin login the connector exchanges for a JWT.
+
+**Prerequisites:** a running Nginx Proxy Manager instance and admin access to it.
+
+1. Open the NPM admin UI (default `http://<host>:81`).
+2. On first run, log in with the default admin (`admin@example.com` /
+   `changeme`) — NPM immediately prompts you to set a real name/email/
+   password; do that rather than leaving the default in place.
+3. To use a dedicated automation account instead, open **Users** (top-right
+   avatar menu) > **Add User**, give it Admin permissions, and set its
+   email/password there.
+4. The connector exchanges this email/password for a JWT via
+   `POST /api/tokens` — there is no separate static API key.
+
+```yaml
+connectors:
+  npm:
+    use: nginx-proxy-manager
+    base_url: http://npm.example.com:81
+    email: admin@example.com
+    password: ${NPM_PASSWORD}
+```
+
 ## Connection
 
 | key | type | purpose |

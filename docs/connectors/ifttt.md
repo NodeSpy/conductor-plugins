@@ -28,6 +28,31 @@ triggers:
         options: { event: notify_me, value1: "front door opened" }
 ```
 
+## Setup
+
+**Prerequisites:** an IFTTT account.
+
+1. Log in to IFTTT and open the [Webhooks (Maker) service
+   page](https://ifttt.com/maker_webhooks).
+2. Click **Documentation** (top right) — your personal key is shown in the
+   URL displayed there (`https://maker.ifttt.com/use/<key>`); copy `<key>`.
+3. Create an applet with a trigger of your choice and an action of **Maker
+   Webhooks** → **Make a web request**, to have IFTTT call back into
+   conductor (needed for the source below).
+
+**Configure:**
+
+```yaml
+connectors:
+  ifttt:
+    use: ifttt
+    key: ${IFTTT_MAKER_KEY}
+```
+
+For the inbound source (an applet posting back to conductor), see
+[Source](#source) below — it needs `webhook.secret` set and the applet's
+request configured to send that token back.
+
 ## Connection
 
 | key | type | purpose |

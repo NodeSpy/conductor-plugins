@@ -23,6 +23,26 @@ triggers:
         options: { subcommand: restart, resource: deployment/web }
 ```
 
+## Setup
+
+Installs `kubectl` and points it at a cluster via kubeconfig.
+
+**Prerequisites:** `kubectl` on PATH; override with `binary`.
+
+1. Install kubectl — see [Install Tools](https://kubernetes.io/docs/tasks/tools/) (`brew install kubectl`, or your distro's package).
+2. Obtain cluster credentials from wherever the cluster lives:
+   - EKS: `aws eks update-kubeconfig --name <cluster> --region <region>` (needs the `aws-cli` connector's own auth first).
+   - GKE: `gcloud container clusters get-credentials <cluster> --zone <zone>`.
+   - AKS: `az aks get-credentials --resource-group <rg> --name <cluster>`.
+   - Self-managed: copy the cluster's kubeconfig file to the host running conductor.
+3. Confirm access with `kubectl --context <ctx> get nodes`.
+4. Point the connector at that kubeconfig/context and a default namespace:
+
+```yaml
+connectors:
+  k: { use: kubernetes, kubeconfig: /etc/kube/prod.yaml, context: prod-cluster, namespace: web }
+```
+
 ## Connection
 
 Every field is optional. Credentials/targets are read per-invocation from the

@@ -26,6 +26,37 @@ connectors:
       secret: ${JIRA_WEBHOOK_SECRET}
 ```
 
+## Setup
+
+You'll end up with an Atlassian API token conductor uses alongside your
+account email for HTTP Basic auth against the Jira Cloud REST API.
+
+**Prerequisites:** an Atlassian account with access to the Jira Cloud site
+(and permission to act on the projects you target — a bot/service account
+is recommended over a personal one).
+
+1. Sign in at [id.atlassian.com](https://id.atlassian.com) with the account
+   that should own the token.
+2. Left sidebar → **Security** → **Create and manage API tokens**.
+3. Click **Create API token**, give it a label, and (optionally) set an
+   expiry.
+4. Copy the token immediately — Atlassian shows it only once.
+
+```yaml
+connectors:
+  jira:
+    use: jira
+    base_url: https://acme.atlassian.net
+    email: bot@acme.com
+    api_token: ${JIRA_API_TOKEN}
+```
+
+For the webhook source, register the webhook under Jira's **Settings →
+System → WebHooks** (site admin), pointing at your listener URL with the
+shared secret templated into the URL's `secret` query parameter (or sent via
+`X-Conductor-Token`) — see `## Source events` above for the exact
+verification model, and `webhook.smee` when there's no public listener URL.
+
 ## Connection
 
 | key | type | purpose |

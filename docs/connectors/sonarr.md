@@ -35,6 +35,41 @@ triggers:
         options: { series_id: "{{.tvdb_id}}" }
 ```
 
+## Setup
+
+You'll end up with a Sonarr API key for verb calls, and optionally a Webhook
+connection pointed at conductor for the source.
+
+**Prerequisites:** a running Sonarr instance, reachable from wherever
+conductor runs, and admin access to its UI.
+
+1. Open Sonarr and go to **Settings > General**, expand **Security**.
+2. Copy the **API Key** field (Sonarr generates one automatically; use
+   **Reset API Key** if you need a fresh one).
+3. For the source: go to **Settings > Connect**, click the **+** button, and
+   choose **Webhook** from the connection list.
+4. Set **URL** to `http://<conductor-host>:9096/sonarr` (matching
+   `webhook.listen`/`path` below), **Method** `POST`, and enable the
+   notification triggers you want (On Grab, On Import, On Series Add, ...).
+5. Give it a shared token: add an `X-Conductor-Token` header (or append
+   `?token=...` to the URL) matching `webhook.secret` — see **Source: the
+   Webhook connection** below for how it's verified.
+
+```yaml
+connectors:
+  sr:
+    use: sonarr
+    base_url: http://sonarr:8989
+    api_key: ${SONARR_API_KEY}
+    webhook:
+      listen: ":9096"
+      secret: ${SONARR_WEBHOOK_TOKEN}
+```
+
+No public URL for conductor to receive on? Point the Webhook connection at a
+smee.io channel instead and set `webhook.smee` in place of `listen` — see
+**Source: the Webhook connection** below.
+
 ## Connection
 
 | key | type | purpose |

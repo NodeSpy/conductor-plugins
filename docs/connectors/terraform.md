@@ -27,6 +27,24 @@ triggers:
         options: { plan_file: plan.tfplan }
 ```
 
+## Setup
+
+Installs the selected engine binary (Terraform, OpenTofu, or Terragrunt); provider credentials are the engine's own, supplied via environment.
+
+**Prerequisites:** the binary matching `engine` (`terraform`, `tofu`, or `terragrunt`) on PATH; override with `binary`.
+
+1. Install the engine:
+   - Terraform — [Install Terraform](https://developer.hashicorp.com/terraform/install).
+   - OpenTofu — [Install OpenTofu](https://opentofu.org/docs/intro/install/).
+   - Terragrunt — [Install Terragrunt](https://terragrunt.gruntwork.io/docs/getting-started/install/) (wraps Terraform/OpenTofu; install one of those too).
+2. Configure the **provider's** credentials the same way you would running the CLI by hand — e.g. an AWS profile/SSO (see the `aws-cli` connector), a `GOOGLE_APPLICATION_CREDENTIALS` file, or an `ARM_*` service principal — then pass them through `env`.
+3. Run `terraform init` (or the equivalent) once by hand against `chdir` to confirm backend + provider auth resolve.
+
+```yaml
+connectors:
+  tf: { use: terraform, engine: tofu, chdir: infra/prod, env: { AWS_PROFILE: prod-deploy } }
+```
+
 ## Connection
 
 Every field is optional. Credentials are read from the process environment

@@ -27,6 +27,33 @@ triggers:
         options: { summary: "{{.title}}" }
 ```
 
+## Setup
+
+Produces (optionally) a bearer token for a Netdata Agent behind auth — most
+home agents need no credential at all.
+
+**Prerequisites:** a running Netdata Agent (the default `http://<host>:19999`
+dashboard) and, if it's exposed beyond your LAN, admin access to whatever
+fronts it.
+
+1. If the agent is reachable only on your trusted LAN, skip credentials
+   entirely — a stock agent has no login, and `api_key` can be left unset.
+2. If the agent sits behind a reverse proxy you control, configure that
+   proxy to require a bearer token and use the same value as `api_key` here.
+3. If instead you're relaying through Netdata Cloud, generate a token from
+   the Cloud UI: profile menu > **Settings** > **API Tokens** > **+**, and
+   use that as `api_key`.
+
+```yaml
+connectors:
+  monitoring:
+    use: netdata
+    base_url: http://netdata.example.com:19999
+```
+
+See **Source — the `alarm` event** below for the poll source that watches
+`/api/v1/alarms`.
+
 ## Connection
 
 | key | type | purpose |

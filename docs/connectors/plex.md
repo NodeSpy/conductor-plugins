@@ -32,6 +32,37 @@ triggers:
         options: { rating_key: "{{.rating_key}}" }
 ```
 
+## Setup
+
+You'll end up with an `X-Plex-Token` and your Plex Media Server's URL, enough
+for this connector to call the API.
+
+**Prerequisites:** a running Plex Media Server you have full/admin access to.
+
+1. Sign in to the Plex Web App (`app.plex.tv`) with the account that
+   administers your server.
+2. Open any library item, click the **⋮** (more) menu, and choose **Get
+   Info**.
+3. In the info panel's lower-left corner, click **View XML** — it opens in a
+   new tab.
+4. Copy the `X-Plex-Token` query parameter value from that tab's URL.
+5. Note your server's reachable address (`http://<host>:32400`) for
+   `base_url`.
+
+**Configure:**
+
+```yaml
+connectors:
+  plex:
+    use: plex
+    base_url: http://plex:32400
+    token: ${PLEX_TOKEN}
+    network: ["plex:32400"]
+```
+
+For the playback-event webhook (a Plex Pass feature), see **Source: Plex
+webhooks** below.
+
 ## Connection
 
 | key | type | purpose |

@@ -33,6 +33,32 @@ triggers:
           body: { message: "new order: {{.id}}" }
 ```
 
+## Setup
+
+**Prerequisites:** a Zapier account.
+
+1. In the Zapier app, create a new Zap.
+2. Set its trigger to **Webhooks by Zapier** → **Catch Hook**, and finish
+   publishing the Zap.
+3. On the trigger step, copy the **custom webhook URL** Zapier generates
+   (`https://hooks.zapier.com/hooks/catch/...`) — this is `hook_url`.
+4. To receive a Zap's own output back in conductor, add a **Webhooks by
+   Zapier** → **POST** action at the end of the Zap, pointed at your
+   `webhook` listener's public URL (see the source note below).
+
+**Configure:**
+
+```yaml
+connectors:
+  zap:
+    use: zapier
+    hook_url: ${ZAPIER_CATCH_HOOK_URL}
+```
+
+For the inbound source (a Zap posting its output back), see [Source
+event](#source-event) below — it needs `webhook.secret` set and the Zap's
+POST action configured to send that token back (header or query param).
+
 ## Connection
 
 | key | type | purpose |

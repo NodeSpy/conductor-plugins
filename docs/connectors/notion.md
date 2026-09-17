@@ -24,6 +24,33 @@ triggers:
             Name: { title: [{ text: { content: "Release {{.tag_name}}" } }] }
 ```
 
+## Setup
+
+You'll end up with a Notion integration token conductor sends as a bearer
+token against the Notion API — plus each page/database explicitly shared
+with that integration (Notion authorizes per-resource, not workspace-wide).
+
+**Prerequisites:** a Notion workspace where you (or an admin) can create
+integrations.
+
+1. Go to [notion.so/my-integrations](https://www.notion.so/my-integrations)
+   and click **New integration**.
+2. Pick the workspace, give it a name, and (for internal use) leave the type
+   as **Internal**; save.
+3. On the integration's **Configuration** tab, copy the **Internal
+   Integration Secret**.
+4. **Required:** open each page or database you want conductor to touch, click
+   the **•••** menu → **Connections** (or **Add connections**), and add the
+   integration — an unshared page is invisible to the API even with a valid
+   token. This step is the usual gotcha.
+
+```yaml
+connectors:
+  nt:
+    use: notion
+    token: ${NOTION_TOKEN}
+```
+
 ## Connection
 
 | key | type | purpose |

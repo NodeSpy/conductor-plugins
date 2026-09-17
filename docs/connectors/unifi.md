@@ -21,6 +21,36 @@ connectors:
     network: ["unifi.example.com:443"]   # narrow the declared egress to your controller
 ```
 
+## Setup
+
+Produces a local UniFi Network username/password the connector logs in with.
+
+**Prerequisites:** a running UniFi Network controller (UDM/UDM Pro/Cloud Key,
+or a self-hosted controller) and admin access to it.
+
+1. Log into the controller's UI (`https://<controller>/network/default/settings/admins`
+   on UniFi OS, or **Settings > Admins** on a standalone controller).
+2. Click **Add Admin** > **Add New**, give it a name/email, and grant it
+   **Local Access Only** with the least role needed (e.g. Limited Admin) —
+   avoid reusing your primary owner login.
+3. Set a password for the new local admin and confirm it.
+4. Note whether the controller is a UDM/UDM Pro/Cloud Key gen2+
+   (`unifi_os: true`) or a legacy standalone controller (`unifi_os: false`) —
+   check the login URL's shape if unsure.
+5. Note the `site` name you want to target (`default` unless you've renamed
+   or added sites).
+
+```yaml
+connectors:
+  unifi:
+    use: unifi
+    base_url: https://unifi.example.com
+    username: ${UNIFI_USERNAME}
+    password: ${UNIFI_PASSWORD}
+    site: default
+    unifi_os: true
+```
+
 ## Connection
 
 | key | type | purpose |

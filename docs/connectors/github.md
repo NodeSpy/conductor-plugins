@@ -21,6 +21,34 @@ connectors:
     network: ["api.github.com:443"]   # narrow the declared egress
 ```
 
+## Setup
+
+Two ways to authenticate, cheapest first:
+
+- **Personal access token (quickest).** Create one at GitHub → Settings →
+  Developer settings → **Personal access tokens** (a fine-grained token scoped to
+  the repos you want, with Contents / Pull requests / Issues read-write, or a
+  classic token with `repo`). Put it in `token:` — or omit `token:` and the
+  connector falls back to `gh auth token`. Good for verbs; no webhook events.
+- **GitHub App (full-featured).** Carries the webhook subscription and a separate
+  API rate pool, and lets writes be attributed to a bot identity. Registering the
+  App — permissions, events, the private key, the webhook secret, and the smee
+  vs direct-listener transports — is its own page: **[GitHub App
+  Setup](github-app-setup.md)**.
+
+Minimal token-only setup:
+
+```yaml
+connectors:
+  gh:
+    use: github
+    token: ${GITHUB_TOKEN}
+```
+
+For events (`on: gh.*`) you need a webhook, which means the App path (or a plain
+repo webhook pointed at `webhook.listen`) — see [GitHub App
+Setup](github-app-setup.md) and [Source events](#source-events) below.
+
 ## Connection
 
 | key | type | purpose |

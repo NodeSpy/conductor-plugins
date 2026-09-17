@@ -16,6 +16,27 @@ connectors:
     api_key: ${NOTIFIARR_API_KEY}
 ```
 
+## Setup
+
+**Prerequisites:** a Notifiarr account with the Discord integration
+configured (Notifiarr posts to Discord on your behalf).
+
+1. Log in at [notifiarr.com](https://notifiarr.com/).
+2. Click your profile picture/icon in the top left to open your profile.
+3. Your API key is shown there — copy it (this is `api_key`).
+4. In your server's Notifiarr integrations settings, enable **Passthrough**
+   so notifications sent via the API are relayed to your configured Discord
+   channel.
+
+**Configure:**
+
+```yaml
+connectors:
+  notifiarr:
+    use: notifiarr
+    api_key: ${NOTIFIARR_API_KEY}
+```
+
 ## Connection
 
 | key | type | purpose |

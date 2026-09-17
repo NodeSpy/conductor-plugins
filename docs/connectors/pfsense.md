@@ -30,6 +30,29 @@ connectors:
     network: ["pfsense.example.com:443"]   # narrow the declared egress to your instance
 ```
 
+## Setup
+
+Produces a pfSense REST API v2 key the connector sends as `X-API-Key`.
+
+**Prerequisites:** a running pfSense instance, admin access to it, and the
+pfSense REST API v2 package installed (see above).
+
+1. Install the package first (**System > Package Manager > Available
+   Packages**, search "RESTAPI") if you haven't already.
+2. Log into the pfSense web UI and open **System > REST API > Access** (or
+   **System > REST API > Users**, depending on package version).
+3. Select the user the key should belong to (or create a dedicated one under
+   **System > User Manager** first) and generate an API key for it.
+4. Copy the generated key — it's shown once.
+
+```yaml
+connectors:
+  fw:
+    use: pfsense
+    base_url: https://pfsense.example.com
+    api_key: ${PFSENSE_API_KEY}
+```
+
 ## Connection
 
 | key | type | purpose |

@@ -19,6 +19,31 @@ connectors:
     network: ["192.168.1.1:443"]   # narrow the declared egress to your console
 ```
 
+## Setup
+
+Produces a Protect Integration API key the connector sends as `X-API-KEY`.
+
+**Prerequisites:** a running UniFi OS console (UDM/UDM Pro/UDM SE) with
+Protect installed, and admin/owner access to the console.
+
+1. Log into the console's local UI and open **Settings > Control Plane >
+   Integrations** (path varies by UniFi OS version; older releases expose it
+   directly at `https://<console>/protect/settings/control-plane/integrations`).
+2. Under **Your API Keys** (or **API Key**), click **Create API Key**.
+3. Give it a name and click **Create** — the key is shown once, so copy it
+   immediately.
+4. If the console doesn't expose this page, sign into
+   [unifi.ui.com](https://unifi.ui.com) (UniFi Site Manager) and generate the
+   key under **Settings > API Keys** instead.
+
+```yaml
+connectors:
+  protect:
+    use: unifi-protect
+    base_url: https://192.168.1.1
+    api_key: ${PROTECT_API_KEY}
+```
+
 ## Connection
 
 | key | type | purpose |

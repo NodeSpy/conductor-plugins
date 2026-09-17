@@ -23,6 +23,22 @@ triggers:
         options: { name: web, chart: ./charts/web, install: true, wait: true }
 ```
 
+## Setup
+
+Installs `helm`, which shares kubeconfig/context with the `kubernetes` connector.
+
+**Prerequisites:** `helm` (v3) on PATH; override with `binary`.
+
+1. Install Helm — see [Installing Helm](https://helm.sh/docs/intro/install/) (`brew install helm`, or the install script).
+2. Auth is inherited from the same kubeconfig the `kubernetes` connector uses — no separate Helm login. Set it up the same way (a cloud CLI's `get-credentials`, or a copied kubeconfig file); see the `kubernetes` connector's Setup section.
+3. For a private chart repository, add and authenticate it once: `helm repo add <name> <url> --username <user> --password <pass>` (or use the `repo_add` verb's `username`/`password` options per-call).
+4. Confirm with `helm --kube-context <ctx> list -A`.
+
+```yaml
+connectors:
+  h: { use: helm, kube_context: prod, namespace: web }
+```
+
 ## Connection
 
 Every field is optional. Credentials/targets are read per-invocation from the

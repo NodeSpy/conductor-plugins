@@ -28,6 +28,32 @@ triggers:
         options: { monitors: ["{{.monitor_id}}"] }
 ```
 
+## Setup
+
+**Prerequisites:** an UptimeRobot account (Free tier is fine).
+
+1. **API key:** go to **My Settings → API Settings** (or **Integrations &
+   API** in the newer dashboard) and copy the **Main API Key**, or generate a
+   **Monitor-Specific API Key** to scope a connector instance to fewer
+   monitors.
+2. **Webhook:** add an **Alert Contact** of type **Web-Hook** pointed at
+   `http://<host>:<port>/uptimerobot?token=<secret>` and attach it to the
+   monitors you want to forward — see **Setting up the alert Web-Hook** below
+   for the exact POST-value template and the header alternative.
+
+```yaml
+connectors:
+  uptime:
+    use: uptimerobot
+    api_key: ${UPTIMEROBOT_API_KEY}
+    webhook:
+      listen: ":9096"
+      secret: ${UPTIMEROBOT_WEBHOOK_TOKEN}
+```
+
+No public URL? Set `webhook.smee: https://smee.io/<channel>` instead of (or
+alongside) `webhook.listen`.
+
 ## Connection
 
 | key | type | purpose |

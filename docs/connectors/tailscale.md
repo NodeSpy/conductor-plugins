@@ -9,6 +9,59 @@ raw `api` escape hatch. Built on the standard library's `net/http` only.
 - **Provides:** `tailscale`
 - **Capabilities:** egress `["api.tailscale.com:443"]`
 
+## Setup
+
+Get credentials for one of the two auth paths below — an OAuth client for
+conductor's managed OAuth2 (recommended: long-lived, scopable, no manual
+rotation), or a short-lived API access token.
+
+**Prerequisites:** admin access to the tailnet in the Tailscale admin console.
+
+**Option A — OAuth client (managed, recommended):**
+
+1. Admin console → **Settings → OAuth clients**
+   (`https://login.tailscale.com/admin/settings/oauth`).
+2. **Generate OAuth client**, pick the narrowest scopes this workflow needs
+   (e.g. read-only `all:read`, or a specific resource like `devices:core`),
+   and tag restrictions if you use them.
+3. Copy the **Client ID** and **Client secret** — the secret is shown once.
+4. Put them in the connector's `auth:` block (below), then run
+   `conductor connector auth tailscale` to complete the exchange.
+
+**Option B — API access token (fallback):**
+
+1. Admin console → **Settings → Keys**
+   (`https://login.tailscale.com/admin/settings/keys`).
+2. Under **API access tokens**, **Generate access token**, set an expiry
+   (1–90 days), and copy it (`tskey-api-...`) — shown once.
+
+`tailnet` (either option) is your tailnet name, e.g. `example.com`, or `-`
+for the default tailnet — see **Settings → General**.
+
+**Configure (Option A):**
+
+```yaml
+connectors:
+  tailscale:
+    use: tailscale
+    tailnet: example.com
+    auth:
+      grant: client_credentials
+      client_id: ${TAILSCALE_OAUTH_CLIENT_ID}
+      client_secret: ${TAILSCALE_OAUTH_CLIENT_SECRET}
+      token_vault: tailscale
+```
+
+**Configure (Option B):**
+
+```yaml
+connectors:
+  tailscale:
+    use: tailscale
+    tailnet: example.com
+    api_key: ${TAILSCALE_API_KEY}
+```
+
 ## Dual auth: managed OAuth2, or a plain API key
 
 This connector is an **auth showcase**: it supports both of conductor's

@@ -26,6 +26,36 @@ account has no webhook push model of its own — the source here polls
 `/sync` on the homeserver instead of listening for inbound HTTP. It carries
 no listener, so it needs no `webhook:`/`listen:` block and no HMAC secret.
 
+## Setup
+
+Get an access token for a Matrix account — ideally a dedicated bot user, not
+your personal login.
+
+**Prerequisites:** a Matrix account on some homeserver (e.g. `matrix.org`, or
+your own).
+
+1. Register a dedicated bot user on your homeserver (recommended), or use an
+   existing account.
+2. Easiest path: in Element, log in as that user, then go to **Settings** →
+   **Help & About** → scroll to **Advanced** → **Access Token** and copy it.
+3. Alternative (scriptable): `POST /_matrix/client/v3/login` on your
+   homeserver with the user's credentials, e.g.:
+   `curl -XPOST -d '{"type":"m.login.password","user":"bot","password":"..."}' https://matrix.example.org/_matrix/client/v3/login`
+   and read `access_token` from the response.
+4. Note the homeserver base URL and the bot's full user id
+   (`@bot:example.org`).
+
+**Configure:**
+
+```yaml
+connectors:
+  chat:
+    use: matrix
+    homeserver: https://matrix.example.org
+    access_token: ${MATRIX_ACCESS_TOKEN}
+    user_id: "@bot:example.org"
+```
+
 ## Connection
 
 | key | type | purpose |

@@ -31,6 +31,39 @@ triggers:
         options: { monitor_id: "{{.alert_id}}" }
 ```
 
+## Setup
+
+Two separate credentials: API keys for verbs, a webhook for the source.
+
+**Prerequisites:** a Datadog org admin (to mint keys and add an integration).
+
+1. **API key:** **Organization Settings → API Keys → New Key**; copy it for
+   `api_key`.
+2. **Application key:** **Organization Settings → Application Keys → New
+   Key** (required for monitor/metric verbs); copy it for `app_key`.
+3. **Webhook:** **Integrations → Webhooks → New** (or the tile's
+   **Configuration** tab if already installed). Set a **Name** (referenced
+   from monitors), **URL** to `http://<host>:<port>/datadog?token=<secret>`
+   (or omit the query token and send `X-Conductor-Token` instead), and
+   **Payload** to the exact JSON template from **Source: `alert` event**
+   below — Datadog has no fixed shape, so paste it verbatim.
+4. In each monitor's notification message, add `@webhook-<name>` to fire it.
+
+```yaml
+connectors:
+  dd:
+    use: datadog
+    api_key: ${DATADOG_API_KEY}
+    app_key: ${DATADOG_APP_KEY}
+    webhook:
+      listen: ":9097"
+      secret: ${DATADOG_WEBHOOK_TOKEN}
+```
+
+No public URL? Set `webhook.smee: https://smee.io/<channel>` instead of (or
+alongside) `webhook.listen`. Non-default `site`? Widen `network:` per the
+note below.
+
 ## Connection
 
 | key | type | purpose |

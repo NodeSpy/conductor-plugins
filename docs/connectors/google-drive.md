@@ -48,6 +48,40 @@ an unauthenticated request.
 returns a refresh token (without these, a repeat consent screen only returns
 an access token).
 
+## Setup
+
+Managed OAuth2: register an app once in Google Cloud, then run
+`conductor connector auth google-drive` for the one-time browser login —
+conductor stores and refreshes the token from there.
+
+**Prerequisites:** a Google account and a Google Cloud project.
+
+1. [console.cloud.google.com](https://console.cloud.google.com) → create or
+   select a project.
+2. **APIs & Services → Library** → enable the **Google Drive API**.
+3. **APIs & Services → OAuth consent screen** → **External** (unless on a
+   Workspace org) → fill in app name/support email → add the
+   `https://www.googleapis.com/auth/drive` scope. While the app is in
+   **Testing**, add your own account under **Test users**.
+4. **APIs & Services → Credentials → Create credentials → OAuth client ID**
+   → application type **Web application**.
+5. Under **Authorized redirect URIs**, add conductor's local callback:
+   `http://localhost:8400/callback` (override with the `auth:` block's
+   `redirect_uri` if the daemon uses a different port).
+6. Copy the **Client ID** and **Client secret**, put them in the `auth:`
+   block below, then run `conductor connector auth google-drive`.
+
+```yaml
+connectors:
+  google-drive:
+    use: google-drive
+    auth:
+      grant: authorization_code
+      client_id: ${GOOGLE_CLIENT_ID}
+      client_secret: ${GOOGLE_CLIENT_SECRET}
+      token_vault: google-drive
+```
+
 ## Connection
 
 | key | type | purpose |

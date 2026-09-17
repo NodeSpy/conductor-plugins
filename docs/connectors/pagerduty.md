@@ -25,6 +25,34 @@ triggers:
     steps: [ ... ]
 ```
 
+## Setup
+
+PagerDuty V3 webhook subscriptions can be account-wide or scoped to a service.
+
+**Prerequisites:** a PagerDuty admin, or a user with the Webhooks permission.
+
+1. In the PagerDuty web app, go to **Integrations → Generic Webhooks (v3)**
+   (or a service's **Integrations** tab → **New Integration** → **Generic
+   Webhook**).
+2. Click **+ New Webhook Subscription**, choose the event subscriptions you
+   want (e.g. `incident.triggered`, `incident.acknowledged`), and set
+   **Webhook URL** to `http://<host>:<port>/pagerduty`.
+3. On creation, PagerDuty shows the subscription's **secret** exactly once —
+   copy it now. It signs deliveries via `X-PagerDuty-Signature` (`v1=…`,
+   possibly several during key rotation).
+
+```yaml
+connectors:
+  pd:
+    use: pagerduty
+    listen: ":9098"
+    signing_secret: ${PAGERDUTY_SIGNING_SECRET}
+```
+
+No public URL? Set `smee: https://smee.io/<channel>` instead of (or
+alongside) `listen`. See **Events** below for the `incident` payload and
+filters.
+
 ## Connection
 
 | key | type | purpose |

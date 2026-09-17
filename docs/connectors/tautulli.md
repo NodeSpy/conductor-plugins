@@ -34,6 +34,42 @@ triggers:
         options: { user: "{{.user}}", length: 5 }
 ```
 
+## Setup
+
+You'll end up with a Tautulli API key for verb calls, and optionally a
+Webhook notification agent pointed at conductor for the source.
+
+**Prerequisites:** a running Tautulli instance, reachable from wherever
+conductor runs, and admin access to its UI.
+
+1. Open Tautulli and go to **Settings > Web Interface**.
+2. Scroll to the **API** section, check **Enable API**, and copy the
+   **API Key** (use **Regenerate API key** for a fresh one).
+3. For the source: go to **Settings > Notification Agents**, click **Add a
+   new notification agent**, and choose **Webhook**.
+4. Set **Webhook URL** to `http://<conductor-host>:9097/tautulli` (matching
+   `webhook.listen`/`path` below), **Webhook Method** `POST`, enable the
+   triggers you want (Playback Start/Stop/Pause, ...), and fill in the
+   **Data** field — see the suggested template under **Source: the Webhook
+   notification agent** below.
+5. Give it a shared token: add an `X-Conductor-Token` header (or append
+   `?token=...` to the URL) matching `webhook.secret`.
+
+```yaml
+connectors:
+  tt:
+    use: tautulli
+    base_url: http://tautulli:8181
+    api_key: ${TAUTULLI_API_KEY}
+    webhook:
+      listen: ":9097"
+      secret: ${TAUTULLI_WEBHOOK_TOKEN}
+```
+
+No public URL for conductor to receive on? Point the notification agent's
+webhook at a smee.io channel instead and set `webhook.smee` in place of
+`listen` — see **Source: the Webhook notification agent** below.
+
 ## Connection
 
 | key | type | purpose |

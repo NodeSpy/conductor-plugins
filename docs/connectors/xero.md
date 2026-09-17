@@ -40,6 +40,47 @@ If no token has been configured/logged in yet, every verb fails fast with a
 `CodeInvalidParams` error pointing back at this command, rather than sending
 an unauthenticated request.
 
+## Setup
+
+Managed OAuth2: register an app once at developer.xero.com, then run
+`conductor connector auth xero` for the one-time browser login — conductor
+stores and refreshes the token from there.
+
+**Prerequisites:** a Xero developer account (developer.xero.com) with access
+to the organisation(s) you want to connect.
+
+1. [developer.xero.com/app/manage](https://developer.xero.com/app/manage) →
+   **New app**.
+2. Choose integration type **Web app**, give it a name, and set the company
+   and privacy policy URLs (any reachable URL works for internal use).
+3. Set **Redirect URI** to conductor's local callback:
+   `http://localhost:8400/callback` (override with the `auth:` block's
+   `redirect_uri` if the daemon uses a different port).
+4. Create the app, then open its **Configuration** tab and copy the
+   **Client ID**; click **Generate a secret** and copy the **Client secret**
+   (shown once).
+5. Put them in the `auth:` block below, then run `conductor connector auth
+   xero` — the consent screen lets you pick which organisation(s) to
+   authorize; `tenant_id` (or the first `GET /connections` result) selects
+   among them.
+
+```yaml
+connectors:
+  xero:
+    use: xero
+    auth:
+      grant: authorization_code
+      client_id: ${XERO_CLIENT_ID}
+      client_secret: ${XERO_CLIENT_SECRET}
+      token_vault: xero
+```
+
+This connector's baked-in scopes are `accounting.transactions`,
+`accounting.contacts`, `accounting.settings`, and `offline_access` (the last
+is required for refresh tokens) — no scope configuration is needed on the
+app itself; Xero apps request scopes at authorization time, not at
+registration time.
+
 ## Connection
 
 | key | type | purpose |

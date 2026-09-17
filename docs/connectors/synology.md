@@ -19,6 +19,39 @@ connectors:
     username: admin
     password: ${SYNOLOGY_PASSWORD}
     network: ["nas.example.com:5001"]   # narrow the declared egress to the real host
+```
+
+## Setup
+
+You'll end up with a DSM username/password (and, if 2FA is on, an OTP code
+path) this connector logs in with.
+
+**Prerequisites:** a running Synology DSM NAS and admin access to it.
+
+1. In DSM, go to **Control Panel → User & Group** and create a dedicated
+   user for this connector (recommended over reusing your own admin
+   account).
+2. Go to **Control Panel → Application** (DSM 6) or **Control Panel →
+   Application Privileges** (DSM 7), and grant that user access to the apps
+   the connector calls (File Station, Download Station, etc).
+3. If the account has 2-step verification enabled, a fresh OTP code
+   (`otp_code`) must be supplied on login — it's checked only at login time,
+   not cached with the session.
+4. Note the NAS's base URL (e.g. `https://nas.example.com:5001`).
+
+**Configure:**
+
+```yaml
+connectors:
+  nas:
+    use: synology
+    base_url: https://nas.example.com:5001
+    username: ${SYNOLOGY_USERNAME}
+    password: ${SYNOLOGY_PASSWORD}
+    network: ["nas.example.com:5001"]
+```
+
+```yaml
 triggers:
   - on: schedule.daily
     steps:

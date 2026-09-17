@@ -22,6 +22,29 @@ connectors:
     network: ["adguard.example.com:80"]   # narrow the declared egress to your instance
 ```
 
+## Setup
+
+Produces the AdGuard Home admin login the connector sends as HTTP Basic auth.
+
+**Prerequisites:** a running AdGuard Home instance and admin access to it.
+
+1. If you haven't completed AdGuard Home's first-run wizard, open
+   `http://<host>:3000/install.html` and set an admin username/password there.
+2. Otherwise, log into the existing web UI at `http://<host>` with the admin
+   username/password you already created (or check `AdGuardHome.yaml`'s
+   `users:` section on the host if you've forgotten it).
+3. AdGuard Home has no separate API token — the same username/password used
+   for the web UI is sent as HTTP Basic auth on every request.
+
+```yaml
+connectors:
+  ag:
+    use: adguard
+    base_url: http://adguard.example.com
+    username: ${ADGUARD_USERNAME}
+    password: ${ADGUARD_PASSWORD}
+```
+
 ## Connection
 
 | key | type | purpose |

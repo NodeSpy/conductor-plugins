@@ -34,6 +34,40 @@ triggers:
         options: { id: "{{.issue_id}}" }
 ```
 
+## Setup
+
+**Prerequisites:** a Wiz admin account (Global Admin or equivalent).
+
+1. **Service account:** in Wiz, go to **Settings → Access Management →
+   Service Accounts → Add Service Account**. Name it, set **Type** to
+   **Custom Integration (GraphQL API)**, scope **Projects** as needed, and
+   grant the API scopes your verbs need (e.g. `read:issues`,
+   `read:vulnerabilities`, `update:issues`). Copy the **Client ID** and
+   **Client Secret** immediately — the secret is shown once.
+2. **Tenant endpoints:** under **User Settings → Tenant**, note your region's
+   API endpoint (`https://api.<region>.app.wiz.io/graphql`) for `api_url`,
+   and its token endpoint for `auth_url` if it differs from the default.
+3. **Webhook (source):** add a Wiz Integration for issue create/update
+   events pointed at `http://<host>:<port>/wiz`, with the JSON body template
+   from **Source: `issue` event** below. Set a shared token and send it back
+   as a header or `?token=` — see **Verifying webhook deliveries** below.
+
+```yaml
+connectors:
+  wiz:
+    use: wiz
+    client_id: ${WIZ_CLIENT_ID}
+    client_secret: ${WIZ_CLIENT_SECRET}
+    api_url: https://api.us1.app.wiz.io/graphql
+    webhook:
+      listen: ":9097"
+      secret: ${WIZ_WEBHOOK_TOKEN}
+    network: ["auth.app.wiz.io:443", "api.us1.app.wiz.io:443"]
+```
+
+No public URL? Set `webhook.smee: https://smee.io/<channel>` instead of (or
+alongside) `webhook.listen`.
+
 ## Connection
 
 | key | type | purpose |

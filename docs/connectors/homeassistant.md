@@ -20,6 +20,36 @@ connectors:
     network: ["homeassistant.local:8123"]   # narrow the declared egress
 ```
 
+## Setup
+
+You'll end up with a Home Assistant long-lived access token and your
+instance's base URL.
+
+**Prerequisites:** a running Home Assistant instance and an account on it (a
+dedicated non-admin user if you want to scope what the token can do — tokens
+inherit their user's full permissions).
+
+1. In Home Assistant, click your **profile** (bottom-left avatar/name).
+2. Open the **Security** tab.
+3. Scroll to **Long-Lived Access Tokens** and click **Create Token**.
+4. Name it and click **OK** — copy the token shown; it is displayed only
+   once.
+5. Note your instance's base URL (e.g. `http://homeassistant.local:8123`).
+
+**Configure:**
+
+```yaml
+connectors:
+  ha:
+    use: homeassistant
+    base_url: http://homeassistant.local:8123
+    token: ${HA_TOKEN}
+    network: ["homeassistant.local:8123"]
+```
+
+For the inbound webhook source (receiving events from an HA automation), see
+**Source: inbound webhook** below.
+
 ## Connection
 
 | key | type | purpose |

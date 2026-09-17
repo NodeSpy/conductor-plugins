@@ -23,6 +23,36 @@ connectors:
     network: ["gitea.example.com:443"]   # required: this plugin declares no egress
 ```
 
+## Setup
+
+You'll end up with an access token for your self-hosted Gitea/Forgejo
+instance that conductor uses to call the v1 REST API.
+
+**Prerequisites:** an account on the instance with write access to the
+repo(s) you want to act on.
+
+1. Sign in, click your avatar (top right) → **Settings**.
+2. Left sidebar → **Applications**.
+3. Under "Manage Access Tokens", enter a token name and select scopes — pick
+   `write:repository` (or `read:repository` for read-only) plus `write:issue`
+   if you need issue/PR comments; leave everything else at no access.
+4. Click **Generate Token** and copy it immediately — it's shown only once.
+
+```yaml
+connectors:
+  ge:
+    use: gitea
+    url: https://gitea.example.com
+    token: ${GITEA_TOKEN}
+    network: ["gitea.example.com:443"]
+```
+
+For the webhook source, add it under the repo's **Settings → Webhooks → Add
+Webhook → Gitea**, set the target URL, and paste the same value into the
+webhook's **Secret** as `webhook.secret` below — see `## Source events` for
+the HMAC verification model and `smee` fallback when there's no public
+listener URL.
+
 ## Connection
 
 | key | type | purpose |

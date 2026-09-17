@@ -39,6 +39,41 @@ triggers:
         options: { artist_id: "{{.mbid}}" }
 ```
 
+## Setup
+
+You'll end up with a Lidarr API key for verb calls, and optionally a Webhook
+connection pointed at conductor for the source.
+
+**Prerequisites:** a running Lidarr instance, reachable from wherever
+conductor runs, and admin access to its UI.
+
+1. Open Lidarr and go to **Settings > General**, expand **Security**.
+2. Copy the **API Key** field (auto-generated; use **Reset API Key** for a
+   fresh one).
+3. For the source: go to **Settings > Connect**, click **+**, and choose
+   **Webhook** from the connection list.
+4. Set **URL** to `http://<conductor-host>:9097/lidarr` (matching
+   `webhook.listen`/`path` below), **Method** `POST`, and enable the
+   notification triggers you want (On Grab, On Import, On Artist Add, ...).
+5. Give it a shared token: add an `X-Conductor-Token` header (or append
+   `?token=...` to the URL) matching `webhook.secret` — see **Source: the
+   Webhook connection** below for how it's verified.
+
+```yaml
+connectors:
+  lr:
+    use: lidarr
+    base_url: http://lidarr:8686
+    api_key: ${LIDARR_API_KEY}
+    webhook:
+      listen: ":9097"
+      secret: ${LIDARR_WEBHOOK_TOKEN}
+```
+
+No public URL for conductor to receive on? Point the Webhook connection at a
+smee.io channel instead and set `webhook.smee` in place of `listen` — see
+**Source: the Webhook connection** below.
+
 ## Connection
 
 | key | type | purpose |

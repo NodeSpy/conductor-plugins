@@ -36,6 +36,34 @@ triggers:
         options: { limit_books: 25 }
 ```
 
+## Setup
+
+You'll end up with an already-authenticated Libation install this connector
+can shell out to.
+
+**Prerequisites:** [Libation](https://getlibation.com) installed, with
+`LibationCli` reachable (on `PATH`, or pointed at via `binary`).
+
+1. Install Libation on the host/container this connector runs from.
+2. Launch Libation interactively once and add your Audible account (Settings
+   → Accounts → Add Account) — this is an interactive OAuth login, sometimes
+   with a CAPTCHA, and cannot be scripted or automated.
+3. Note the directory Libation stores its settings/database/credentials in
+   — this is what `LIBATION_FILES_DIR` should point at.
+4. Verify the account is healthy: `LibationCli list-accounts` should list it
+   with valid stored credentials.
+
+**Configure:**
+
+```yaml
+connectors:
+  lib:
+    use: libation
+    binary: /libation/LibationCli
+    env: { LIBATION_FILES_DIR: /config }
+    dir: /data
+```
+
 ## Downloads are slow, and partial failure is normal
 
 Two things shape this connector:

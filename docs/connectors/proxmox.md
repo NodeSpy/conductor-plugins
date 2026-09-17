@@ -25,7 +25,43 @@ connectors:
     insecure_skip_verify: true       # self-signed cert on the homelab box
     poll_interval: 1m
     network: ["pve.example.com:8006"]   # narrow the (empty) declared egress
+```
 
+## Setup
+
+You'll end up with a Proxmox API token id + secret scoped to a dedicated
+user.
+
+**Prerequisites:** a running Proxmox VE instance and admin access to it.
+
+1. In the Proxmox web UI, go to **Datacenter → Permissions → Users** and add
+   a dedicated user, if you don't want to reuse an existing one.
+2. Go to **Datacenter → Permissions → API Tokens → Add**.
+3. Pick the user (e.g. `root@pam`), give the token an ID (e.g. `conductor`),
+   and leave **Privilege Separation** checked so the token gets its own role
+   rather than inheriting the user's full permissions.
+4. Click **Add** — the **Secret** is shown once. Copy it now; Proxmox never
+   shows it again.
+5. Grant the token a role: **Datacenter → Permissions → Add**, targeting the
+   `user@realm!tokenid` path with a role (e.g. `PVEAuditor`, or a custom
+   least-privilege role).
+
+**Configure:**
+
+```yaml
+connectors:
+  pve:
+    use: proxmox
+    base_url: https://pve.example.com:8006
+    token_id: ${PVE_TOKEN_ID}       # "USER@REALM!TOKENID"
+    token_secret: ${PVE_TOKEN_SECRET}
+    network: ["pve.example.com:8006"]
+```
+
+For the `task` poll source (backup/clone/migration completion events), see
+**Source — the `task` event** below.
+
+```yaml
 triggers:
   - on: pve.task
     filters: { types: [vzdump], statuses: [OK] }

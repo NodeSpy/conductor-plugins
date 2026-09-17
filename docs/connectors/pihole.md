@@ -26,6 +26,27 @@ steps:
     with: { count: 10, blocked: true }
 ```
 
+## Setup
+
+Produces the Pi-hole password the connector exchanges for a session.
+
+**Prerequisites:** a running Pi-hole v6 instance and admin access to its web UI.
+
+1. Log into the Pi-hole web UI and open **Settings > Web Interface / API**.
+2. Switch the settings view from **Basic** to **Expert** (top of the page).
+3. Under **Configure app password**, generate a new app password (or reuse
+   the password you set at install, or via `pihole setpasswd`).
+4. Copy the password — this is what the connector exchanges for a session
+   via `POST /api/auth`.
+
+```yaml
+connectors:
+  pihole:
+    use: pihole
+    base_url: https://pihole.example.com
+    password: ${PIHOLE_PASSWORD}
+```
+
 ## Connection
 
 | key | type | purpose |

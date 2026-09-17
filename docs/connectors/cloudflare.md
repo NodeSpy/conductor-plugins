@@ -17,6 +17,38 @@ connectors:
     zone_id: ${CLOUDFLARE_ZONE_ID}
 ```
 
+## Setup
+
+Create a scoped API token — the legacy Global API Key works but grants far
+more than this connector needs.
+
+**Prerequisites:** a Cloudflare account with the zone(s) (and account, for
+Workers) you want to manage.
+
+1. Dashboard → profile icon → **My Profile → API Tokens**
+   (`https://dash.cloudflare.com/profile/api-tokens`).
+2. **Create Token**. Use the **Edit zone DNS** template, or **Create Custom
+   Token** and grant only what you call — e.g. Zone → DNS → Edit, Zone →
+   Zone → Read; add Workers Scripts → Edit for `worker_deploy`.
+3. Under **Zone Resources**, scope the token to the specific zone(s), not
+   "All zones".
+4. **Continue to summary → Create Token**, then copy it — shown once.
+5. `zone_id`: open the target zone's **Overview** page; it's in the right
+   sidebar under **API**.
+6. `account_id` (only needed for `worker_deploy`): shown on
+   **Manage Account → Overview**, or in the dashboard URL for the account
+   (`dash.cloudflare.com/<account_id>/...`).
+
+**Configure:**
+
+```yaml
+connectors:
+  cf:
+    use: cloudflare
+    api_token: ${CLOUDFLARE_API_TOKEN}
+    zone_id: ${CLOUDFLARE_ZONE_ID}
+```
+
 ## Connection
 
 | key | type | purpose |
