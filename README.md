@@ -112,18 +112,20 @@ Each plugin has a full reference page under [`docs/`](docs/README.md).
 ## Code engines
 
 A **code engine** runs a step's `code:` in a sandboxed language — pick it with the
-step's `use:`. Inputs arrive as `ctx`; the result becomes the step's outputs.
+step's `use:`. The step's inputs arrive as `ctx` (or the input document); the
+result becomes the step's outputs.
 
 | Engine | Language |
 |--------|----------|
-| **[js](engines/js)** | JavaScript (QuickJS) |
-| **[lua](engines/lua)** | Lua 5.1 |
-| **[risor](engines/risor)** | Risor — Go-flavored scripting |
-| **[go-embed](engines/go-embed)** | real Go (yaegi, no toolchain) |
-| **[starlark](engines/starlark)** | Starlark — a deterministic Python dialect |
-| **[cel](engines/cel)** | CEL — expression evaluation for computed fields/conditions |
-| **[jq](engines/jq)** | jq — JSON transforms |
-| **[wasm](engines/wasm)** | any WebAssembly module (any language → wasm) |
+| **[js](docs/engines/js.md)** | JavaScript (QuickJS) |
+| **[lua](docs/engines/lua.md)** | Lua 5.1 |
+| **[risor](docs/engines/risor.md)** | Risor — Go-flavored scripting |
+| **[go-embed](docs/engines/go-embed.md)** | real Go (yaegi, no toolchain) |
+| **[starlark](docs/engines/starlark.md)** | Starlark — a deterministic Python dialect |
+| **[cel](docs/engines/cel.md)** | CEL — expression evaluation for computed fields/conditions |
+| **[jq](docs/engines/jq.md)** | jq — JSON transforms |
+| **[yq](docs/engines/yq.md)** | yq — YAML transforms (comment-preserving) |
+| **[wasm](docs/engines/wasm.md)** | any WebAssembly module (any language → wasm) |
 
 All run sandboxed — no filesystem, network, or spawns unless the step is granted
 conductor's `ctx.store` / `ctx.sql` / `ctx.memory`.
