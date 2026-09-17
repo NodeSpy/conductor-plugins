@@ -30,7 +30,7 @@ require (
 require (
 	cel.dev/cel-go v0.32.0
 	github.com/itchyny/gojq v0.12.19
-	github.com/tetratelabs/wazero v1.12.0
+	github.com/tetratelabs/wazero v1.9.0
 	go.starlark.net v0.0.0-20260908191801-89a6a09411d5
 )
 
