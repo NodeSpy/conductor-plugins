@@ -52,6 +52,31 @@ The step's inputs **are** the YAML document, so a top-level field is just
 - A parse or evaluation error surfaces as a step error, not a silent empty
   result. A step's `timeout:` is honored — a runaway expression is cut.
 
+## Variables
+
+Set variables with the step's `env:` — each entry becomes a `$NAME` yq
+variable, the YAML counterpart of `jq --arg NAME value`. Use them to
+parameterize an expression instead of splicing values into the expression text:
+
+```yaml
+steps:
+  - id: label
+    use: yq
+    env:
+      LABEL: ${vars.environment}
+    code: '.metadata.labels.env = $LABEL'
+```
+
+- Values are **always strings** (like `jq --arg`): convert in-expression when
+  you need another type — `($COUNT | to_number)` for a number,
+  `($JSON | from_json)` for structure.
+- Names must be a normal identifier (a letter or `_`, then letters/digits/`_`);
+  an `env:` key that isn't one is rejected before the expression runs — the same
+  rule the [`jq`](jq.md) engine enforces.
+- One behavior differs from jq: yq is **lenient** about an unset variable —
+  referencing a `$NAME` the step never set resolves to no match (the step
+  produces no outputs) rather than erroring the way gojq does.
+
 ## Sandbox
 
 yqlib exposes operators that reach outside the document — `load`/`load_str`
