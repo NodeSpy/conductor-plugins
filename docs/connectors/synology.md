@@ -140,42 +140,43 @@ Let's Encrypt directly in DSM) when that is possible instead.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema.
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | maps to | notes |
-|------|---------|-------|
-| `system_info` | `SYNO.Core.System.info` | no options; outputs `result` |
-| `utilization` | `SYNO.Core.System.Utilization.get` | no options; CPU/memory/network/disk load; outputs `result` |
-| `storage` | `SYNO.Storage.CGI.Storage.load_info` | no options; outputs `items` hoisted from `data.volumes`, plus `result` |
-| `fs_list` | `SYNO.FileStation.List.list` | `folder_path` (required), `additional` (a value or list of extra info fields, e.g. `size,time`); outputs `items` hoisted from `data.files`, plus `result` |
-| `fs_info` | `SYNO.FileStation.List.getinfo` | `path` (required, a path or list of paths), `additional`; outputs `items` hoisted from `data.files`, plus `result` |
-| `fs_search` | `SYNO.FileStation.Search.start` | `folder_path` (required), `pattern`, `recursive`; **starts** an async search and returns its `taskid` in `result` — poll/stop it yourself via the `api` escape hatch (`method: list` / `method: stop`, same `taskid`) |
-| `dl_tasks` | `SYNO.DownloadStation.Task.list` | `additional` (a value or list, e.g. `detail,transfer`); outputs `items` hoisted from `data.tasks`, plus `result` |
-| `dl_create` | `SYNO.DownloadStation.Task.create` (POST) | `uri` (required, a URI or list of URIs — http/ftp/magnet), `destination` |
-| `dl_delete` | `SYNO.DownloadStation.Task.delete` (POST) | `id` (required, a task id or list of ids), `force_complete`; outputs `items` (the per-task delete results) |
-| `api` | any `SYNO.*` API via `entry.cgi` | escape hatch: `api` (required, e.g. `SYNO.FileStation.List`), `method` (required, e.g. `list`), `version` (default `1`), `params` (map of extra query/form parameters), `http_method` (`GET` default, or `POST`) |
+- `uri`, `id`, `path`, and `additional` all accept either a bare string or a
+  list — lists are joined with the separator Synology's API expects (comma).
+- Every verb returns `status_code` (200 for both a successful and a
+  `success:false` API-level response — see [above](#not-a-rest-api-the-synology-webapi)),
+  plus `result` (the decoded `data` object, or omitted for an empty body,
+  e.g. `dl_create`'s typical response) and, for verbs whose `data` wraps a
+  known list (`data.volumes`, `data.files`, `data.tasks`) or is itself a JSON
+  array, `items`.
+- A transport-level failure (a non-2xx HTTP status, or a `success:false`
+  envelope after any session-expired retry) is a connector error, not a data
+  output — inspect it via the invocation's error, not `status_code`.
 
-`uri`, `id`, `path`, and `additional` all accept either a bare string or a
-list — lists are joined with the separator Synology's API expects (comma).
+Required options are marked `*`.
 
-### Outputs
+### System & storage
 
-Every verb returns:
+- **`system_info`** — DSM system information (`SYNO.Core.System.info`). → `result`.
+- **`utilization`** — CPU/memory/network/disk utilization (`SYNO.Core.System.Utilization.get`). → `result`.
+- **`storage`** — storage pools, volumes, and disks (`SYNO.Storage.CGI.Storage.load_info`). → `items` (hoisted from `data.volumes`), `result`.
 
-- `result` — the decoded `data` object (or `null`/omitted for an empty body,
-  e.g. `dl_create`'s typical response)
-- `items` — set alongside `result` for verbs whose `data` wraps a known list
-  (`data.volumes`, `data.files`, `data.tasks`), or is itself a JSON array
-  (`dl_delete`'s per-task results, or the `api` escape hatch when `data` is
-  a bare array)
-- `status_code` — the HTTP status DSM returned (200 for both a successful
-  and a `success:false` API-level response — see above)
+### File Station
 
-A transport-level failure (a non-2xx HTTP status, or a `success:false`
-envelope after any session-expired retry) is a connector error, not a data
-output — inspect it via the invocation's error, not `status_code`.
+- **`fs_list`** — list files/folders under a path (`SYNO.FileStation.List.list`). `folder_path`* (e.g. `/volume1/photo`), `additional` (extra info fields to include — a value or list, e.g. `size,time`). → `items` (hoisted from `data.files`), `result`.
+- **`fs_info`** — get info for one or more paths (`SYNO.FileStation.List.getinfo`). `path`* (a path, or a list of paths), `additional`. → `items` (hoisted from `data.files`), `result`.
+- **`fs_search`** — start an asynchronous File Station search under a path (`SYNO.FileStation.Search.start`). `folder_path`*, `pattern` (filename search pattern, e.g. `*.mp4`), `recursive` (boolean — search subfolders, default true). → `result` (the started search's `taskid` — poll/stop it yourself via `api`, `method: list` / `method: stop`, same `taskid`).
 
+### Download Station
+
+- **`dl_tasks`** — list Download Station tasks (`SYNO.DownloadStation.Task.list`). `additional` (a value or list, e.g. `detail,transfer`). → `items` (hoisted from `data.tasks`), `result`.
+- **`dl_create`** — create a Download Station task (`SYNO.DownloadStation.Task.create`, POST). `uri`* (a download URI — http/ftp/magnet — or a list of them), `destination` (destination shared-folder-relative path). → `result` (typically empty).
+- **`dl_delete`** — delete one or more Download Station tasks (`SYNO.DownloadStation.Task.delete`, POST). `id`* (a task id, or a list of ids), `force_complete` (boolean — treat the task as complete instead of just removing it). → `items` (the per-task delete results), `result`.
+
+### Escape hatch
+
+- **`api`** — any `SYNO.*` API via `entry.cgi`. `api`* (the SYNO.* API namespace, e.g. `SYNO.FileStation.List`), `method`* (the API method, e.g. `list`), `version` (API version, default `1`), `params` (map of extra query/form parameters), `http_method` (`GET` (default) or `POST`). → `result` (or `items` when `data` is a bare array), `status_code`.
 ## Capabilities & security
 
 Declares **no** egress — a Synology NAS is self-hosted with no fixed public

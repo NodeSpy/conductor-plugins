@@ -118,38 +118,67 @@ where you can instead.
 
 ## Verbs
 
-| verb | request | outputs | notes |
-|------|---------|---------|-------|
-| `realms` | `GET /admin/realms` | `items` | realms visible to this client |
-| `realm_get` | `GET /admin/realms/{realm}` | `result` | the connection's target realm |
-| `users` | `GET .../users` | `items` | options: `search`, `username`, `email`, `first`, `max` |
-| `user_get` | `GET .../users/{id}` | `result` | options: `id` * |
-| `user_create` | `POST .../users` | `status_code` + `id` | options: `body` * (a Keycloak `UserRepresentation`) |
-| `user_update` | `PUT .../users/{id}` | `status_code` | options: `id` *, `body` * |
-| `user_delete` | `DELETE .../users/{id}` | `status_code` | options: `id` * |
-| `user_reset_password` | `PUT .../users/{id}/reset-password` | `status_code` | options: `id` *, `value` *, `temporary`, `type` |
-| `user_logout` | `POST .../users/{id}/logout` | `status_code` | options: `id` * |
-| `groups` | `GET .../groups` | `items` | top-level groups |
-| `clients` | `GET .../clients` | `items` | |
-| `roles` | `GET .../roles` | `items` | realm-level roles |
-| `sessions` | `GET .../client-session-stats` | `items` | per-client session counts |
-| `events` | `GET .../events` | `items` | options: `type`, `user`, `max` |
-| `api` | any `method`/`path`/`query`/`body` | `result` (object) or `items` (array) | `path` is relative to `base_url` (not `{realm}`), so it can reach `/admin/realms/...` or `/realms/...` alike |
+Selected by `uses: <name>.<verb>`. Every verb returns `status_code` (the
+HTTP status). Required options are marked `*`. `id` on every `user_*` verb is
+a **scoped** option (`user`), so conductor gates which user an agent-driven
+dispatch may name.
 
-`*` required. Every verb also returns `status_code` (the HTTP status). `id`
-on every `user_*` verb is a **scoped** option (`user`), so conductor gates
-which user an agent-driven dispatch may name.
+### Realms
 
-`user_create`'s Keycloak response is a `201 Created` with **no response
-body** — the new user's id is only in the `Location` response header
-(`.../users/<id>`). This connector parses that id out for you into
-`outputs.id`, so a following step can reference
-`{{ steps.<id>.outputs.id }}` without a separate lookup.
+- **`realms`** — realms visible to this client. No options. → `items`.
+- **`realm_get`** — the connection's target realm's details. No options. →
+  `result`.
 
-See `Describe()` in
-[`connectors/keycloak/main.go`](../../connectors/keycloak/main.go) for each
-verb's full option schema.
+### Users
 
+- **`users`** — list/search users in the target realm. `search` (substring
+  match across username/first/last/email), `username` (exact username
+  filter), `email` (exact email filter), `first` (integer, pagination
+  offset), `max` (integer, page size). → `items`.
+- **`user_get`** — get one user by id. `id`* (Keycloak user id, UUID). →
+  `result`.
+- **`user_create`** — create a user. `body`* (map; a Keycloak
+  `UserRepresentation`, e.g. `{username, email, enabled, firstName, lastName,
+  credentials, attributes, ...}`). → `id` (the created user's id, parsed from
+  the response's `Location` header — Keycloak's `201` carries no body, so a
+  following step can reference `{{ steps.<id>.outputs.id }}` without a
+  separate lookup).
+- **`user_update`** — update a user (full replace of the given fields). `id`*,
+  `body`* (map; `UserRepresentation` fields to update). → (no extra outputs
+  beyond `status_code`).
+- **`user_delete`** — delete a user. `id`*. → (no extra outputs beyond
+  `status_code`).
+- **`user_reset_password`** — set (or reset) a user's password. `id`*,
+  `value`* (the new password), `temporary` (boolean, force the user to
+  change it at next login, default false), `type` (credential type, default
+  `password`). → (no extra outputs beyond `status_code`).
+- **`user_logout`** — invalidate a user's active sessions. `id`*. → (no
+  extra outputs beyond `status_code`).
+
+### Groups, clients & roles
+
+- **`groups`** — list top-level groups in the target realm. No options. →
+  `items`.
+- **`clients`** — list clients in the target realm. No options. → `items`.
+- **`roles`** — list realm-level roles in the target realm. No options. →
+  `items`.
+
+### Sessions & events
+
+- **`sessions`** — per-client session counts in the target realm. No
+  options. → `items`.
+- **`events`** — login/admin event log for the target realm. `type` (event
+  type filter, e.g. `LOGIN`, `LOGIN_ERROR`), `user` (user id filter), `max`
+  (integer, page size). → `items`.
+
+### Escape hatch
+
+- **`api`** — raw escape hatch for any Keycloak endpoint. `method` (HTTP
+  method, default `GET`), `path`* (path relative to `base_url` — not scoped
+  under `{realm}`, so it can reach `/admin/realms/...` or `/realms/...`
+  alike, e.g. `/admin/realms/master/users/count`), `query` (map, query
+  string parameters), `body` (any, JSON request body). → `result` (object
+  response) or `items` (array response).
 ## No source
 
 This connector is verb-only: it declares no `Events` and does not implement

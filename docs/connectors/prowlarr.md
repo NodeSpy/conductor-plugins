@@ -123,38 +123,75 @@ present), `previous_version` / `new_version` (`ApplicationUpdate`: the
 version updated from/to, when present), and `payload` (the full posted JSON,
 verbatim).
 
+### Filtering
+
+`filter:` matches an event's published fields (`event_types`, plus the
+context fields above). A key set to a value must match; a **list matches any
+of** its values — `event_types: [HealthIssue, HealthRestored]`. Prefix
+**`not_`** to negate a field — `not_event_types: [Test]` excludes. **`expr:` /
+`not_expr:`** take an expression over the fields. Keys within one filter
+object are **AND**ed. A top-level **array** of filter objects is **OR** across
+them.
+
+### Example
+
+Check system status whenever a health issue fires:
+
+```yaml
+triggers:
+  - on: pr.event
+    filter:
+      event_types: [HealthIssue]
+    steps:
+      - uses: pr.system_status
+```
+
 ## Verbs
 
-| verb | request | outputs | notes |
-|------|---------|---------|-------|
-| `indexers` | `GET /indexer` | `items` | all indexers configured in Prowlarr |
-| `indexer_get` | `GET /indexer/{id}` | `result` | options: `id` (required) |
-| `indexer_stats` | `GET /indexerstats` | `result` | aggregated per-indexer statistics (query/grab counts, response times, failures) |
-| `applications` | `GET /applications` | `items` | the applications Prowlarr syncs indexers into (Sonarr/Radarr/etc.) |
-| `search` | `GET /search` | `items` | see below |
-| `command` | `POST /command` | `result` | see below |
-| `system_status` | `GET /system/status` | `result` | instance version and system information |
-| `tags` | `GET /tag` | `items` | configured tags |
-| `api` | any `method`/`path`/`query`/`body` | `result` (+ `items` when the response is a JSON array) | escape hatch for any endpoint not covered above |
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-Every verb also returns `status_code` (the HTTP status).
+- Every verb is a plain HTTP call to `{base_url}/api/v1/<resource>`,
+  authenticated with the `X-Api-Key` header.
+- Every verb returns `status_code` (the HTTP status) alongside its listed
+  outputs.
+- **`result` vs `items`** — a verb whose response is naturally a list returns
+  `items`; everything else returns `result`.
 
-**`search`** takes `query` (search term; omit for an indexer's default/RSS
-query), `indexer_ids` (list, restricts the search to these indexer ids —
-joined into a single comma-separated `indexerIds` query parameter; empty =
-all enabled indexers), `categories` (list, restricted to these
-Newznab/Torznab category ids — sent as repeated `categories=` parameters),
-and `type` (search type, e.g. `search`, `tv-search`, `movie-search`) — all
-optional, matching the query shape Prowlarr's own UI sends.
+Required options are marked `*`.
 
-**`command`** posts `{name, ...}` to `POST /command`. `name` is required
-(e.g. `ApplicationIndexerSync`, `IndexerSync`, `CheckHealth`); `params` (a
-map) is merged in verbatim for anything else a given command needs.
+### Indexers & applications
 
-See `Describe()` in
-[`connectors/prowlarr/main.go`](../../connectors/prowlarr/main.go) for each
-verb's full option schema.
+- **`indexers`** — list all indexers configured in Prowlarr. → `items`.
+- **`indexer_get`** — a single indexer by id. `id`*. → `result`.
+- **`indexer_stats`** — aggregated per-indexer statistics (query/grab
+  counts, response times, failures). → `result`.
+- **`applications`** — the applications Prowlarr syncs indexers into
+  (Sonarr/Radarr/etc.). → `items`.
 
+### Search
+
+- **`search`** — search for a release across indexers, matching the query
+  shape Prowlarr's own UI sends. `query` (string, search term; omit for an
+  indexer's default/RSS query), `indexer_ids` (list, restricts the search to
+  these indexer ids — joined into a comma-separated `indexerIds` parameter;
+  empty = all enabled indexers), `categories` (list, restricted to these
+  Newznab/Torznab category ids — sent as repeated `categories=` parameters),
+  `type` (string, e.g. `search`, `tv-search`, `movie-search`). → `items`.
+
+### Commands & system
+
+- **`command`** — run a Prowlarr command. `name`* (e.g.
+  `ApplicationIndexerSync`, `IndexerSync`, `CheckHealth`), `params` (map,
+  merged in verbatim for anything else the command needs). → `result`.
+- **`system_status`** — instance version and system information. → `result`.
+- **`tags`** — configured tags. → `items`.
+
+### Escape hatch
+
+- **`api`** — call any Prowlarr API v1 endpoint not covered above. `method`
+  (default `GET`), `path`* (relative to `/api/v1`, e.g. `/system/status`),
+  `query` (map), `body` (any, marshaled to JSON). → `result` (+ `items` when
+  the response decodes to a JSON array).
 ## Capabilities & security
 
 Declares **no** egress — Prowlarr is always self-hosted, so unlike a

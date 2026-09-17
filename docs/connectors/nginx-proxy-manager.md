@@ -90,33 +90,46 @@ not a static API key:
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`; NPM's list
-endpoints return a bare JSON array, hoisted into `items` — everything else
-(an object, or a bare boolean like the `enable`/`disable` response) is
-carried in `result`.
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | endpoint | notes |
-|------|----------|-------|
-| `proxy_hosts` | `GET /api/nginx/proxy-hosts` | `items` |
-| `proxy_host_get` | `GET /api/nginx/proxy-hosts/{id}` | `id`\*; `result` |
-| `proxy_host_create` | `POST /api/nginx/proxy-hosts` | `body`\* (the full NPM proxy host object — `domain_names`, `forward_scheme`, `forward_host`, `forward_port`, `certificate_id`, `access_list_id`, `ssl_forced`, `block_exploits`, `allow_websocket_upgrade`, `locations`, `advanced_config`, ...); `result` |
-| `proxy_host_update` | `PUT /api/nginx/proxy-hosts/{id}` | `id`\*, `body`\* (same shape); `result` |
-| `proxy_host_delete` | `DELETE /api/nginx/proxy-hosts/{id}` | `id`\*; `result` |
-| `proxy_host_enable` | `POST /api/nginx/proxy-hosts/{id}/enable` | `id`\*; `result` |
-| `proxy_host_disable` | `POST /api/nginx/proxy-hosts/{id}/disable` | `id`\*; `result` |
-| `redirection_hosts` | `GET /api/nginx/redirection-hosts` | `items` |
-| `streams` | `GET /api/nginx/streams` | `items` |
-| `dead_hosts` | `GET /api/nginx/dead-hosts` | `items` (404 hosts) |
-| `access_lists` | `GET /api/nginx/access-lists` | `items` |
-| `certificates` | `GET /api/nginx/certificates` | `items` |
-| `reports` | `GET /api/reports/hosts` | `result` (host counts summary) |
-| `api` | `method` + `path` (under `/api`) + `query` + `body` — escape hatch for anything without a first-class verb | `result` (object/scalar response) or `items` (array response) |
+- Every verb returns `status_code`; NPM's list endpoints return a bare JSON
+  array, hoisted into `items` — everything else (an object, or a bare
+  boolean like the `enable`/`disable` response) is carried in `result`.
+- `proxy_host_create`/`proxy_host_update` accept a `body` map matching NPM's
+  proxy host schema verbatim rather than modeling each field individually —
+  NPM validates the payload and any rejection surfaces as an error carrying
+  its status code and response body.
 
-`proxy_host_create`/`proxy_host_update` accept a `body` map matching NPM's
-proxy host schema verbatim rather than modeling each field individually —
-NPM validates the payload and any rejection surfaces as an error carrying its
-status code and response body.
+Required options are marked `*`.
+
+### Proxy hosts
+
+- **`proxy_hosts`** — list proxy hosts (`GET /api/nginx/proxy-hosts`). → `items`, `status_code`.
+- **`proxy_host_get`** — get one proxy host (`GET /api/nginx/proxy-hosts/{id}`). `id`* (integer) — proxy host ID. → `result`, `status_code`.
+- **`proxy_host_create`** — create a proxy host (`POST /api/nginx/proxy-hosts`). `body`* (map) — the full NPM proxy host object, e.g. `domain_names`, `forward_scheme`, `forward_host`, `forward_port`, `certificate_id`, `access_list_id`, `ssl_forced`, `block_exploits`, `allow_websocket_upgrade`, `locations`, `advanced_config`. → `result`, `status_code`.
+- **`proxy_host_update`** — update a proxy host (`PUT /api/nginx/proxy-hosts/{id}`). `id`* (integer), `body`* (map) — fields to update, same shape as `proxy_host_create`'s body. → `result`, `status_code`.
+- **`proxy_host_delete`** — delete a proxy host (`DELETE /api/nginx/proxy-hosts/{id}`). `id`* (integer). → `result`, `status_code`.
+- **`proxy_host_enable`** — enable a proxy host (`POST /api/nginx/proxy-hosts/{id}/enable`). `id`* (integer). → `result`, `status_code`.
+- **`proxy_host_disable`** — disable a proxy host (`POST /api/nginx/proxy-hosts/{id}/disable`). `id`* (integer). → `result`, `status_code`.
+
+### Other host types
+
+- **`redirection_hosts`** — list redirection hosts (`GET /api/nginx/redirection-hosts`). → `items`, `status_code`.
+- **`streams`** — list TCP/UDP streams (`GET /api/nginx/streams`). → `items`, `status_code`.
+- **`dead_hosts`** — list dead (404) hosts (`GET /api/nginx/dead-hosts`). → `items`, `status_code`.
+
+### Access lists & certificates
+
+- **`access_lists`** — list access lists (`GET /api/nginx/access-lists`). → `items`, `status_code`.
+- **`certificates`** — list certificates (`GET /api/nginx/certificates`). → `items`, `status_code`.
+
+### Reports
+
+- **`reports`** — host counts report summary (`GET /api/reports/hosts`). → `result`, `status_code`.
+
+### Raw access
+
+- **`api`** — raw escape hatch: any NPM API endpoint under `/api`, for anything without a first-class verb. `method` (HTTP method, default `GET`), `path`* (path under `/api`, e.g. `/nginx/proxy-hosts`), `query` (map of query-string parameters), `body` (any — JSON request body). → `result` (object/scalar response), `items` (array response), `status_code`.
 
 ## Capabilities & security
 

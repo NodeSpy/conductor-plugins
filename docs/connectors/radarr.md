@@ -110,42 +110,84 @@ Deliveries are deduplicated on `eventType` + `tmdbId` + (`downloadId` when
 present, else a per-second timestamp), so a redelivered webhook doesn't fire
 the same trigger twice.
 
+### Filtering
+
+`filter:` matches an event's published fields (`event_types`, `movies`, plus
+the context fields above). A key set to a value must match; a **list matches
+any of** its values — `event_types: [Grab, Download]`. Prefix **`not_`** to
+negate a field — `not_movies: [Sandbox Movie]` excludes. **`expr:` /
+`not_expr:`** take an expression over the fields. Keys within one filter
+object are **AND**ed. A top-level **array** of filter objects is **OR** across
+them.
+
+### Example
+
+List the current queue whenever a download completes:
+
+```yaml
+triggers:
+  - on: radarr.event
+    filter:
+      event_types: [Download]
+    steps:
+      - uses: radarr.queue
+```
+
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema.
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | maps to | notes |
-|------|---------|-------|
-| `movies` | `GET /movie` | outputs `items` |
-| `movie_get` | `GET /movie/{id}` | `id` required |
-| `lookup` | `GET /movie/lookup?term=` | `term` required (title or `tmdb:<id>`); outputs `items` |
-| `add_movie` | `POST /movie` | either `tmdb_id`/`quality_profile_id`/`root_folder_path` (+ optional `monitored` default `true`, `minimum_availability` default `released`, `search_for_movie`), or a full `movie` map sent verbatim |
-| `delete_movie` | `DELETE /movie/{id}` | `id` required; `delete_files`, `add_import_exclusion` |
-| `command` | `POST /command` | `name` required (e.g. `MoviesSearch`, `MovieSearch`, `RefreshMovie`, `RescanMovie`); `movie_ids`; `params` merged in verbatim |
-| `queue` | `GET /queue` | the current download queue |
-| `calendar` | `GET /calendar` | `start`, `end` (ISO-8601); outputs `items` |
-| `wanted_missing` | `GET /wanted/missing` | movies Radarr considers missing |
-| `quality_profiles` | `GET /qualityprofile` | outputs `items` |
-| `root_folders` | `GET /rootfolder` | outputs `items` |
-| `health` | `GET /health` | outputs `items` |
-| `api` | any `/api/v3/<path>` | escape hatch: `method` (default GET), `path` (relative to `/api/v3`), `query`, `body` |
+- Every verb call sends the API key as the `X-Api-Key` header against
+  `{base_url}/api/v3/<resource>`.
+- Every verb returns `status_code` (the HTTP status) alongside its listed
+  outputs. A non-2xx response is a connector error carrying the status and
+  response body — never a data output.
+- **`result` vs `items`** — a verb whose response is naturally a list returns
+  `items`; everything else returns `result`.
 
-### Outputs
+Required options are marked `*`.
 
-Every verb returns:
+### Movies
 
-- `result` — the decoded JSON body (object or array), for verbs that don't
-  naturally produce a list
-- `items` — the decoded JSON array, for verbs whose response is a list
-  (`movies`, `lookup`, `calendar`, `quality_profiles`, `root_folders`,
-  `health`); `api` sets `items` too, whenever its response happens to decode
-  to an array
-- `status_code` — the HTTP status Radarr returned
+- **`movies`** — list all movies known to Radarr. → `items`.
+- **`movie_get`** — a single movie by id. `id`*. → `result`.
+- **`lookup`** — search for a movie to add (TheMovieDB search). `term`* (a
+  title, or `tmdb:<id>`). → `items`.
+- **`add_movie`** — add a movie to Radarr. Either pass `tmdb_id` (TheMovieDB
+  id; required unless `movie` is given), `quality_profile_id` (required
+  unless `movie` is given), `root_folder_path` (required unless `movie` is
+  given), `monitored` (boolean, default `true`), `minimum_availability`
+  (string, default `released`), `search_for_movie` (boolean →
+  `addOptions.searchForMovie`) — or pass the full `movie` map (sent verbatim
+  to `POST /movie` instead of the individual fields; typically a `lookup`
+  result, unmodified or edited). → `result`.
+- **`delete_movie`** — remove a movie from Radarr. `id`*, `delete_files`
+  (boolean, also delete the movie's files on disk), `add_import_exclusion`
+  (boolean, add to the import list exclusion list). → `result`.
 
-A non-2xx response is a connector error carrying the status and response
-body, not a data output.
+### Commands, queue & calendar
 
+- **`command`** — run a Radarr command. `name`* (e.g. `MoviesSearch`,
+  `MovieSearch`, `RefreshMovie`, `RescanMovie`), `movie_ids` (list →
+  `movieIds`), `params` (map, merged in verbatim for anything else the
+  command needs). → `result`.
+- **`queue`** — the current download queue. → `result`.
+- **`calendar`** — movies releasing in a date range. `start`, `end`
+  (ISO-8601 dates). → `items`.
+- **`wanted_missing`** — movies Radarr considers missing. → `result`.
+
+### Reference data
+
+- **`quality_profiles`** — configured quality profiles. → `items`.
+- **`root_folders`** — configured root folders. → `items`.
+- **`health`** — current health check results. → `items`.
+
+### Escape hatch
+
+- **`api`** — call any Radarr API v3 endpoint not covered above. `method`
+  (default `GET`), `path`* (relative to `/api/v3`, e.g. `/system/status`),
+  `query` (map), `body` (any, marshaled to JSON). → `result` (+ `items` when
+  the response decodes to a JSON array).
 ## Capabilities & security
 
 Declares **no** egress — Radarr is self-hosted with no fixed public host, so

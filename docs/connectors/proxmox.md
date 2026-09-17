@@ -102,45 +102,59 @@ for a private hostname, via a DNS-01 challenge.
 
 ## Verbs
 
-| verb | request | outputs | notes |
-|------|---------|---------|-------|
-| `nodes` | `GET /nodes` | `items` | cluster nodes |
-| `node_status` | `GET /nodes/{node}/status` | `result` | options: `node` * |
-| `cluster_resources` | `GET /cluster/resources` | `items` | options: `type` (`vm`\|`node`\|`storage`) |
-| `qemu_list` | `GET /nodes/{node}/qemu` | `items` | options: `node` * |
-| `qemu_status` | `GET /nodes/{node}/qemu/{vmid}/status/current` | `result` | options: `node` *, `vmid` * |
-| `qemu_start` | `POST .../qemu/{vmid}/status/start` | `result` | options: `node` *, `vmid` * |
-| `qemu_stop` | `POST .../qemu/{vmid}/status/stop` | `result` | options: `node` *, `vmid` * |
-| `qemu_shutdown` | `POST .../qemu/{vmid}/status/shutdown` | `result` | options: `node` *, `vmid` * (graceful, via ACPI) |
-| `qemu_reboot` | `POST .../qemu/{vmid}/status/reboot` | `result` | options: `node` *, `vmid` * |
-| `qemu_clone` | `POST .../qemu/{vmid}/clone` | `result` | options: `node` *, `vmid` *, `newid` *, `name`, `full` |
-| `lxc_list` | `GET /nodes/{node}/lxc` | `items` | options: `node` * |
-| `lxc_status` | `GET /nodes/{node}/lxc/{vmid}/status/current` | `result` | options: `node` *, `vmid` * |
-| `lxc_start` | `POST .../lxc/{vmid}/status/start` | `result` | options: `node` *, `vmid` * |
-| `lxc_stop` | `POST .../lxc/{vmid}/status/stop` | `result` | options: `node` *, `vmid` * |
-| `storage` | `GET /nodes/{node}/storage` | `items` | options: `node` * |
-| `tasks` | `GET /nodes/{node}/tasks` | `items` | options: `node` * |
-| `task_status` | `GET /nodes/{node}/tasks/{upid}/status` | `result` | options: `node` *, `upid` * |
-| `backup` | `POST /nodes/{node}/vzdump` | `result` | options: `node` *, `vmid` *, `storage`, `mode` (`snapshot`\|`suspend`\|`stop`), `compress` |
-| `snapshots` | `GET /nodes/{node}/qemu/{vmid}/snapshot` | `items` | options: `node` *, `vmid` * |
-| `snapshot_create` | `POST .../qemu/{vmid}/snapshot` | `result` | options: `node` *, `vmid` *, `snapname` * |
-| `api` | any `method`/`path`/`query`/`body` | `result` (+ `items` when the unwrapped `data` is a JSON array) | escape hatch for any endpoint not covered above |
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-`*` required. Every verb also returns `status_code` (the HTTP status).
-`node`, `vmid`, and `upid` are **scoped** options (`node`, `vm`, `task`
-respectively), so conductor gates which resource an agent-driven dispatch
-may name.
+- **`node`** — Proxmox node name (e.g. `pve1`); required on every node-scoped verb.
+- **`vmid`** — VM/container ID; required on every per-VM/container verb.
+- Every verb returns `status_code` (the HTTP status) plus either `result` (a
+  single object) or `items` (a list).
+- `node`, `vmid`, and `upid` are **scoped** options (`node`, `vm`, `task`
+  respectively), so conductor gates which resource an agent-driven dispatch
+  may name.
+- Every `qemu_start`/`qemu_stop`/`qemu_shutdown`/`qemu_reboot`/`qemu_clone`/
+  `lxc_start`/`lxc_stop`/`backup`/`snapshot_create` verb **starts** the
+  underlying Proxmox task and returns immediately with the task's UPID as
+  `result` — these operations run asynchronously on the PVE side. Poll
+  `task_status` with that UPID, or wait for the `task` source event below, to
+  see the outcome.
 
-Every `*_start`/`*_stop`/`*_shutdown`/`*_reboot`/`clone`/`backup`/
-`snapshot_create` verb **starts** the underlying Proxmox task and returns
-immediately with the task's UPID as `result` — Proxmox operations like a
-backup or a clone run asynchronously. Poll `task_status` with that UPID (or
-wait for the `task` source event, below) to see the outcome.
+Required options are marked `*`.
 
-See `Describe()` in
-[`connectors/proxmox/main.go`](../../connectors/proxmox/main.go) for each
-verb's full option schema.
+### Nodes & cluster
 
+- **`nodes`** — list cluster nodes (`GET /nodes`). → `items`.
+- **`node_status`** — a node's status: uptime, load, memory, ... (`GET /nodes/{node}/status`). `node`*. → `result`.
+- **`cluster_resources`** — cluster-wide resource list (`GET /cluster/resources`). `type` (`vm` | `node` | `storage` — restrict to one resource type). → `items`.
+
+### QEMU VMs
+
+- **`qemu_list`** — list QEMU VMs on a node (`GET /nodes/{node}/qemu`). `node`*. → `items`.
+- **`qemu_status`** — a QEMU VM's current status (`GET .../qemu/{vmid}/status/current`). `node`*, `vmid`*. → `result`.
+- **`qemu_start`** — start a QEMU VM (`POST .../qemu/{vmid}/status/start`). `node`*, `vmid`*. → `result` (task UPID).
+- **`qemu_stop`** — hard-stop a QEMU VM (`POST .../qemu/{vmid}/status/stop`). `node`*, `vmid`*. → `result` (task UPID).
+- **`qemu_shutdown`** — gracefully shut down a QEMU VM via ACPI (`POST .../qemu/{vmid}/status/shutdown`). `node`*, `vmid`*. → `result` (task UPID).
+- **`qemu_reboot`** — reboot a QEMU VM (`POST .../qemu/{vmid}/status/reboot`). `node`*, `vmid`*. → `result` (task UPID).
+- **`qemu_clone`** — clone a QEMU VM/template (`POST .../qemu/{vmid}/clone`). `node`*, `vmid`*, `newid`* (VMID for the clone), `name` (name for the clone), `full` (boolean — full clone instead of a linked clone). → `result` (task UPID).
+
+### LXC containers
+
+- **`lxc_list`** — list LXC containers on a node (`GET /nodes/{node}/lxc`). `node`*. → `items`.
+- **`lxc_status`** — an LXC container's current status (`GET .../lxc/{vmid}/status/current`). `node`*, `vmid`*. → `result`.
+- **`lxc_start`** — start an LXC container (`POST .../lxc/{vmid}/status/start`). `node`*, `vmid`*. → `result` (task UPID).
+- **`lxc_stop`** — hard-stop an LXC container (`POST .../lxc/{vmid}/status/stop`). `node`*, `vmid`*. → `result` (task UPID).
+
+### Storage, tasks & backups
+
+- **`storage`** — storage configured on a node (`GET /nodes/{node}/storage`). `node`*. → `items`.
+- **`tasks`** — recent tasks on a node (`GET /nodes/{node}/tasks`). `node`*. → `items`.
+- **`task_status`** — a task's status by UPID (`GET /nodes/{node}/tasks/{upid}/status`). `node`*, `upid`* (from `tasks`, or a `*_start`/`clone`/`backup`/`snapshot_create` output). → `result`.
+- **`backup`** — start a vzdump backup job (`POST /nodes/{node}/vzdump`). `node`*, `vmid`*, `storage` (target storage ID), `mode` (`snapshot` | `suspend` | `stop`, default `snapshot`), `compress` (`0` | `1` | `gzip` | `lzo` | `zstd`). → `result` (task UPID).
+- **`snapshots`** — list a QEMU VM's snapshots (`GET .../qemu/{vmid}/snapshot`). `node`*, `vmid`*. → `items`.
+- **`snapshot_create`** — create a QEMU VM snapshot (`POST .../qemu/{vmid}/snapshot`). `node`*, `vmid`*, `snapname`* (snapshot name). → `result`.
+
+### Escape hatch
+
+- **`api`** — any Proxmox API endpoint not covered above. `method` (HTTP method, default `GET`), `path`* (path under `/api2/json`, e.g. `/nodes/pve1/qemu/100/config`), `query` (map of query string parameters), `body` (JSON request body). → `result` (or `items` when the unwrapped `data` is a JSON array), `status_code`.
 ## Source — the `task` event
 
 Every `poll_interval`, the source calls `GET /cluster/tasks` and emits **one
@@ -177,6 +191,10 @@ running does not emit.
 | `nodes` | list | the task's node is one of these |
 | `types` | list | the task's type is one of these |
 | `statuses` | list | the task's `exitstatus` is one of these |
+
+**Filtering:** each filter is a list; a task matches when its corresponding
+field is one of the listed values (OR within the list). Filters given
+together are ANDed.
 
 ```yaml
 connectors:

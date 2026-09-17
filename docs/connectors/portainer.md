@@ -76,38 +76,51 @@ self-signed lab box doesn't force you to disable TLS globally.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`; most also return
-either `result` (a single object), `items` (a list), or — for
-`container_logs` — `logs` (a raw string).
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `status` | `GET /api/status` | `result` |
-| `endpoints` | `GET /api/endpoints` | `items` |
-| `endpoint_get` | `GET /api/endpoints/{endpoint_id}` | `result` |
-| `stacks` | `GET /api/stacks` | `items` |
-| `stack_get` | `GET /api/stacks/{stack_id}` | `result` |
-| `stack_start` | `POST /api/stacks/{stack_id}/start` | `status_code` (+ `result` if the body is non-empty) |
-| `stack_stop` | `POST /api/stacks/{stack_id}/stop` | `status_code` (+ `result` if the body is non-empty) |
-| `stack_delete` | `DELETE /api/stacks/{stack_id}` (`?endpointId=`) | `status_code` (+ `result` if the body is non-empty) |
-| `containers` | `GET /api/endpoints/{endpoint_id}/docker/containers/json` (`?all=1`) | `items` |
-| `container_action` | `POST /api/endpoints/{endpoint_id}/docker/containers/{container_id}/{action}` (`action`: start\|stop\|restart\|kill\|pause\|unpause) | `status_code` (+ `result` if the body is non-empty) |
-| `container_logs` | `GET /api/endpoints/{endpoint_id}/docker/containers/{container_id}/logs` (`?stdout=1&stderr=&tail=`) | `logs` (raw string) |
-| `images` | `GET /api/endpoints/{endpoint_id}/docker/images/json` | `items` |
-| `api` | `method` + `path` (under `/api`) + `query` + `body` — escape hatch for anything without a first-class verb | `result` (object response) or `items` (array response) |
+- Every verb returns `status_code`; most also return either `result` (a
+  single object), `items` (a list), or — for `container_logs` — `logs` (a
+  raw string).
+- `stack_delete`'s `endpoint_id` option maps to the `endpointId` query
+  parameter that Portainer requires for most stack types (Swarm/Compose
+  stacks tied to a specific environment).
+- `container_logs` defaults to `stdout: true` when `stdout` is omitted; set
+  `stdout: false` explicitly to fetch only `stderr`. The docker-proxy log
+  endpoint returns plain text (or, for containers created without a TTY, an
+  8-byte-framed multiplexed stdout/stderr stream) rather than JSON, so the
+  response body is returned verbatim as the `logs` string rather than
+  JSON-decoded — a workflow that needs stdout/stderr demultiplexed will need
+  to parse that framing itself.
 
-`stack_delete`'s `endpoint_id` option maps to the `endpointId` query
-parameter that Portainer requires for most stack types (Swarm/Compose
-stacks tied to a specific environment).
+Required options are marked `*`.
 
-`container_logs` defaults to `stdout: true` when `stdout` is omitted; set
-`stdout: false` explicitly to fetch only `stderr`. The docker-proxy log
-endpoint returns plain text (or, for containers created without a TTY, an
-8-byte-framed multiplexed stdout/stderr stream) rather than JSON, so the
-response body is returned verbatim as the `logs` string rather than
-JSON-decoded — a workflow that needs stdout/stderr demultiplexed will need to
-parse that framing itself.
+### Server
+
+- **`status`** — Portainer server status/version (`GET /api/status`). → `result`, `status_code`.
+
+### Environments
+
+- **`endpoints`** — list environments (endpoints) (`GET /api/endpoints`). → `items`, `status_code`.
+- **`endpoint_get`** — get one environment's details (`GET /api/endpoints/{endpoint_id}`). `endpoint_id`*. → `result`, `status_code`.
+
+### Stacks
+
+- **`stacks`** — list stacks (`GET /api/stacks`). → `items`, `status_code`.
+- **`stack_get`** — get one stack's details (`GET /api/stacks/{stack_id}`). `stack_id`*. → `result`, `status_code`.
+- **`stack_start`** — start a stopped stack (`POST /api/stacks/{stack_id}/start`). `stack_id`*. → `status_code` (+ `result` if the body is non-empty).
+- **`stack_stop`** — stop a running stack (`POST /api/stacks/{stack_id}/stop`). `stack_id`*. → `status_code` (+ `result` if the body is non-empty).
+- **`stack_delete`** — delete a stack (`DELETE /api/stacks/{stack_id}?endpointId=`). `stack_id`*, `endpoint_id` (the stack's environment id; required by Portainer for most stack types). → `status_code` (+ `result` if the body is non-empty).
+
+### Containers & images
+
+- **`containers`** — list Docker containers on an environment (`GET /api/endpoints/{endpoint_id}/docker/containers/json?all=`). `endpoint_id`*, `all` (boolean — include stopped containers; default false, running only). → `items`, `status_code`.
+- **`container_action`** — start/stop/restart/kill/pause/unpause a Docker container (`POST /api/endpoints/{endpoint_id}/docker/containers/{container_id}/{action}`). `endpoint_id`*, `container_id`*, `action`* (`start` | `stop` | `restart` | `kill` | `pause` | `unpause`). → `status_code` (+ `result` if the body is non-empty).
+- **`container_logs`** — fetch a Docker container's logs (`GET /api/endpoints/{endpoint_id}/docker/containers/{container_id}/logs?stdout=1&tail=`). `endpoint_id`*, `container_id`*, `stdout` (boolean — include stdout, default true), `stderr` (boolean — include stderr), `tail` (string — number of lines from the end, or `"all"`; default all). → `logs` (raw string), `status_code`.
+- **`images`** — list Docker images on an environment (`GET /api/endpoints/{endpoint_id}/docker/images/json`). `endpoint_id`*. → `items`, `status_code`.
+
+### Raw access
+
+- **`api`** — raw escape hatch: any Portainer API endpoint under `/api`, for anything without a first-class verb. `method` (HTTP method, default `GET`), `path`* (path under `/api`, e.g. `/endpoints/1/docker/containers/json`), `query` (map of query-string parameters), `body` (any — JSON request body). → `result` (object response), `items` (array response), `status_code`.
 
 ## Capabilities & security
 

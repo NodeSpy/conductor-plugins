@@ -124,34 +124,50 @@ it is not part of `Describe().Connection`.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`; `devices`/`keys`
-return `items` (hoisted from the API's `devices`/`keys` envelope key);
-single-resource verbs return `result`.
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `devices` | `GET /tailnet/{tailnet}/devices` (`fields=all`) | `items` (hoisted from `devices`) |
-| `device_get` | `GET /device/{device_id}` | `result` |
-| `device_delete` | `DELETE /device/{device_id}` | `status_code` |
-| `device_authorize` | `POST /device/{device_id}/authorized` (`authorized`) | `status_code` |
-| `device_set_tags` | `POST /device/{device_id}/tags` (`tags`) | `status_code` |
-| `device_routes` | `GET /device/{device_id}/routes` | `result` |
-| `device_set_routes` | `POST /device/{device_id}/routes` (`routes`) | `result` |
-| `keys` | `GET /tailnet/{tailnet}/keys` | `items` (hoisted from `keys`) |
-| `key_get` | `GET /tailnet/{tailnet}/keys/{key_id}` | `result` |
-| `key_create` | `POST /tailnet/{tailnet}/keys` (`capabilities`, `expiry_seconds`, `description`) | `result` |
-| `key_delete` | `DELETE /tailnet/{tailnet}/keys/{key_id}` | `status_code` |
-| `acl_get` | `GET /tailnet/{tailnet}/acl` | `result` |
-| `acl_set` | `POST /tailnet/{tailnet}/acl` (`acl`) | `result` |
-| `dns_nameservers` | `GET /tailnet/{tailnet}/dns/nameservers` | `result` |
-| `dns_set_nameservers` | `POST /tailnet/{tailnet}/dns/nameservers` (`dns`) | `result` |
-| `dns_preferences` | `GET /tailnet/{tailnet}/dns/preferences` | `result` |
-| `api` | `method` + `path` (under `/api/v2`) + `query` + `body` — escape hatch for anything without a first-class verb, including writes | `result` (object response) or `items` (array response) |
+- **`device_id`** / **`key_id`** — required on every device-scoped or
+  key-scoped verb respectively.
+- Every verb's outputs include `status_code`; `devices`/`keys` return `items`
+  (hoisted from the API's `devices`/`keys` envelope key); single-resource
+  verbs return `result`. Omitted below for brevity.
+- All requests send `Authorization: Bearer <token>` (managed OAuth2 or
+  `api_key`, per above). A non-2xx response is returned as an error carrying
+  the status code and response body — nothing is swallowed.
 
-All requests send `Authorization: Bearer <token>` (managed or `api_key`, per
-above). A non-2xx response is returned as an error carrying the status code
-and response body — nothing is swallowed.
+Required options are marked `*`.
+
+### Devices
+
+- **`devices`** — list devices in the tailnet. `GET /tailnet/{tailnet}/devices`. `fields` (pass `"all"` to include all device fields). → `items` (hoisted from `devices`).
+- **`device_get`** — get one device. `GET /device/{id}`. `device_id`*. → `result`.
+- **`device_delete`** — remove a device from the tailnet. `DELETE /device/{id}`. `device_id`*. → `status_code`.
+- **`device_authorize`** — authorize (or deauthorize) a device. `POST /device/{id}/authorized`. `device_id`*, `authorized`* (boolean). → `status_code`.
+- **`device_set_tags`** — set a device's ACL tags. `POST /device/{id}/tags`. `device_id`*, `tags`* (list, e.g. `["tag:server"]`). → `status_code`.
+- **`device_routes`** — get a device's advertised/enabled subnet routes. `GET /device/{id}/routes`. `device_id`*. → `result`.
+- **`device_set_routes`** — set a device's enabled subnet routes. `POST /device/{id}/routes`. `device_id`*, `routes`* (list, e.g. `["10.0.0.0/24"]`). → `result`.
+
+### Auth keys
+
+- **`keys`** — list the tailnet's auth keys. `GET /tailnet/{tailnet}/keys`. No options. → `items` (hoisted from `keys`).
+- **`key_get`** — get one auth key. `GET /tailnet/{tailnet}/keys/{id}`. `key_id`*. → `result`.
+- **`key_create`** — create a new auth key. `POST /tailnet/{tailnet}/keys`. `capabilities`* (any, the key's `capabilities` object per the Tailscale API), `expiry_seconds` (key lifetime in seconds), `description`. → `result`.
+- **`key_delete`** — delete an auth key. `DELETE /tailnet/{tailnet}/keys/{id}`. `key_id`*. → `status_code`.
+
+### ACL
+
+- **`acl_get`** — get the tailnet's ACL. `GET /tailnet/{tailnet}/acl`. No options. → `result`.
+- **`acl_set`** — replace the tailnet's ACL. `POST /tailnet/{tailnet}/acl`. `acl`* (any, the new ACL document, HuJSON/JSON). → `result`.
+
+### DNS
+
+- **`dns_nameservers`** — get the tailnet's DNS nameservers. `GET /tailnet/{tailnet}/dns/nameservers`. No options. → `result`.
+- **`dns_set_nameservers`** — set the tailnet's DNS nameservers. `POST /tailnet/{tailnet}/dns/nameservers`. `dns`* (list of nameserver IPs). → `result`.
+- **`dns_preferences`** — get the tailnet's DNS preferences (MagicDNS). `GET /tailnet/{tailnet}/dns/preferences`. No options. → `result`.
+
+### Escape hatch
+
+- **`api`** — raw escape hatch: any Tailscale API endpoint (enables writes). `method` (HTTP method, default `GET`), `path`* (path under `/api/v2`, e.g. `/tailnet/example.com/devices`), `query` (map of query string parameters), `body` (any, JSON request body). → `result` (object response) or `items` (array response).
 
 ## Capabilities & security
 

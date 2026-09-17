@@ -67,34 +67,42 @@ socket.io client.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`; most also return
-either `result` (a single object) or `items` (a list).
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `libraries` | `GET /api/libraries` | `items` (hoisted from `libraries`) |
-| `library_get` | `GET /api/libraries/{library_id}` | `result` |
-| `library_items` | `GET /api/libraries/{library_id}/items` (`limit`, `page`, `sort`, `filter`) | `result` + `items` (hoisted from `result.results`) |
-| `get_item` | `GET /api/items/{item_id}` (`?expanded=1`) | `result` |
-| `search` | `GET /api/libraries/{library_id}/search?q=` | `result` |
-| `scan` | `POST /api/libraries/{library_id}/scan` (`force`) | `status_code` (+ `result` if the body is non-empty) |
-| `series` | `GET /api/libraries/{library_id}/series` | `items` |
-| `collections` | `GET /api/libraries/{library_id}/collections` | `items` |
-| `me` | `GET /api/me` | `result` |
-| `get_progress` | `GET /api/me/progress/{item_id}` | `result` |
-| `update_progress` | `PATCH /api/me/progress/{item_id}` (`progress`, `current_time`, `is_finished`) | `status_code` (+ `result` if the body is non-empty) |
-| `playback_sessions` | `GET /api/me/listening-sessions` | `result` |
-| `authorize` | `POST /api/authorize` | `result` |
-| `upload` | `POST /api/upload` (`library`\*, `folder`\*, `title`\*, `author`, `series`, `files`\*) | `status_code` (+ `result` if the body is non-empty) |
-| `api` | `method` + `path` (under `/api`) + `query` + `body` — escape hatch for anything without a first-class verb | `result` (object response) or `items` (array response) |
+- Every verb's outputs include `status_code`; most also return either
+  `result` (a single object) or `items` (a list).
 
-The `upload` verb reads each path in `files` from the local filesystem and
-sends them as `multipart/form-data` parts (ABS keys on the filename, not the
-form field name). `library` and `folder` are ABS IDs; `title` is required.
-`.m4b`, `.mp3`, `.flac`, `.opus`, `.epub`, `.pdf`, cover images, and more are
-accepted (see the ABS upload docs for the full list).
+Required options are marked `*`.
 
+### Libraries & items
+
+- **`libraries`** — list libraries (`GET /api/libraries`). → `items` (hoisted from `libraries`).
+- **`library_get`** — get one library's details (`GET /api/libraries/{library_id}`). `library_id`*. → `result`.
+- **`library_items`** — list items in a library, paginated (`GET /api/libraries/{library_id}/items`). `library_id`*, `limit` (page size), `page` (page number, 0-based), `sort` (sort field), `filter` (ABS filter expression). → `result`, `items` (hoisted from `result.results`).
+- **`get_item`** — get one library item (`GET /api/items/{item_id}`). `item_id`*, `expanded` (boolean — include expanded media/library-file details). → `result`.
+- **`search`** — search a library (`GET /api/libraries/{library_id}/search`). `library_id`*, `q`* (search query). → `result`.
+- **`scan`** — trigger a library scan (`POST /api/libraries/{library_id}/scan`). `library_id`*, `force` (boolean — force a full re-scan). → `status_code` (+ `result` if the body is non-empty).
+
+### Series & collections
+
+- **`series`** — list a library's series (`GET /api/libraries/{library_id}/series`). `library_id`*. → `items`.
+- **`collections`** — list a library's collections (`GET /api/libraries/{library_id}/collections`). `library_id`*. → `items`.
+
+### Me & progress
+
+- **`me`** — the authenticated user's profile (`GET /api/me`). → `result`.
+- **`get_progress`** — get playback/reading progress for an item (`GET /api/me/progress/{item_id}`). `item_id`*. → `result`.
+- **`update_progress`** — update playback/reading progress for an item (`PATCH /api/me/progress/{item_id}`). `item_id`*, `progress` (0..1 fraction complete), `current_time` (playback position in seconds), `is_finished` (boolean). → `status_code` (+ `result` if the body is non-empty).
+- **`playback_sessions`** — the user's listening sessions (`GET /api/me/listening-sessions`). → `result`.
+- **`authorize`** — validate the token / refresh identity (`POST /api/authorize`). → `result`.
+
+### Upload
+
+- **`upload`** — upload local audio/ebook/cover files into a library folder, as multipart (`POST /api/upload`). `library`* (target library ID), `folder`* (target folder ID within the library), `title`* (item title), `author`, `series`, `files`* (list of local file paths — `.m4b`/`.mp3`/`.flac`/`.opus`/`.epub`/`.pdf`/cover images and more; read from disk and sent as multipart parts, keyed on filename, not the form field name). → `status_code` (+ `result` if the body is non-empty).
+
+### Escape hatch
+
+- **`api`** — any ABS API endpoint not covered above. `method` (HTTP method, default `GET`), `path`* (path under `/api`, e.g. `/libraries/123/items`), `query` (map of query string parameters), `body` (JSON request body). → `result` (object response) or `items` (array response).
 ## Full Audible → Audiobookshelf pipeline
 
 The `upload` verb is the import half of an end-to-end pipeline that mirrors

@@ -79,25 +79,60 @@ that shape when a call "succeeds" but did nothing.
 
 ## Verbs
 
-| verb | mode | notes |
-|------|------|-------|
-| `queue` | `queue` | options: `start`, `limit` |
-| `history` | `history` | options: `start`, `limit`, `category`, `failed_only` |
-| `add_url` | `addurl` | options: `url` (required, the .nzb URL), `name` (job display name → `nzbname`), `category` (→ `cat`), `priority`, `pp` |
-| `pause` | `pause` | pause the entire queue |
-| `resume` | `resume` | resume the entire queue |
-| `pause_job` | `queue&name=pause` | options: `value` (required, `nzo_id`) |
-| `resume_job` | `queue&name=resume` | options: `value` (required, `nzo_id`) |
-| `delete_job` | `queue&name=delete` | options: `value` (required, `nzo_id` or `"all"`), `del_files` |
-| `set_speedlimit` | `config&name=speedlimit` | options: `value` (required, e.g. `"50"` percent or `"1M"`) |
-| `status` | `fullstatus` | full server status |
-| `version` | `version` | SABnzbd version |
-| `categories` | `get_cats` | configured categories, hoisted into `items` |
-| `api` | *(caller-supplied)* | options: `mode` (required), `params` (map of additional query parameters) — escape hatch for any mode not covered above |
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-See `Describe()` in [`connectors/sabnzbd/main.go`](../../connectors/sabnzbd/main.go)
-for each verb's full option schema.
+- Every verb is a `GET` to `{base_url}/api` with `apikey`, `output=json`,
+  and `mode` (the SABnzbd mode for that verb) as query parameters, plus
+  whatever parameters the mode itself takes.
+- Every verb returns `status_code` plus `result` — the whole decoded JSON
+  response, unmodified. A non-2xx HTTP response is a plugin error carrying
+  the status and body; SABnzbd's own API-level errors come back as `200 OK`
+  with `{"error": "..."}` in the body, so check `result` for that shape too.
+- **`items`** — set alongside `result`, for verbs whose response wraps an
+  obvious list (`queue`, `history`, `categories`).
 
+Required options are marked `*`.
+
+### Queue & history
+
+- **`queue`** — read the download queue (`queue.slots` hoisted into
+  `items`). `start` (integer, offset into the queue), `limit` (integer, max
+  slots to return). → `result`, `items`.
+- **`history`** — read the download history (`history.slots` hoisted into
+  `items`). `start` (integer, offset), `limit` (integer, max rows),
+  `category` (string, filter to one category), `failed_only` (boolean, only
+  failed jobs). → `result`, `items`.
+- **`add_url`** — add an NZB by URL to the queue. `url`* (the `.nzb` URL),
+  `name` (string, custom job display name → `nzbname`), `category` (string →
+  `cat`), `priority` (string, e.g. `-2` Paused .. `2` Force), `pp` (string,
+  post-processing option, e.g. `0`..`3`). → `result`.
+
+### Job control
+
+- **`pause`** — pause the entire queue. → `result`.
+- **`resume`** — resume the entire queue. → `result`.
+- **`pause_job`** — pause a single queued job. `value`* (the job's
+  `nzo_id`). → `result`.
+- **`resume_job`** — resume a single queued job. `value`* (the job's
+  `nzo_id`). → `result`.
+- **`delete_job`** — remove a job from the queue. `value`* (`nzo_id`, or
+  `"all"`), `del_files` (boolean, also delete the downloaded files). →
+  `result`.
+- **`set_speedlimit`** — set the download speed limit. `value`* (e.g.
+  `"50"` percent, or `"1M"`). → `result`.
+
+### Status & categories
+
+- **`status`** — full server status (`mode=fullstatus`). → `result`.
+- **`version`** — SABnzbd version. → `result`.
+- **`categories`** — configured categories, hoisted into `items`. →
+  `result`, `items`.
+
+### Escape hatch
+
+- **`api`** — call any SABnzbd API mode not covered above. `mode`* (the
+  SABnzbd mode, e.g. `get_config`), `params` (map, additional query
+  parameters for the mode). → `result`.
 ## Capabilities & security
 
 Declares **no** egress — SABnzbd is always self-hosted, so unlike a connector

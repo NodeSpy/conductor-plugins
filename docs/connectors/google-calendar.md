@@ -95,30 +95,35 @@ of `Describe().Connection`.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`; `calendars` and
-`events` hoist Google's `items` array into `items`; the rest return `result`.
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `calendars` | `GET /users/me/calendarList` | `items` |
-| `events` | `GET /calendars/{calendar_id}/events` (`timeMin`, `timeMax`, `q`, `maxResults`, `singleEvents`, `orderBy`) | `items` |
-| `event_get` | `GET /calendars/{calendar_id}/events/{event_id}` | `result` |
-| `event_create` | `POST /calendars/{calendar_id}/events` — body from an `event` map option, or convenience `summary`/`start`/`end`/`description`/`attendees` fields | `result` |
-| `event_update` | `PATCH /calendars/{calendar_id}/events/{event_id}` — body is the `event` map option (required) | `result` |
-| `event_delete` | `DELETE /calendars/{calendar_id}/events/{event_id}` | `status_code` only |
-| `quick_add` | `POST /calendars/{calendar_id}/events/quickAdd?text=...` — natural-language event text | `result` |
-| `freebusy` | `POST /freeBusy` — body `{timeMin, timeMax, items:[{id}]}`; `items` defaults to the connection's `calendar_id` if omitted | `result` |
-| `api` | raw escape hatch: `method` + `path` (under `/calendar/v3`) + `query` + `body`, for anything without a first-class verb | `result` (object response) or `items` (array response) |
+- **`calendar_id`** — every verb except `calendars` accepts a per-call
+  `calendar_id` option that overrides the connection's default (`"primary"`).
+- Every verb returns `status_code`; `calendars` and `events` hoist Google's
+  `items` array into `items`; the rest return `result`.
+- Every request sends `Authorization: Bearer <injected token>` and
+  `Accept: application/json`. A non-2xx response is returned as an error
+  carrying the status code and response body — nothing is swallowed.
 
-Every verb except `calendars` accepts a per-call `calendar_id` option that
-overrides the connection's default. `event_create`'s convenience `start`/`end`
-options accept either an RFC3339 dateTime string (shorthand for
-`{"dateTime": "..."}`) or a full `{dateTime|date, timeZone}` map, matching
-Google's Event resource shape; `attendees` accepts a plain list of email
-addresses. Every request sends `Authorization: Bearer <injected token>` and
-`Accept: application/json`. A non-2xx response is returned as an error
-carrying the status code and response body — nothing is swallowed.
+Required options are marked `*`.
+
+### Calendars & events
+
+- **`calendars`** — list the calendars on the user's calendar list. (no options) → `items`.
+- **`events`** — list events on a calendar. `calendar_id`, `timeMin` (RFC3339 lower bound, inclusive, on event end time), `timeMax` (RFC3339 upper bound, exclusive, on event start time), `q` (free text search terms), `maxResults` (integer; max events per page, Google default 250, max 2500), `singleEvents` (boolean; expand recurring events into single instances), `orderBy` (`startTime` (requires `singleEvents: true`) | `updated`). → `items`.
+- **`event_get`** — get one event. `calendar_id`, `event_id`*. → `result`.
+- **`event_create`** — create an event. `calendar_id`, `event` (map; a full Google Calendar Event resource body, overrides the convenience fields below when set), `summary` (convenience: event title), `description` (convenience: event description), `start` (convenience: RFC3339 dateTime string, or a `{dateTime|date, timeZone}` map), `end` (convenience, same shape as `start`), `attendees` (convenience: list of attendee email addresses). → `result`.
+- **`event_update`** — patch an existing event. `calendar_id`, `event_id`*, `event`* (map; the fields to patch, as an Event resource fragment). → `result`.
+- **`event_delete`** — delete an event. `calendar_id`, `event_id`*. → `status_code` only.
+- **`quick_add`** — create an event from a natural-language description. `calendar_id`, `text`* (e.g. `"Lunch with Sam tomorrow 1pm"`). → `result`.
+
+### Free/busy
+
+- **`freebusy`** — query free/busy information for one or more calendars. `timeMin`* (RFC3339 start of the query interval), `timeMax`* (RFC3339 end of the query interval), `items` (list of calendar ids to query; default: the connection's `calendar_id`). → `result`.
+
+### Escape hatch
+
+- **`api`** — raw escape hatch: any Google Calendar API v3 endpoint (enables writes). `method` (HTTP method, default GET), `path`* (path under `https://www.googleapis.com/calendar/v3`, e.g. `/users/me/calendarList`), `query` (map of query string parameters), `body` (JSON request body). → `result` (object response) or `items` (array response).
 
 ## Capabilities & security
 

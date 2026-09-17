@@ -94,36 +94,47 @@ of `Describe().Connection`.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`; collection verbs
-return `items` (hoisted from the Accounting API's PascalCase envelope, e.g.
-`{"Invoices": [...]}`); single-resource verbs return `result` (the envelope's
-first element).
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `connections` | `GET https://api.xero.com/connections` (Bearer only, no tenant header) | `items` — the tenants this token is authorized for |
-| `organisation` | `GET /Organisation` | `result` |
-| `invoices` | `GET /Invoices` (`where`, `order`, `page`, `statuses`) | `items` (hoisted from `Invoices`) |
-| `invoice_get` | `GET /Invoices/{invoice_id}` | `result` |
-| `contacts` | `GET /Contacts` | `items` (hoisted from `Contacts`) |
-| `contact_get` | `GET /Contacts/{contact_id}` | `result` |
-| `accounts` | `GET /Accounts` | `items` (hoisted from `Accounts`) |
-| `payments` | `GET /Payments` | `items` (hoisted from `Payments`) |
-| `bank_transactions` | `GET /BankTransactions` | `items` (hoisted from `BankTransactions`) |
-| `items` | `GET /Items` | `items` (hoisted from `Items`) |
-| `api` | `method` + `path` (under `/api.xro/2.0`) + `query` + `body` — escape hatch for anything without a first-class verb, including writes (`POST`/`PUT`) | `result` (object response) or `items` (array response) |
+- Every verb's outputs include `status_code`. Collection verbs return `items`
+  (hoisted from the Accounting API's PascalCase envelope, e.g.
+  `{"Invoices": [...]}`); single-resource verbs return `result` (the
+  envelope's first element).
+- All verbs except `connections` resolve a Xero **tenant** first: the
+  connection's `tenant_id` if set, otherwise the first tenant from
+  `GET /connections`, cached per process thereafter. Every request sends
+  `Authorization: Bearer <injected token>`, `Accept: application/json`, and
+  (except for `connections`) `Xero-tenant-id: <tenant>`.
+- A non-2xx response is returned as an error carrying the status code and
+  response body — nothing is swallowed.
 
-All Accounting API verbs except `connections` resolve a tenant first: the
-connection's `tenant_id` if set, otherwise the first tenant from
-`GET /connections`, cached per process thereafter. Every request sends
-`Authorization: Bearer <injected token>`, `Accept: application/json`, and
-(except for `connections`) `Xero-tenant-id: <tenant>`. A non-2xx response is
-returned as an error carrying the status code and response body — nothing is
-swallowed.
+Required options are marked `*`.
 
-`invoices`' `statuses` option accepts a list (e.g. `["AUTHORISED", "PAID"]`)
-and is sent as Xero's `Statuses` query parameter, comma-joined.
+### Organisation & connections
+
+- **`connections`** — list the tenants (organisations) this token is authorized for. `GET https://api.xero.com/connections` (Bearer only, no tenant header). No options. → `items`, `status_code`.
+- **`organisation`** — get the connected organisation's details. `GET /Organisation`. No options. → `result`, `status_code`.
+
+### Invoices
+
+- **`invoices`** — list invoices. `GET /Invoices`. `where` (Xero where-clause filter expression), `order` (sort expression, e.g. `InvoiceNumber DESC`), `page` (1-based page number), `statuses` (list, filter by `Status`, e.g. `["AUTHORISED", "PAID"]`; sent as the comma-joined `Statuses` query parameter). → `items` (hoisted from `Invoices`), `status_code`.
+- **`invoice_get`** — get one invoice. `GET /Invoices/{id}`. `invoice_id`*. → `result`, `status_code`.
+
+### Contacts
+
+- **`contacts`** — list contacts. `GET /Contacts`. No options. → `items` (hoisted from `Contacts`), `status_code`.
+- **`contact_get`** — get one contact. `GET /Contacts/{id}`. `contact_id`*. → `result`, `status_code`.
+
+### Accounts, payments, bank transactions & items
+
+- **`accounts`** — list chart-of-accounts accounts. `GET /Accounts`. No options. → `items` (hoisted from `Accounts`), `status_code`.
+- **`payments`** — list payments. `GET /Payments`. No options. → `items` (hoisted from `Payments`), `status_code`.
+- **`bank_transactions`** — list bank transactions. `GET /BankTransactions`. No options. → `items` (hoisted from `BankTransactions`), `status_code`.
+- **`items`** — list inventory items. `GET /Items`. No options. → `items` (hoisted from `Items`), `status_code`.
+
+### Escape hatch
+
+- **`api`** — raw escape hatch: any Xero Accounting API endpoint (enables writes). `method` (HTTP method, default `GET`), `path`* (path under `/api.xro/2.0`, e.g. `/Invoices`), `query` (map of query string parameters), `body` (any, JSON request body). → `result` (object response) or `items` (array response), `status_code`.
 
 ## Capabilities & security
 

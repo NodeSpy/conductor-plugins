@@ -76,49 +76,47 @@ returned as `outputs.result`, alongside `outputs.status_code`.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`; see `Describe()` for each verb's full
-option schema.
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-**DNS records**
+- **`zone`** — zone id; every zone-scoped verb (`dns_*`, `cache_purge`,
+  `zone_get`, `ruleset_list`, `firewall_rules_list`) accepts it, falling back
+  to `connection.zone_id` when omitted. `worker_deploy` instead accepts
+  **`account`**, falling back to `connection.account_id`. Pin one zone/account
+  per connector instance and omit it on every call, or override per-call.
+- **Outputs** — every verb returns the same shape: `result` (the Cloudflare
+  v4 envelope's `result`, any type) and `status_code`. Omitted below for
+  brevity — every verb returns both.
 
-| verb | purpose |
-|------|---------|
-| `dns_list` | list DNS records in a zone (`type`, `name` filters) |
-| `dns_create` | create a DNS record (`type`, `name`, `content` required; `ttl`, `proxied`, `priority`) |
-| `dns_update` | update a DNS record by `record_id` |
-| `dns_delete` | delete a DNS record by `record_id` |
+Required options are marked `*`.
 
-**Cache**
+### DNS records
 
-| verb | purpose |
-|------|---------|
-| `cache_purge` | purge the zone's cache: `everything: true`, or `files`/`tags`/`hosts` |
+- **`dns_list`** — list DNS records in a zone. `zone`, `type` (filter by record type, e.g. `A`, `CNAME`, `TXT`), `name` (filter by exact record name).
+- **`dns_create`** — create a DNS record. `zone`, `type`* (record type, e.g. `A`, `AAAA`, `CNAME`, `TXT`, `MX`), `name`*, `content`*, `ttl` (TTL in seconds; `1` = automatic), `proxied` (proxy through Cloudflare, orange-cloud), `priority` (MX/SRV priority).
+- **`dns_update`** — update a DNS record. `zone`, `record_id`*, `type`, `name`, `content`, `ttl`, `proxied`.
+- **`dns_delete`** — delete a DNS record. `zone`, `record_id`*.
 
-**Zones**
+### Cache
 
-| verb | purpose |
-|------|---------|
-| `zone_list` | list zones on the account (`name`, `status` filters) |
-| `zone_get` | read a zone by id |
+- **`cache_purge`** — purge the zone's cache: everything, or specific files/tags/hosts. `zone`, `everything` (purge the entire zone cache; mutually exclusive with files/tags/hosts), `files` (list, exact URLs to purge), `tags` (list, cache-tags to purge; Enterprise only), `hosts` (list, hostnames to purge).
 
-**Workers**
+### Zones
 
-| verb | purpose |
-|------|---------|
-| `worker_deploy` | deploy (create or update) a Workers script; `main_module` set → ES module worker, unset → classic service-worker script |
+- **`zone_list`** — list zones on the account. `name` (filter by exact zone name), `status` (filter by zone status, e.g. `active`).
+- **`zone_get`** — read a zone by id. `zone`.
 
-**Rules**
+### Workers
 
-| verb | purpose |
-|------|---------|
-| `ruleset_list` | list rulesets configured on a zone |
-| `firewall_rules_list` | list legacy firewall rules configured on a zone |
+- **`worker_deploy`** — deploy (create or update) a Workers script. `account`, `name`* (script name), `script`* (the worker's JS source), `main_module` (when set, deploys as an ES module worker — `Content-Type: application/javascript+module` — instead of a classic service-worker script).
 
-**Escape hatch**
+### Rules
 
-| verb | purpose |
-|------|---------|
-| `api` | call any Cloudflare v4 endpoint: `method`, `path` (under `/client/v4`), `query`, `body` |
+- **`ruleset_list`** — list rulesets configured on a zone. `zone`.
+- **`firewall_rules_list`** — list legacy firewall rules configured on a zone. `zone`.
+
+### Escape hatch
+
+- **`api`** — call any Cloudflare v4 API endpoint not covered by a first-class verb. `method`* (`GET` | `POST` | `PUT` | `PATCH` | `DELETE`), `path`* (path under `/client/v4`, e.g. `/zones/{zone}/dns_records`), `query` (map), `body` (any).
 
 ```yaml
 steps:

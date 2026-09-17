@@ -83,32 +83,50 @@ API token:
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`; most also return
-either `result` (a single object) or `items` (a list, alongside the full
-decoded body in `result`).
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `summary` | `GET /api/stats/summary` | `result` |
-| `history` | `GET /api/history` (`from`, `until`) | `result` + `items` (hoisted from `history`) |
-| `queries` | `GET /api/queries` (`from`, `until`, `length`, `cursor`, `domain`, `client`, `upstream`, `type`, `status`, `blocked`) | `result` + `items` (hoisted from `queries`) |
-| `top_domains` | `GET /api/stats/top_domains` (`count`, `blocked`) | `result` + `items` (hoisted from `domains`) |
-| `top_clients` | `GET /api/stats/top_clients` (`count`, `blocked`) | `result` + `items` (hoisted from `clients`) |
-| `upstreams` | `GET /api/stats/upstreams` | `result` + `items` (hoisted from `upstreams`) |
-| `blocking` | `GET /api/dns/blocking` | `result` |
-| `set_blocking` | `POST /api/dns/blocking` (`blocking`\*, `timer`) | `result` |
-| `domains` | `GET /api/domains` (`type`, `kind` filters) | `result` + `items` (hoisted from `domains`) |
-| `domain_add` | `POST /api/domains/{type}/{kind}` (`type`\*, `kind`\*, `domain`\*, `comment`, `enabled`) | `status_code` (+ `result` if the body is non-empty) |
-| `domain_remove` | `DELETE /api/domains/{type}/{kind}/{domain}` (`type`\*, `kind`\*, `domain`\*) | `status_code` (+ `result` if the body is non-empty) |
-| `lists` | `GET /api/lists` (`type` filter) | `result` + `items` (hoisted from `lists`) |
-| `groups` | `GET /api/groups` | `result` + `items` (hoisted from `groups`) |
-| `clients` | `GET /api/clients` | `result` + `items` (hoisted from `clients`) |
-| `gravity_update` | `POST /api/action/gravity` | `status_code` (+ `result`, an object or plain string, if the body is non-empty) |
-| `api` | `method` + `path` (under `/api`) + `query` + `body` — escape hatch for anything without a first-class verb | `result` (object response) or `items` (array response) |
+- Every verb returns `status_code`; most also return either `result` (a
+  single object) or `items` (a list, alongside the full decoded body in
+  `result`).
+- `domain_add`/`domain_remove`'s `type` must be `allow` or `deny`; `kind`
+  must be `exact` or `regex` — both are validated locally before the
+  request is sent.
 
-`domain_add`/`domain_remove`'s `type` must be `allow` or `deny`; `kind` must be
-`exact` or `regex` — both are validated locally before the request is sent.
+Required options are marked `*`.
+
+### Stats & history
+
+- **`summary`** — overall stats summary: queries, clients, gravity (`GET /api/stats/summary`). → `result`, `status_code`.
+- **`history`** — query count history, bucketed over time (`GET /api/history`). `from` (integer — start of the range, unix seconds), `until` (integer — end of the range, unix seconds). → `result`, `items` (hoisted from `history`), `status_code`.
+- **`queries`** — the raw query log, paginated (`GET /api/queries`). `from` (integer), `until` (integer), `length` (integer — page size), `cursor` (string — opaque pagination cursor from a previous call), `domain` (string — filter to this domain), `client` (string — filter to this client, IP/name), `upstream` (string — filter to this upstream), `type` (string — filter to this query type, e.g. `A`, `AAAA`), `status` (string — filter to this query status, e.g. `GRAVITY`, `FORWARDED`), `blocked` (boolean — filter to blocked, or if false permitted, queries). → `result`, `items` (hoisted from `queries`), `status_code`.
+- **`top_domains`** — the most-queried domains (`GET /api/stats/top_domains`). `count` (integer — number of domains to return, default 10), `blocked` (boolean — top blocked domains instead of top permitted domains). → `result`, `items` (hoisted from `domains`), `status_code`.
+- **`top_clients`** — the clients generating the most queries (`GET /api/stats/top_clients`). `count` (integer — number of clients to return, default 10), `blocked` (boolean — top clients by blocked queries instead of total queries). → `result`, `items` (hoisted from `clients`), `status_code`.
+- **`upstreams`** — the configured upstream DNS servers and their usage (`GET /api/stats/upstreams`). → `result`, `items` (hoisted from `upstreams`), `status_code`.
+
+### Blocking
+
+- **`blocking`** — current blocking status (`GET /api/dns/blocking`). → `result`, `status_code`.
+- **`set_blocking`** — enable or disable blocking, optionally for a limited time (`POST /api/dns/blocking`). `blocking`* (boolean — true to enable blocking, false to disable it), `timer` (integer — seconds until blocking automatically reverts; omit for no timer). → `result`, `status_code`.
+
+### Allow/deny domains
+
+- **`domains`** — list allow/deny domain rules (`GET /api/domains`). `type` (`allow` | `deny` — filter to this rule type), `kind` (`exact` | `regex` — filter to this rule kind). → `result`, `items` (hoisted from `domains`), `status_code`.
+- **`domain_add`** — add an allow/deny domain rule (`POST /api/domains/{type}/{kind}`). `type`* (`allow` | `deny`), `kind`* (`exact` | `regex`), `domain`* (the domain, or regex, to add), `comment` (optional free-text comment), `enabled` (boolean — whether the rule is enabled, default true). → `status_code` (+ `result` if the body is non-empty).
+- **`domain_remove`** — remove an allow/deny domain rule (`DELETE /api/domains/{type}/{kind}/{domain}`). `type`* (`allow` | `deny`), `kind`* (`exact` | `regex`), `domain`* (the domain, or regex, to remove). → `status_code` (+ `result` if the body is non-empty).
+
+### Lists, groups & clients
+
+- **`lists`** — list configured adlists (`GET /api/lists`). `type` (`allow` | `block` — filter to this list type). → `result`, `items` (hoisted from `lists`), `status_code`.
+- **`groups`** — list configured groups (`GET /api/groups`). → `result`, `items` (hoisted from `groups`), `status_code`.
+- **`clients`** — list known clients (`GET /api/clients`). → `result`, `items` (hoisted from `clients`), `status_code`.
+
+### Gravity
+
+- **`gravity_update`** — trigger a gravity (blocklist) update (`POST /api/action/gravity`). → `status_code` (+ `result` — an object or plain string — if the body is non-empty).
+
+### Raw access
+
+- **`api`** — raw escape hatch: any Pi-hole API endpoint under `/api`, for anything without a first-class verb. `method` (HTTP method, default `GET`), `path`* (path under `/api`, e.g. `/stats/summary`), `query` (map of query-string parameters), `body` (any — JSON request body). → `result` (object response), `items` (array response), `status_code`.
 
 ## Capabilities & security
 

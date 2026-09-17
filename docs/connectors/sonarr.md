@@ -120,47 +120,90 @@ notification doesn't fire the same trigger twice.
 payload's `episodes[]`, verbatim), `quality` (the release/episode-file
 quality name, when present), and `payload` (the full posted JSON, verbatim).
 
+### Filtering
+
+`filter:` matches an event's published fields (`event_types`, `series`, plus
+anything under **Context** above). A key set to a value must match; a **list
+matches any of** its values — `event_types: [Grab, Download]`. Prefix
+**`not_`** to negate a field — `not_series: [Sandbox Show]` excludes. **`expr:`
+/ `not_expr:`** take an expression over the fields. Keys within one filter
+object are **AND**ed. A top-level **array** of filter objects is **OR**
+across them.
+
+### Example
+
+Refresh episode state whenever a download completes:
+
+```yaml
+triggers:
+  - on: sr.event
+    filter:
+      event_types: [Download]
+    steps:
+      - uses: sr.episodes
+        options: { series_id: "{{.tvdb_id}}" }
+```
+
 ## Verbs
 
-| verb | request | outputs | notes |
-|------|---------|---------|-------|
-| `series` | `GET /series` | `items` | all series known to Sonarr |
-| `series_get` | `GET /series/{id}` | `result` | options: `id` (required) |
-| `lookup` | `GET /series/lookup?term=` | `items` | search for a series to add (TheTVDB search) — options: `term` (required) |
-| `add_series` | `POST /series` | `result` | see below |
-| `delete_series` | `DELETE /series/{id}` | `result` | options: `id` (required), `delete_files`, `add_import_exclusion` |
-| `episodes` | `GET /episode?seriesId=` | `items` | options: `series_id` (required) |
-| `episode_get` | `GET /episode/{id}` | `result` | options: `id` (required) |
-| `command` | `POST /command` | `result` | see below |
-| `queue` | `GET /queue` | `result` | current download queue |
-| `calendar` | `GET /calendar` | `items` | options: `start`, `end` (ISO-8601 dates) |
-| `wanted_missing` | `GET /wanted/missing` | `result` | episodes Sonarr considers missing |
-| `quality_profiles` | `GET /qualityprofile` | `items` | configured quality profiles |
-| `root_folders` | `GET /rootfolder` | `items` | configured root folders |
-| `health` | `GET /health` | `items` | current health check results |
-| `api` | any `method`/`path`/`query`/`body` | `result` (+ `items` when the response is a JSON array) | escape hatch for any endpoint not covered above |
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-Every verb also returns `status_code` (the HTTP status).
+- Every verb is a plain HTTP call to `{base_url}/api/v3/<resource>`,
+  authenticated with the `X-Api-Key` header.
+- Every verb returns `status_code` (the HTTP status) alongside its listed
+  outputs.
+- **`result` vs `items`** — a verb whose response is naturally a list returns
+  `items`; everything else returns `result`.
 
-**`add_series`** either builds the request from individual options —
-`tvdb_id`, `quality_profile_id`, `root_folder_path` (all required unless
-`series` is given), `monitored` (default `true`), `season_folder`,
-`language_profile_id`, `search_for_missing` (becomes
-`addOptions.searchForMissingEpisodes`) — or, when `series` (a map) is given,
-sends that map to `POST /series` verbatim, ignoring the individual fields.
-Use the full passthrough when you already have a series object from
-`lookup` and want to add it unmodified (or with your own edits).
+Required options are marked `*`.
 
-**`command`** posts `{name, ...}` to `POST /command`. `name` is required
-(e.g. `SeriesSearch`, `SeasonSearch`, `RefreshSeries`, `RescanSeries`); the
-convenience options `series_id` → `seriesId`, `season_number` →
-`seasonNumber`, `episode_ids` → `episodeIds` are merged in when present, and
-`params` (a map) is merged in last for anything else a given command needs.
+### Series
 
-See `Describe()` in
-[`connectors/sonarr/main.go`](../../connectors/sonarr/main.go) for each
-verb's full option schema.
+- **`series`** — list all series known to Sonarr. → `items`.
+- **`series_get`** — a single series by id. `id`*. → `result`.
+- **`lookup`** — search for a series to add (TheTVDB search). `term`* (a
+  title, or `tvdb:<id>`). → `items`.
+- **`add_series`** — add a series to Sonarr. Either pass `tvdb_id` (TheTVDB
+  id; required unless `series` is given), `quality_profile_id` (required
+  unless `series` is given), `root_folder_path` (required unless `series` is
+  given), `monitored` (boolean, default `true`), `season_folder` (boolean,
+  per-season folders), `language_profile_id` (integer), `search_for_missing`
+  (boolean → `addOptions.searchForMissingEpisodes`) — or pass the full
+  `series` map (sent verbatim to `POST /series` instead of the individual
+  fields; typically a `lookup` result, unmodified or edited). → `result`.
+- **`delete_series`** — remove a series from Sonarr. `id`*, `delete_files`
+  (boolean, also delete the series' files on disk), `add_import_exclusion`
+  (boolean, add to the import list exclusion list). → `result`.
 
+### Episodes
+
+- **`episodes`** — list episodes for a series. `series_id`*. → `items`.
+- **`episode_get`** — a single episode by id. `id`*. → `result`.
+
+### Commands, queue & calendar
+
+- **`command`** — run a Sonarr command. `name`* (e.g. `SeriesSearch`,
+  `SeasonSearch`, `RefreshSeries`, `RescanSeries`), `series_id` (integer →
+  `seriesId`), `season_number` (integer → `seasonNumber`), `episode_ids`
+  (list → `episodeIds`), `params` (map, merged in verbatim for anything else
+  the command needs). → `result`.
+- **`queue`** — the current download queue. → `result`.
+- **`calendar`** — episodes airing in a date range. `start`, `end` (ISO-8601
+  dates). → `items`.
+- **`wanted_missing`** — episodes Sonarr considers missing. → `result`.
+
+### Reference data
+
+- **`quality_profiles`** — configured quality profiles. → `items`.
+- **`root_folders`** — configured root folders. → `items`.
+- **`health`** — current health check results. → `items`.
+
+### Escape hatch
+
+- **`api`** — call any Sonarr API v3 endpoint not covered above. `method`
+  (default `GET`), `path`* (relative to `/api/v3`, e.g. `/system/status`),
+  `query` (map), `body` (any, marshaled to JSON). → `result` (+ `items` when
+  the response decodes to a JSON array).
 ## Capabilities & security
 
 Declares **no** egress — Sonarr is always self-hosted, so unlike a connector

@@ -88,31 +88,44 @@ of `Describe().Connection`.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`; collection verbs
-return `items` (hoisted from the Gmail API's named-list envelope, e.g.
-`{"messages": [...]}`); single-resource verbs return `result` (the decoded
-response body).
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `messages` | `GET /messages` (`q`, `labelIds`, `maxResults`, `pageToken`) | `items` (hoisted from `messages`) |
-| `message_get` | `GET /messages/{message_id}` (`format`: full\|metadata\|minimal) | `result` |
-| `send` | `POST /messages/send` (`to`\*, `cc`, `bcc`, `subject`\*, `text`, `html`, `from`) | `result` |
-| `labels` | `GET /labels` | `items` (hoisted from `labels`) |
-| `label_create` | `POST /labels` (`name`\*, `labelListVisibility`, `messageListVisibility`) | `result` |
-| `drafts` | `GET /drafts` | `items` (hoisted from `drafts`) |
-| `draft_create` | `POST /drafts`, body `{message: {raw}}` (same options as `send`) | `result` |
-| `threads` | `GET /threads` (`q`) | `items` (hoisted from `threads`) |
-| `thread_get` | `GET /threads/{thread_id}` | `result` |
-| `modify` | `POST /messages/{message_id}/modify` (`add_labels` → `addLabelIds`, `remove_labels` → `removeLabelIds`) | `result` |
-| `trash` | `POST /messages/{message_id}/trash` | `result` |
-| `untrash` | `POST /messages/{message_id}/untrash` | `result` |
-| `api` | `method` + `path` (under the connection's `api_base`) + `query` + `body` — escape hatch for anything without a first-class verb | `result` (object response) or `items` (array response) |
+- Every verb returns `status_code`. Collection verbs return `items` (hoisted
+  from the Gmail API's named-list envelope, e.g. `{"messages": [...]}`);
+  single-resource verbs return `result` (the decoded response body).
+- Every request sends `Authorization: Bearer <injected token>` and
+  `Accept: application/json`. A non-2xx response is returned as an error
+  carrying the status code and response body — nothing is swallowed.
 
-Every request sends `Authorization: Bearer <injected token>` and
-`Accept: application/json`. A non-2xx response is returned as an error
-carrying the status code and response body — nothing is swallowed.
+Required options are marked `*`.
+
+### Messages
+
+- **`messages`** — list messages. `q` (Gmail search query, e.g. `is:unread from:a@b.com`), `labelIds` (list; restrict to messages with all of these label ids), `maxResults` (integer; page size), `pageToken` (string; page token from a previous call). → `items`.
+- **`message_get`** — get one message. `message_id`*, `format` (`full` (default) | `metadata` | `minimal`). → `result`.
+- **`send`** — send an email. `to`* (list of recipient addresses), `cc` (list), `bcc` (list), `subject`*, `text` (plain-text body; multipart/alternative with `html` if both are set), `html` (HTML body; multipart/alternative with `text` if both are set), `from` (From header; defaults to the authenticated account). → `result`.
+- **`modify`** — add/remove labels on a message. `message_id`*, `add_labels` (list of label ids to add), `remove_labels` (list of label ids to remove). → `result`.
+- **`trash`** — move a message to trash. `message_id`*. → `result`.
+- **`untrash`** — remove a message from trash. `message_id`*. → `result`.
+
+### Labels
+
+- **`labels`** — list labels. (no options) → `items`.
+- **`label_create`** — create a label. `name`*, `labelListVisibility` (`labelShow` | `labelShowIfUnread` | `labelHide`), `messageListVisibility` (`show` | `hide`). → `result`.
+
+### Drafts
+
+- **`drafts`** — list drafts. (no options) → `items`.
+- **`draft_create`** — create a draft. Same message options as `send`: `to`*, `cc`, `bcc`, `subject`*, `text`, `html`, `from`. Sent as `POST /drafts` with body `{message: {raw}}`. → `result`.
+
+### Threads
+
+- **`threads`** — list threads. `q` (Gmail search query). → `items`.
+- **`thread_get`** — get one thread. `thread_id`*. → `result`.
+
+### Escape hatch
+
+- **`api`** — raw escape hatch: any Gmail API endpoint (enables writes). `method` (HTTP method, default GET), `path`* (path under the connection's `api_base`, e.g. `/messages`), `query` (map of query string parameters), `body` (JSON request body). → `result` (object response) or `items` (array response).
 
 ### Building the outgoing message (`send`, `draft_create`)
 

@@ -99,32 +99,40 @@ default task list.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`; `tasklists` and
-`tasks` hoist Google's `items` array into `items`; the rest return `result`
-(except `task_delete`, which returns `status_code` only).
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `tasklists` | `GET /users/@me/lists` | `items` |
-| `tasklist_get` | `GET /users/@me/lists/{tasklist}` | `result` |
-| `tasklist_create` | `POST /users/@me/lists` — `title` (required) | `result` |
-| `tasks` | `GET /lists/{tasklist}/tasks` (`showCompleted`, `showHidden`, `maxResults`, `dueMin`, `dueMax`) | `items` |
-| `task_get` | `GET /lists/{tasklist}/tasks/{task_id}` | `result` |
-| `task_create` | `POST /lists/{tasklist}/tasks` — `title` (required), `notes`, `due`, `status` | `result` |
-| `task_update` | `PATCH /lists/{tasklist}/tasks/{task_id}` — body from a `task` map option, or convenience `title`/`notes`/`due`/`status` fields | `result` |
-| `task_delete` | `DELETE /lists/{tasklist}/tasks/{task_id}` | `status_code` only |
-| `task_complete` | `PATCH /lists/{tasklist}/tasks/{task_id}` with `{"status": "completed"}` | `result` |
-| `task_move` | `POST /lists/{tasklist}/tasks/{task_id}/move` (`parent`, `previous` query params) | `result` |
-| `api` | raw escape hatch: `method` + `path` (under `/tasks/v1`) + `query` + `body`, for anything without a first-class verb | `result` (object response) or `items` (array response) |
+- **`tasklist`** — every verb that operates on a task list accepts this
+  option; it defaults to `"@default"`, Google's alias for the authenticated
+  user's default task list. Omitted below for brevity — every task/task-list
+  verb but `tasklists` and `tasklist_create` accepts it.
+- Every verb returns `status_code`; `tasklists` and `tasks` hoist Google's
+  `items` array into `items`; the rest return `result` (except `task_delete`,
+  which returns `status_code` only).
+- Every request sends `Authorization: Bearer <injected token>` and
+  `Accept: application/json`. A non-2xx response is returned as an error
+  carrying the status code and response body — nothing is swallowed.
 
-`task_update` requires either a `task` map (a Task resource fragment, used
-verbatim as the PATCH body) or at least one of the convenience fields
-(`title`, `notes`, `due`, `status`) — only the fields actually set are sent,
-so unset convenience fields never clobber existing values. Every request
-sends `Authorization: Bearer <injected token>` and `Accept: application/json`.
-A non-2xx response is returned as an error carrying the status code and
-response body — nothing is swallowed.
+Required options are marked `*`.
+
+### Task lists
+
+- **`tasklists`** — list the user's task lists. (no options) → `items`.
+- **`tasklist_get`** — get one task list. `tasklist` (default `"@default"`). → `result`.
+- **`tasklist_create`** — create a task list. `title`* (task list title). → `result`.
+
+### Tasks
+
+- **`tasks`** — list tasks on a task list. `tasklist`, `showCompleted` (boolean; include completed tasks, Google default true), `showHidden` (boolean; include hidden — completed and no longer visible — tasks), `maxResults` (integer; max tasks per page), `dueMin` (RFC3339 lower bound, inclusive, on due date), `dueMax` (RFC3339 upper bound, exclusive, on due date). → `items`.
+- **`task_get`** — get one task. `tasklist`, `task_id`*. → `result`.
+- **`task_create`** — create a task. `tasklist`, `title`* (task title), `notes` (task notes/description), `due` (RFC3339 due date/time), `status` (`needsAction` | `completed`). → `result`.
+- **`task_update`** — patch an existing task. `tasklist`, `task_id`*, `task` (map; a Task resource fragment, overrides the convenience fields below when set), `title` (convenience: task title), `notes` (convenience: task notes/description), `due` (convenience: RFC3339 due date/time), `status` (convenience: `needsAction` | `completed`). Requires either `task` or at least one convenience field; only the fields actually set are sent, so unset convenience fields never clobber existing values. → `result`.
+- **`task_delete`** — delete a task. `tasklist`, `task_id`*. → `status_code` only.
+- **`task_complete`** — mark a task completed. `tasklist`, `task_id`*. → `result`.
+- **`task_move`** — move a task to a new position and/or parent within its list. `tasklist`, `task_id`*, `parent` (new parent task id; omit to move to the top level), `previous` (new previous-sibling task id; omit to move to the first position). → `result`.
+
+### Escape hatch
+
+- **`api`** — raw escape hatch: any Google Tasks API v1 endpoint (enables writes). `method` (HTTP method, default GET), `path`* (path under `https://tasks.googleapis.com/tasks/v1`, e.g. `/users/@me/lists`), `query` (map of query string parameters), `body` (JSON request body). → `result` (object response) or `items` (array response).
 
 ## Capabilities & security
 

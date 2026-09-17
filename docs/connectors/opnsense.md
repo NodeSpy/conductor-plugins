@@ -77,39 +77,54 @@ verb-only: it declares no `Events` and does not implement `StartSource`.
 
 ## Verbs
 
-Selected by `uses: <name>.<verb>`. See `Describe()` for each verb's full
-option schema. Every verb's outputs include `status_code`; most also return
-`result` (the full decoded response), and list-shaped endpoints additionally
-return `items` — many OPNsense "search" endpoints wrap their rows under a
-`rows` key, which is hoisted into `items` alongside the full `result` (for
-pagination metadata like `total`/`rowCount`); a bare JSON array response is
-used directly as `items`.
+Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
 
-| verb | endpoint | outputs |
-|------|----------|---------|
-| `firmware_status` | `GET /api/core/firmware/status` | `result` |
-| `firmware_upgrade` | `POST /api/core/firmware/upgrade` | `result` |
-| `services` | `GET /api/core/service/search` | `result` + `items` (hoisted from `result.rows`) |
-| `service_restart` | `POST /api/core/service/restart/{name}` | `result` |
-| `service_start` | `POST /api/core/service/start/{name}` | `result` |
-| `service_stop` | `POST /api/core/service/stop/{name}` | `result` |
-| `firewall_aliases` | `GET /api/firewall/alias/searchItem` | `result` + `items` (hoisted from `result.rows`) |
-| `alias_get` | `GET /api/firewall/alias/getItem/{uuid}` | `result` |
-| `alias_add` | `POST /api/firewall/alias/addItem` (`alias`\*, a map of alias fields) | `result` |
-| `alias_toggle` | `POST /api/firewall/alias/toggleItem/{uuid}[/{enabled}]` (`enabled` omitted toggles the current state) | `result` |
-| `firewall_apply` | `POST /api/firewall/alias/reconfigure` | `result` |
-| `interfaces` | `GET /api/interfaces/overview/interfacesInfo` | `result` |
-| `dhcp_leases` | `GET /api/dhcpv4/leases/searchLease` | `result` + `items` (hoisted from `result.rows`) |
-| `gateway_status` | `GET /api/routes/gateway/status` | `result` |
-| `unbound_settings` | `GET /api/unbound/settings/get` | `result` |
-| `system_reboot` | `POST /api/core/system/reboot` | `result` |
-| `system_status` | `GET /api/core/system/status` | `result` |
-| `api` | `method` + `path` (under `/api`) + `query` + `body` — escape hatch for anything without a first-class verb | `result` (object response) or `items` (array response) |
+- Every verb returns `status_code`; most also return `result` (the full
+  decoded response). List-shaped endpoints additionally return `items` —
+  many OPNsense "search" endpoints wrap their rows under a `rows` key, which
+  is hoisted into `items` alongside the full `result` (for pagination
+  metadata like `total`/`rowCount`); a bare JSON array response is used
+  directly as `items`.
+- `name` (`service_*`) and `uuid` (`alias_get`/`alias_toggle`) are path
+  parameters, URL-escaped before use.
 
-`name` (`service_*`) and `uuid` (`alias_get`/`alias_toggle`) are path
-parameters, URL-escaped before use. `alias_add`'s `alias` option is posted
-as `{"alias": {...}}`, matching OPNsense's `addItem` request shape (e.g.
-`{name, type, content, description, enabled}`).
+Required options are marked `*`.
+
+### Firmware
+
+- **`firmware_status`** — check for available firmware/package updates (`GET /api/core/firmware/status`). → `result`, `status_code`.
+- **`firmware_upgrade`** — run a firmware upgrade (`POST /api/core/firmware/upgrade`). → `result`, `status_code`.
+
+### Services
+
+- **`services`** — list known services and their running state (`GET /api/core/service/search`). → `result`, `items` (from `result.rows`), `status_code`.
+- **`service_restart`** — restart a service (`POST /api/core/service/restart/{name}`). `name`* — service name, e.g. `unbound`, `dpinger`. → `result`, `status_code`.
+- **`service_start`** — start a service (`POST /api/core/service/start/{name}`). `name`* — service name. → `result`, `status_code`.
+- **`service_stop`** — stop a service (`POST /api/core/service/stop/{name}`). `name`* — service name. → `result`, `status_code`.
+
+### Firewall aliases
+
+- **`firewall_aliases`** — search/list firewall aliases (`GET /api/firewall/alias/searchItem`). → `result`, `items` (from `result.rows`), `status_code`.
+- **`alias_get`** — get one firewall alias's details (`GET /api/firewall/alias/getItem/{uuid}`). `uuid`* — alias UUID. → `result`, `status_code`.
+- **`alias_add`** — create a firewall alias (`POST /api/firewall/alias/addItem`, posted as `{"alias": {...}}`). `alias`* (map) — alias fields, e.g. `{name, type, content, description, enabled}`. → `result`, `status_code`.
+- **`alias_toggle`** — enable/disable (or toggle) a firewall alias (`POST /api/firewall/alias/toggleItem/{uuid}[/{enabled}]`). `uuid`* — alias UUID, `enabled` (boolean; `1` to enable, `0` to disable — omit to toggle the current state). → `result`, `status_code`.
+- **`firewall_apply`** — apply pending alias changes (reconfigure filter/aliases) (`POST /api/firewall/alias/reconfigure`). → `result`, `status_code`.
+
+### Network & DNS
+
+- **`interfaces`** — interface overview info: physical name, description, enabled state, identifier (`GET /api/interfaces/overview/interfacesInfo`). → `result`, `status_code`.
+- **`dhcp_leases`** — search DHCPv4 leases (`GET /api/dhcpv4/leases/searchLease`). → `result`, `items` (from `result.rows`), `status_code`.
+- **`gateway_status`** — gateway monitoring status (`GET /api/routes/gateway/status`). → `result`, `status_code`.
+- **`unbound_settings`** — current Unbound (DNS resolver) settings (`GET /api/unbound/settings/get`). → `result`, `status_code`.
+
+### System
+
+- **`system_reboot`** — reboot the firewall (`POST /api/core/system/reboot`). → `result`, `status_code`.
+- **`system_status`** — system status: uptime, versions, health (`GET /api/core/system/status`). → `result`, `status_code`.
+
+### Raw access
+
+- **`api`** — raw escape hatch: any OPNsense API endpoint under `/api`, for anything without a first-class verb. `method` (HTTP method, default `GET`), `path`* (path under `/api`, e.g. `/core/firmware/status`), `query` (map of query-string parameters), `body` (any — JSON request body). → `result` (object response), `items` (array response), `status_code`.
 
 ## Capabilities & security
 
