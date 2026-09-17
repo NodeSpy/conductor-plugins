@@ -27,6 +27,33 @@ runtimes:
 > `plugin.invoke`, not a new wire protocol. (Declared `kind: runtime` so
 > conductor wires it as a runtime.)
 
+## Setup
+
+You'll end up with the `paseo` CLI available where conductor runs, so it can
+drive agents through paseo's long-lived daemon.
+
+**Prerequisites:** the **paseo** CLI installed and on `PATH` (or at a known
+path), with its daemon reachable. This runtime is a thin client that shells to
+`paseo` — it starts no daemon of its own.
+
+1. Install the paseo CLI on the box conductor runs on (per paseo's own install
+   docs), so `paseo --version` works from conductor's shell.
+2. Confirm the daemon is reachable — e.g. `paseo ls` succeeds. The verbs here
+   (`run`, `list_agents`, `inspect`, `send`, `wait`, …) are exactly that CLI.
+3. If `paseo` isn't on `PATH`, point the runtime at the binary with `paseo_bin`.
+
+**Configure:**
+
+```yaml
+runtimes:
+  gpu:
+    use: paseo
+    # paseo_bin: /opt/paseo/bin/paseo   # only if paseo isn't on PATH
+```
+
+No credentials live here — authenticating whatever models or agents paseo
+launches is paseo's own configuration, not this plugin's.
+
 ## Connection
 
 | key | type | purpose |
