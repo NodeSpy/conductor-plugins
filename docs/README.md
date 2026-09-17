@@ -169,6 +169,12 @@ binaries + `checksums.txt`.
 | `adguard` | connector (verbs) | [connectors/adguard.md](connectors/adguard.md) |
 | `portainer` | connector (verbs) | [connectors/portainer.md](connectors/portainer.md) |
 | `grafana` | connector (verbs + source) | [connectors/grafana.md](connectors/grafana.md) |
+| `synology` | connector (verbs) | [connectors/synology.md](connectors/synology.md) |
+| `pfsense` | connector (verbs) | [connectors/pfsense.md](connectors/pfsense.md) |
+| `nginx-proxy-manager` | connector (verbs) | [connectors/nginx-proxy-manager.md](connectors/nginx-proxy-manager.md) |
+| `netdata` | connector (verbs + source) | [connectors/netdata.md](connectors/netdata.md) |
+| `keycloak` | connector (verbs) | [connectors/keycloak.md](connectors/keycloak.md) |
+| `authentik` | connector (verbs) | [connectors/authentik.md](connectors/authentik.md) |
 | `ifttt` | connector (verbs + source) | [connectors/ifttt.md](connectors/ifttt.md) |
 | `healthchecks` | connector (verbs + source) | [connectors/healthchecks.md](connectors/healthchecks.md) |
 | `git` | connector (verbs) | [connectors/git.md](connectors/git.md) |
@@ -190,6 +196,8 @@ binaries + `checksums.txt`.
 | `gmail` | connector (verbs) | [connectors/gmail.md](connectors/gmail.md) |
 | `google-drive` | connector (verbs) | [connectors/google-drive.md](connectors/google-drive.md) |
 | `google-sheets` | connector (verbs) | [connectors/google-sheets.md](connectors/google-sheets.md) |
+| `google-tasks` | connector (verbs) | [connectors/google-tasks.md](connectors/google-tasks.md) |
+| `google-contacts` | connector (verbs) | [connectors/google-contacts.md](connectors/google-contacts.md) |
 | `helm` | connector (verbs) | [connectors/helm.md](connectors/helm.md) |
 | `kubernetes` | connector (verbs) | [connectors/kubernetes.md](connectors/kubernetes.md) |
 | `notion` | connector (verbs) | [connectors/notion.md](connectors/notion.md) |

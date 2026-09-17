@@ -25,6 +25,7 @@ github.com/NodeSpy/conductor/pkg/sourcekit
 github.com/NodeSpy/conductor-plugins/connectors/adguard
 github.com/NodeSpy/conductor-plugins/connectors/alertmanager
 github.com/NodeSpy/conductor-plugins/connectors/audiobookshelf
+github.com/NodeSpy/conductor-plugins/connectors/authentik
 github.com/NodeSpy/conductor-plugins/connectors/aws-cli
 github.com/NodeSpy/conductor-plugins/connectors/aws-ses
 github.com/NodeSpy/conductor-plugins/connectors/aws-sns
@@ -39,24 +40,30 @@ github.com/NodeSpy/conductor-plugins/connectors/github
 github.com/NodeSpy/conductor-plugins/connectors/gitlab
 github.com/NodeSpy/conductor-plugins/connectors/gmail
 github.com/NodeSpy/conductor-plugins/connectors/google-calendar
+github.com/NodeSpy/conductor-plugins/connectors/google-contacts
 github.com/NodeSpy/conductor-plugins/connectors/google-drive
 github.com/NodeSpy/conductor-plugins/connectors/google-sheets
+github.com/NodeSpy/conductor-plugins/connectors/google-tasks
 github.com/NodeSpy/conductor-plugins/connectors/grafana
 github.com/NodeSpy/conductor-plugins/connectors/healthchecks
 github.com/NodeSpy/conductor-plugins/connectors/helm
 github.com/NodeSpy/conductor-plugins/connectors/homeassistant
 github.com/NodeSpy/conductor-plugins/connectors/ifttt
 github.com/NodeSpy/conductor-plugins/connectors/jira
+github.com/NodeSpy/conductor-plugins/connectors/keycloak
 github.com/NodeSpy/conductor-plugins/connectors/kubernetes
 github.com/NodeSpy/conductor-plugins/connectors/libation
 github.com/NodeSpy/conductor-plugins/connectors/lidarr
 github.com/NodeSpy/conductor-plugins/connectors/linear
 github.com/NodeSpy/conductor-plugins/connectors/matrix
+github.com/NodeSpy/conductor-plugins/connectors/netdata
+github.com/NodeSpy/conductor-plugins/connectors/nginx-proxy-manager
 github.com/NodeSpy/conductor-plugins/connectors/notifiarr
 github.com/NodeSpy/conductor-plugins/connectors/notion
 github.com/NodeSpy/conductor-plugins/connectors/ntfy
 github.com/NodeSpy/conductor-plugins/connectors/opnsense
 github.com/NodeSpy/conductor-plugins/connectors/pagerduty
+github.com/NodeSpy/conductor-plugins/connectors/pfsense
 github.com/NodeSpy/conductor-plugins/connectors/pihole
 github.com/NodeSpy/conductor-plugins/connectors/plex
 github.com/NodeSpy/conductor-plugins/connectors/portainer
@@ -69,6 +76,7 @@ github.com/NodeSpy/conductor-plugins/connectors/sabnzbd
 github.com/NodeSpy/conductor-plugins/connectors/sentry
 github.com/NodeSpy/conductor-plugins/connectors/smart
 github.com/NodeSpy/conductor-plugins/connectors/sonarr
+github.com/NodeSpy/conductor-plugins/connectors/synology
 github.com/NodeSpy/conductor-plugins/connectors/tailscale
 github.com/NodeSpy/conductor-plugins/connectors/tautulli
 github.com/NodeSpy/conductor-plugins/connectors/telegram
@@ -144,6 +152,12 @@ from the public module proxy. No `replace` directive.
 | [`adguard`](docs/connectors/adguard.md) | connector (verbs) | `adguard` | **No — never in core.** Add it here. | AdGuard Home: status/stats/query-log, protection toggle, filter lists, rewrites, clients, DNS config, safebrowsing/parental + generic `api`. HTTP Basic. |
 | [`portainer`](docs/connectors/portainer.md) | connector (verbs) | `portainer` | **No — never in core.** Add it here. | Portainer: endpoints, stacks (start/stop/delete), containers (actions/logs) + images via the Docker proxy, status + generic `api`. `X-API-Key`. |
 | [`grafana`](docs/connectors/grafana.md) | connector (verbs + source) | `grafana` | **No — never in core.** Add it here. | Grafana: search, dashboards (get/create/delete), datasources, folders, alert rules, annotations, org + generic `api`, plus a firing-alerts poll source. Bearer service-account token. |
+| [`synology`](docs/connectors/synology.md) | connector (verbs) | `synology` | **No — never in core.** Add it here. | Synology DSM (WebAPI): system info, utilization, storage, FileStation (list/info/search), DownloadStation tasks + generic `api`. Session (sid) login. |
+| [`pfsense`](docs/connectors/pfsense.md) | connector (verbs) | `pfsense` | **No — never in core.** Add it here. | pfSense (REST API v2 package): firewall rules/aliases (+ apply), interfaces, services, DHCP leases, system/gateway status + generic `api`. `X-API-Key`. |
+| [`nginx-proxy-manager`](docs/connectors/nginx-proxy-manager.md) | connector (verbs) | `nginx-proxy-manager` | **No — never in core.** Add it here. | Nginx Proxy Manager: proxy/redirection/stream/dead hosts (CRUD + enable/disable), access lists, certificates, reports + generic `api`. JWT token login. |
+| [`netdata`](docs/connectors/netdata.md) | connector (verbs + source) | `netdata` | **No — never in core.** Add it here. | Netdata: info, charts, chart data, alarms, contexts + generic `api`, plus an active-alarm poll source (WARNING/CRITICAL). Optional Bearer. |
+| [`keycloak`](docs/connectors/keycloak.md) | connector (verbs) | `keycloak` | **No — never in core.** Add it here. | Keycloak admin: realms, users (CRUD + reset-password/logout), groups, clients, roles, sessions, events + generic `api`. Self-contained OAuth2 client-credentials admin token. |
+| [`authentik`](docs/connectors/authentik.md) | connector (verbs) | `authentik` | **No — never in core.** Add it here. | authentik (API v3): users (CRUD), groups, applications, providers, flows, events, tokens + generic `api`. Bearer PAT. |
 | [`ifttt`](docs/connectors/ifttt.md) | connector (verbs + source) | `ifttt` | **No — never in core.** Add it here. | IFTTT Maker Webhooks: `trigger` / `trigger_json` + an inbound webhook source (token-verified, fail-closed). Maker key. |
 | [`healthchecks`](docs/connectors/healthchecks.md) | connector (verbs + source) | `healthchecks` | **No — never in core.** Add it here. | Healthchecks.io: check CRUD + `ping` (success/fail/start) + a check up/down webhook source. Management API key + ping URLs. |
 | [`git`](docs/connectors/git.md) | connector (verbs) | `git` | **No — never in core.** Add it here. | The `git` CLI with **configurable credentials**: clone/fetch/pull/push/checkout/commit/branch/tag/merge/reset/… + `rev_parse`/`ls_remote`/`status` parsing. SSH key or HTTPS token (kept out of argv via GIT_ASKPASS), commit identity. |
@@ -165,6 +179,8 @@ from the public module proxy. No `replace` directive.
 | [`gmail`](docs/connectors/gmail.md) | connector (verbs) | `gmail` | **No — never in core.** Add it here. | Gmail v1: messages (list/get/send), labels, drafts, threads, modify/trash + `api`. **Managed OAuth2**; `send` builds the MIME itself. |
 | [`google-drive`](docs/connectors/google-drive.md) | connector (verbs) | `google-drive` | **No — never in core.** Add it here. | Google Drive v3: files (list/get/upload/download/delete), folders, permissions + `api`. **Managed OAuth2**; multipart/related upload. |
 | [`google-sheets`](docs/connectors/google-sheets.md) | connector (verbs) | `google-sheets` | **No — never in core.** Add it here. | Google Sheets v4: values (get/update/append/clear/batch), batch_update, create + `api`. **Managed OAuth2**. |
+| [`google-tasks`](docs/connectors/google-tasks.md) | connector (verbs) | `google-tasks` | **No — never in core.** Add it here. | Google Tasks v1: task lists, tasks (list/get/create/update/delete/complete/move) + `api`. **Managed OAuth2**. |
+| [`google-contacts`](docs/connectors/google-contacts.md) | connector (verbs) | `google-contacts` | **No — never in core.** Add it here. | Google Contacts (People API v1): connections, contacts (get/create/update/delete), search, other-contacts + `api`. **Managed OAuth2**. |
 | [`ntfy`](docs/connectors/ntfy.md) | connector (verbs + source) | `ntfy` | **No — never in core.** Add it here. | ntfy pub/sub: `publish` notifications (title/priority/tags/click/attach) + a topic-subscribe source (JSON stream) emitting `message` events. ntfy.sh or self-hosted. |
 | [`terraspace`](docs/connectors/terraspace.md) | connector (verbs) | `terraspace` | **No — never in core.** Add it here. | Terraspace (Terraform/OpenTofu framework) as verbs: `up`/`down`/`plan` per stack, `all_up`/`all_down`, `output`, `import`, `logs`, `list`, `new`, … via the `terraspace` CLI. `TS_ENV` selects the environment. |
 | [`twilio`](docs/connectors/twilio.md) | connector (verbs + source) | `twilio` | **No — never in core.** Add it here. | Twilio: `send_sms`/`send_whatsapp`/`make_call` + an inbound SMS/voice webhook source (`X-Twilio-Signature` HMAC-verified). Basic auth (account SID + token). |
