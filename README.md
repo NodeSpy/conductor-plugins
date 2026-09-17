@@ -22,6 +22,7 @@ $ go list -deps ./... | grep NodeSpy
 github.com/NodeSpy/conductor/pkg/githubkit
 github.com/NodeSpy/conductor/pkg/plugin
 github.com/NodeSpy/conductor/pkg/sourcekit
+github.com/NodeSpy/conductor-plugins/connectors/adguard
 github.com/NodeSpy/conductor-plugins/connectors/alertmanager
 github.com/NodeSpy/conductor-plugins/connectors/audiobookshelf
 github.com/NodeSpy/conductor-plugins/connectors/aws-cli
@@ -35,6 +36,7 @@ github.com/NodeSpy/conductor-plugins/connectors/git
 github.com/NodeSpy/conductor-plugins/connectors/gitea
 github.com/NodeSpy/conductor-plugins/connectors/github
 github.com/NodeSpy/conductor-plugins/connectors/gitlab
+github.com/NodeSpy/conductor-plugins/connectors/grafana
 github.com/NodeSpy/conductor-plugins/connectors/healthchecks
 github.com/NodeSpy/conductor-plugins/connectors/helm
 github.com/NodeSpy/conductor-plugins/connectors/homeassistant
@@ -50,7 +52,9 @@ github.com/NodeSpy/conductor-plugins/connectors/notion
 github.com/NodeSpy/conductor-plugins/connectors/ntfy
 github.com/NodeSpy/conductor-plugins/connectors/opnsense
 github.com/NodeSpy/conductor-plugins/connectors/pagerduty
+github.com/NodeSpy/conductor-plugins/connectors/pihole
 github.com/NodeSpy/conductor-plugins/connectors/plex
+github.com/NodeSpy/conductor-plugins/connectors/portainer
 github.com/NodeSpy/conductor-plugins/connectors/prowlarr
 github.com/NodeSpy/conductor-plugins/connectors/proxmox
 github.com/NodeSpy/conductor-plugins/connectors/pushover
@@ -67,6 +71,7 @@ github.com/NodeSpy/conductor-plugins/connectors/terraform
 github.com/NodeSpy/conductor-plugins/connectors/terraspace
 github.com/NodeSpy/conductor-plugins/connectors/truenas
 github.com/NodeSpy/conductor-plugins/connectors/twilio
+github.com/NodeSpy/conductor-plugins/connectors/unifi
 github.com/NodeSpy/conductor-plugins/connectors/uptimekuma
 github.com/NodeSpy/conductor-plugins/connectors/uptimerobot
 github.com/NodeSpy/conductor-plugins/connectors/wiz
@@ -126,6 +131,11 @@ from the public module proxy. No `replace` directive.
 | [`truenas`](docs/connectors/truenas.md) | connector (verbs + source) | `truenas` | **No — never in core.** Add it here. | TrueNAS SCALE: pools, datasets, snapshots, replication, apps, services, system info + generic `api`, plus an alert poll source. Bearer API key; `insecure_skip_verify`. |
 | [`opnsense`](docs/connectors/opnsense.md) | connector (verbs) | `opnsense` | **No — never in core.** Add it here. | OPNsense firewall/router: firmware, services (restart/start/stop), firewall aliases (+ apply), interfaces, DHCP leases, gateway status, unbound DNS, reboot + generic `api`. HTTP Basic (key+secret); `insecure_skip_verify`. |
 | [`tailscale`](docs/connectors/tailscale.md) | connector (verbs) | `tailscale` | **No — never in core.** Add it here. | Tailscale mesh VPN: devices (authorize/tags/routes/delete), auth keys, ACL get/set, DNS + generic `api`. Uses **managed OAuth2** (client-credentials) or a plain `api_key`. |
+| [`unifi`](docs/connectors/unifi.md) | connector (verbs) | `unifi` | **No — never in core.** Add it here. | UniFi Network controller: sites, devices (+ restart), clients (block/unblock/reconnect), WLANs, networks, port-forwards, firewall rules, health, alarms, events + generic `api`. Cookie login (UniFi OS or legacy). |
+| [`pihole`](docs/connectors/pihole.md) | connector (verbs) | `pihole` | **No — never in core.** Add it here. | Pi-hole v6: summary/history/queries/top stats, blocking enable/disable, allow/deny domains, lists, groups, clients, gravity update + generic `api`. Password → session (SID). |
+| [`adguard`](docs/connectors/adguard.md) | connector (verbs) | `adguard` | **No — never in core.** Add it here. | AdGuard Home: status/stats/query-log, protection toggle, filter lists, rewrites, clients, DNS config, safebrowsing/parental + generic `api`. HTTP Basic. |
+| [`portainer`](docs/connectors/portainer.md) | connector (verbs) | `portainer` | **No — never in core.** Add it here. | Portainer: endpoints, stacks (start/stop/delete), containers (actions/logs) + images via the Docker proxy, status + generic `api`. `X-API-Key`. |
+| [`grafana`](docs/connectors/grafana.md) | connector (verbs + source) | `grafana` | **No — never in core.** Add it here. | Grafana: search, dashboards (get/create/delete), datasources, folders, alert rules, annotations, org + generic `api`, plus a firing-alerts poll source. Bearer service-account token. |
 | [`ifttt`](docs/connectors/ifttt.md) | connector (verbs + source) | `ifttt` | **No — never in core.** Add it here. | IFTTT Maker Webhooks: `trigger` / `trigger_json` + an inbound webhook source (token-verified, fail-closed). Maker key. |
 | [`healthchecks`](docs/connectors/healthchecks.md) | connector (verbs + source) | `healthchecks` | **No — never in core.** Add it here. | Healthchecks.io: check CRUD + `ping` (success/fail/start) + a check up/down webhook source. Management API key + ping URLs. |
 | [`git`](docs/connectors/git.md) | connector (verbs) | `git` | **No — never in core.** Add it here. | The `git` CLI with **configurable credentials**: clone/fetch/pull/push/checkout/commit/branch/tag/merge/reset/… + `rev_parse`/`ls_remote`/`status` parsing. SSH key or HTTPS token (kept out of argv via GIT_ASKPASS), commit identity. |
