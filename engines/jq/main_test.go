@@ -130,3 +130,66 @@ func TestRuntimeErrorSurfaces(t *testing.T) {
 		t.Fatalf("err = %v, want it wrapped with a jq: prefix", err)
 	}
 }
+
+// The step's env: crosses as $NAME jq variables, string-valued like `jq
+// --arg`. Here two variables parameterize the program: a numeric compare
+// (via tonumber) and a field the object output is keyed on.
+func TestVariablesFromEnv(t *testing.T) {
+	res, err := run(context.Background(), plugin.RunRequest{
+		Code:   `{region: $REGION, over: (.usage > ($THRESHOLD | tonumber))}`,
+		Inputs: map[string]any{"usage": 95},
+		Env:    map[string]string{"REGION": "us-east", "THRESHOLD": "90"},
+	}, &plugin.Host{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"region": "us-east", "over": true}
+	if !reflect.DeepEqual(res.Outputs, want) {
+		t.Fatalf("outputs = %#v, want %#v", res.Outputs, want)
+	}
+}
+
+// A variable value is always the string, never a guessed type — "90" is the
+// string "90" until the program converts it (here with tonumber).
+func TestVariableIsStringUntilConverted(t *testing.T) {
+	res, err := run(context.Background(), plugin.RunRequest{
+		Code:   `{raw: $V, num: ($V | tonumber)}`,
+		Inputs: map[string]any{},
+		Env:    map[string]string{"V": "90"},
+	}, &plugin.Host{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"raw": "90", "num": 90}
+	if !reflect.DeepEqual(res.Outputs, want) {
+		t.Fatalf("outputs = %#v, want %#v", res.Outputs, want)
+	}
+}
+
+// Referencing a $NAME the step never set is gojq's own compile error, not a
+// silent nil — a program's typo fails loudly.
+func TestUndefinedVariableIsAnError(t *testing.T) {
+	_, err := run(context.Background(), plugin.RunRequest{
+		Code:   "$MISSING",
+		Inputs: map[string]any{},
+	}, &plugin.Host{})
+	if err == nil {
+		t.Fatal("want a compile error for an undefined variable, got nil")
+	}
+}
+
+// An env: key that is not a legal variable identifier is rejected up front
+// with a clear error rather than producing a broken program.
+func TestInvalidVariableNameRejected(t *testing.T) {
+	_, err := run(context.Background(), plugin.RunRequest{
+		Code:   ".",
+		Inputs: map[string]any{},
+		Env:    map[string]string{"not-an-ident": "x"},
+	}, &plugin.Host{})
+	if err == nil {
+		t.Fatal("want an error for an invalid variable name, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid variable name") {
+		t.Fatalf("err = %v, want an invalid-variable-name error", err)
+	}
+}

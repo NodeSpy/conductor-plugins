@@ -50,6 +50,32 @@ Note there is no `ctx.` prefix inside the filter — the step's inputs
 - A step's `timeout:` is honored (`RunWithContext`), so a runaway program
   (an infinite `repeat`, say) is cut instead of wedging the run.
 
+## Variables
+
+Set variables with the step's `env:` — each entry becomes a `$NAME` jq
+variable, exactly like `jq --arg NAME value`. This is how you parameterize a
+program without splicing values into the program text (which breaks on quoting
+and turns data into code):
+
+```yaml
+steps:
+  - id: over_budget
+    use: jq
+    env:
+      THRESHOLD: "90"
+      REGION: ${vars.region}
+    code: '{region: $REGION, over: (.usage > ($THRESHOLD | tonumber))}'
+```
+
+- Values are **always strings**, mirroring `jq --arg` (not `--argjson`): `"90"`
+  is the string `"90"`, never the number `90`. Convert in-program with
+  `($THRESHOLD | tonumber)` for a number or `($JSON | fromjson)` for structure —
+  explicit, so the binding is never ambiguous.
+- Names must be a letter or `_` followed by letters, digits, or `_` (a normal
+  identifier); an `env:` key that isn't one is rejected before the program runs.
+- Referencing a `$NAME` the step never set is gojq's own **compile error**
+  ("variable not defined"), so a typo fails loudly rather than reading as null.
+
 ## Sandbox
 
 No filesystem, no network, no process — jq has no such builtins to begin

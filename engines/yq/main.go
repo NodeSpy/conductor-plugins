@@ -9,7 +9,13 @@
 // …), and the expression's result becomes the step's outputs. There is no
 // ctx.store/ctx.sql/ctx.memory face here, for the same reason jq has none: yq
 // has no notion of a host call, and a data-plane step reaches it through a
-// neighboring step instead — this engine only reshapes what it is given.
+// neighboring step instead — this engine only reshapes what it is given. The
+// step's env: crosses as yq VARIABLES — each entry a $NAME bound to its string
+// value, the yq counterpart of `jq --arg NAME value` — so an expression can be
+// parameterized (".spec.replicas = ($COUNT | to_number)", 'select(.env ==
+// $ENVNAME)') without splicing the value into the expression text; a value that
+// should be a number or structure is converted in-expression (to_number,
+// from_json, etc.).
 //
 // OUTPUT CONTRACT differs from jq in one way, because YAML is not JSON: a yq
 // expression can match zero, one, or many result nodes (".items[]" exploding
@@ -98,15 +104,17 @@ func describe() plugin.Decl {
 			"value: list, and no documents at all is no outputs. An " +
 			"additional yaml: output always carries the raw rendered YAML " +
 			"text, preserving comments/anchors/ordering that a Go-value " +
-			"round-trip would drop. env/strenv/load/load_str are disabled; " +
+			"round-trip would drop. The step's env: crosses as $NAME yq " +
+			"variables (string-valued, like `jq --arg`). " +
+			"env/strenv/load/load_str are disabled; " +
 			"system is left at yq's own disabled default.",
 		Capabilities: plugin.Capabilities{},
 	}
 }
 
 func run(ctx context.Context, req plugin.RunRequest, host *plugin.Host) (plugin.RunResult, error) {
-	fmt.Fprintf(os.Stderr, "conductor-yq: run instance=%s inputs=%d\n", req.Instance, len(req.Inputs))
-	outputs, err := execYQ(ctx, req.Code, req.Inputs)
+	fmt.Fprintf(os.Stderr, "conductor-yq: run instance=%s inputs=%d vars=%d\n", req.Instance, len(req.Inputs), len(req.Env))
+	outputs, err := execYQ(ctx, req.Code, req.Inputs, req.Env)
 	if err != nil {
 		return plugin.RunResult{}, err
 	}
@@ -133,9 +141,22 @@ func run(ctx context.Context, req plugin.RunRequest, host *plugin.Host) (plugin.
 // individually — an unambiguous single-value document every time — for the
 // Go-value side of the contract, while still handing the SAME node list to
 // yq's own printer once for the combined yaml: text.
-func execYQ(ctx context.Context, code string, inputs map[string]any) (map[string]any, error) {
+func execYQ(ctx context.Context, code string, inputs map[string]any, env map[string]string) (map[string]any, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+
+	// The step's env: becomes yq variables — each entry a $NAME bound to its
+	// string value, the yq counterpart of `jq --arg NAME value`. enginekit
+	// validates and orders the names so both engines agree on what a variable
+	// name may be. Unlike jq's compile-time WithVariables, yqlib has no
+	// evaluator entry point that takes seed variables, so this engine seeds them
+	// directly onto the evaluation Context (what its `... as $x` operator writes
+	// with SetVariable) and drives the same navigator + parser
+	// NewAllAtOnceEvaluator uses under the hood.
+	names, values, err := enginekit.StepVars(env)
+	if err != nil {
+		return nil, fmt.Errorf("yq: %w", err)
 	}
 
 	inputYAML, err := marshalInputs(inputs)
@@ -167,7 +188,7 @@ func execYQ(ctx context.Context, code string, inputs map[string]any) (map[string
 			resultCh <- evalResult{err: fmt.Errorf("yq: read input: %w", err)}
 			return
 		}
-		matches, err := yqlib.NewAllAtOnceEvaluator().EvaluateCandidateNodes(code, documents)
+		matches, err := evaluate(code, documents, names, values)
 		if err != nil {
 			resultCh <- evalResult{err: fmt.Errorf("yq: %w", err)}
 			return
@@ -187,6 +208,35 @@ func execYQ(ctx context.Context, code string, inputs map[string]any) (map[string
 		}
 		return buildOutputs(res.matches, encoder)
 	}
+}
+
+// evaluate runs one yq expression over the input documents with the given
+// variables seeded, and returns the matched result nodes. It is
+// NewAllAtOnceEvaluator().EvaluateCandidateNodes with one addition: before
+// walking the expression it primes the evaluation Context with each variable,
+// so a `$NAME` reference in the expression resolves to the step's env value.
+// yqlib strips the leading "$" from a variable token (its lexer keeps the bare
+// name), so SetVariable is keyed by the bare name; each value is a single
+// !!str scalar node — string-valued, like `jq --arg`.
+func evaluate(code string, documents *list.List, names, values []string) (*list.List, error) {
+	yqlib.InitExpressionParser()
+	node, err := yqlib.ExpressionParser.ParseExpression(code)
+	if err != nil {
+		return nil, err
+	}
+
+	inputCtx := yqlib.Context{MatchingNodes: documents}
+	for i, name := range names {
+		v := list.New()
+		v.PushBack(&yqlib.CandidateNode{Kind: yqlib.ScalarNode, Tag: "!!str", Value: values[i]})
+		inputCtx.SetVariable(name, v)
+	}
+
+	resultCtx, err := yqlib.NewDataTreeNavigator().GetMatchingNodes(inputCtx, node)
+	if err != nil {
+		return nil, err
+	}
+	return resultCtx.MatchingNodes, nil
 }
 
 // buildOutputs applies both halves of this engine's output contract to one

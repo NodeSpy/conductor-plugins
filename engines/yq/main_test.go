@@ -252,3 +252,87 @@ func TestLoadOperatorIsDisabled(t *testing.T) {
 		t.Fatal("want load() to be refused, got nil error")
 	}
 }
+
+// The step's env: crosses as $NAME yq variables, string-valued like `jq
+// --arg`. Here a variable supplies the value assigned into the document, and
+// the mapping result (whole doc) comes back as named outputs plus yaml text.
+func TestVariablesFromEnv(t *testing.T) {
+	res, err := run(context.Background(), plugin.RunRequest{
+		Code:   `.name = $LABEL`,
+		Inputs: map[string]any{"name": "old"},
+		Env:    map[string]string{"LABEL": "prod"},
+	}, &plugin.Host{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := res.Outputs["name"]; got != "prod" {
+		t.Fatalf("outputs[name] = %#v, want %q", got, "prod")
+	}
+	if rendered, _ := res.Outputs["yaml"].(string); rendered != "name: prod\n" {
+		t.Fatalf("outputs[yaml] = %q, want %q", rendered, "name: prod\n")
+	}
+}
+
+// A string variable converts to a number in-expression with to_number — the
+// operator the docs point at for numeric parameters. Locks that spelling.
+func TestVariableToNumber(t *testing.T) {
+	res, err := run(context.Background(), plugin.RunRequest{
+		Code:   `.replicas = ($COUNT | to_number)`,
+		Inputs: map[string]any{"replicas": 1},
+		Env:    map[string]string{"COUNT": "3"},
+	}, &plugin.Host{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rendered, _ := res.Outputs["yaml"].(string); rendered != "replicas: 3\n" {
+		t.Fatalf("outputs[yaml] = %q, want %q", rendered, "replicas: 3\n")
+	}
+}
+
+// A variable drives a select — the expression is parameterized by the env
+// value without splicing it into the expression text.
+func TestVariableInSelect(t *testing.T) {
+	res, err := run(context.Background(), plugin.RunRequest{
+		Code:   `select(.env == $WANT)`,
+		Inputs: map[string]any{"env": "prod", "app": "web"},
+		Env:    map[string]string{"WANT": "prod"},
+	}, &plugin.Host{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := res.Outputs["app"]; got != "web" {
+		t.Fatalf("outputs[app] = %#v, want %q (the doc should have matched)", got, "web")
+	}
+}
+
+// yq is lenient where jq is strict: a $NAME the step never set resolves to no
+// match rather than an error, so the step simply produces no outputs. (This is
+// the one variable-behavior difference between the two engines.)
+func TestUndefinedVariableIsEmptyNotError(t *testing.T) {
+	res, err := run(context.Background(), plugin.RunRequest{
+		Code:   `$MISSING`,
+		Inputs: map[string]any{},
+	}, &plugin.Host{})
+	if err != nil {
+		t.Fatalf("want no error for an undefined yq variable, got %v", err)
+	}
+	if len(res.Outputs) != 0 {
+		t.Fatalf("outputs = %#v, want none", res.Outputs)
+	}
+}
+
+// An env: key that is not a legal variable identifier is rejected up front,
+// the same rule the jq engine enforces.
+func TestInvalidVariableNameRejected(t *testing.T) {
+	_, err := run(context.Background(), plugin.RunRequest{
+		Code:   `.`,
+		Inputs: map[string]any{},
+		Env:    map[string]string{"bad-name": "x"},
+	}, &plugin.Host{})
+	if err == nil {
+		t.Fatal("want an error for an invalid variable name, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid variable name") {
+		t.Fatalf("err = %v, want an invalid-variable-name error", err)
+	}
+}
