@@ -42,6 +42,7 @@ github.com/NodeSpy/conductor-plugins/connectors/ifttt
 github.com/NodeSpy/conductor-plugins/connectors/jira
 github.com/NodeSpy/conductor-plugins/connectors/kubernetes
 github.com/NodeSpy/conductor-plugins/connectors/libation
+github.com/NodeSpy/conductor-plugins/connectors/lidarr
 github.com/NodeSpy/conductor-plugins/connectors/linear
 github.com/NodeSpy/conductor-plugins/connectors/matrix
 github.com/NodeSpy/conductor-plugins/connectors/notifiarr
@@ -49,6 +50,7 @@ github.com/NodeSpy/conductor-plugins/connectors/notion
 github.com/NodeSpy/conductor-plugins/connectors/ntfy
 github.com/NodeSpy/conductor-plugins/connectors/pagerduty
 github.com/NodeSpy/conductor-plugins/connectors/plex
+github.com/NodeSpy/conductor-plugins/connectors/prowlarr
 github.com/NodeSpy/conductor-plugins/connectors/pushover
 github.com/NodeSpy/conductor-plugins/connectors/qbittorrent
 github.com/NodeSpy/conductor-plugins/connectors/radarr
@@ -64,6 +66,7 @@ github.com/NodeSpy/conductor-plugins/connectors/twilio
 github.com/NodeSpy/conductor-plugins/connectors/uptimekuma
 github.com/NodeSpy/conductor-plugins/connectors/uptimerobot
 github.com/NodeSpy/conductor-plugins/connectors/wiz
+github.com/NodeSpy/conductor-plugins/connectors/xero
 github.com/NodeSpy/conductor-plugins/connectors/zapier
 github.com/NodeSpy/conductor-plugins/engines/go-embed
 github.com/NodeSpy/conductor-plugins/engines/js
@@ -107,6 +110,8 @@ from the public module proxy. No `replace` directive.
 | [`plex`](docs/connectors/plex.md) | connector (verbs + source) | `plex` | **No — never in core.** Add it here. | Plex Media Server: sessions, library sections/scan, search, metadata, recently-added, watched/unwatched, refresh + a Plex webhook source (playback events). `X-Plex-Token`. |
 | [`sonarr`](docs/connectors/sonarr.md) | connector (verbs + source) | `sonarr` | **No — never in core.** Add it here. | Sonarr (TV): series CRUD, lookup, episodes, commands, queue, calendar, wanted, profiles + a webhook source (Grab/Download/…). API key. |
 | [`radarr`](docs/connectors/radarr.md) | connector (verbs + source) | `radarr` | **No — never in core.** Add it here. | Radarr (movies): movie CRUD, lookup, commands, queue, calendar, wanted, profiles + a webhook source. API key. |
+| [`lidarr`](docs/connectors/lidarr.md) | connector (verbs + source) | `lidarr` | **No — never in core.** Add it here. | Lidarr (music): artist/album CRUD, lookup, commands, queue, calendar + a webhook source (Grab/Download/…). API key. |
+| [`prowlarr`](docs/connectors/prowlarr.md) | connector (verbs + source) | `prowlarr` | **No — never in core.** Add it here. | Prowlarr (indexer manager): indexers, indexer stats, applications, release `search`, commands, system status, tags + generic `api`, plus a Health/ApplicationUpdate webhook source. API key. |
 | [`audiobookshelf`](docs/connectors/audiobookshelf.md) | connector (verbs) | `audiobookshelf` | **No — never in core.** Add it here. | Audiobookshelf: libraries/items, `get_item`, `search`, `scan`, series, collections, progress, multipart `upload` (the import half of an Audible→ABS pipeline with `libation`) + generic `api`. Bearer token. |
 | [`datadog`](docs/connectors/datadog.md) | connector (verbs + source) | `datadog` | **No — never in core.** Add it here. | Datadog: `post_event`, mute/unmute & get/list monitors, `submit_metric` + a webhook alert source (operator-templated payload, token-verified). API + APP keys. |
 | [`jira`](docs/connectors/jira.md) | connector (verbs + source) | `jira` | **No — never in core.** Add it here. | Jira Cloud REST v3: create/update issues, comments (ADF), transitions, assign, search (JQL) + issue/comment webhook events. Basic auth (email + API token). |
@@ -129,6 +134,7 @@ from the public module proxy. No `replace` directive.
 | [`pushover`](docs/connectors/pushover.md) | connector (verbs) | `pushover` | **No — never in core.** Add it here. | Pushover push notifications: `send` (priority/sound/url/html), emergency receipts (`get_receipt`/`cancel_receipt`), `glances`, `validate_user`. App token + user key. |
 | [`notifiarr`](docs/connectors/notifiarr.md) | connector (verbs) | `notifiarr` | **No — never in core.** Add it here. | Notifiarr passthrough Discord notifications (title/message/color/channel/ping/fields) + generic `api`. API key. |
 | [`zapier`](docs/connectors/zapier.md) | connector (verbs + source) | `zapier` | **No — never in core.** Add it here. | Zapier: `send` to a Catch-Hook URL (host-validated to hooks.zapier.com) + an inbound webhook source (token-verified, fail-closed). |
+| [`xero`](docs/connectors/xero.md) | connector (verbs) | `xero` | **No — never in core.** Add it here. | Xero accounting: invoices, contacts, accounts, payments, bank transactions, items, organisation, connections + raw `api`. Uses conductor's **managed OAuth2** — add an `auth:` block and run `conductor connector auth xero`; conductor injects the token, so plugin egress is `api.xero.com` only. |
 | [`ntfy`](docs/connectors/ntfy.md) | connector (verbs + source) | `ntfy` | **No — never in core.** Add it here. | ntfy pub/sub: `publish` notifications (title/priority/tags/click/attach) + a topic-subscribe source (JSON stream) emitting `message` events. ntfy.sh or self-hosted. |
 | [`terraspace`](docs/connectors/terraspace.md) | connector (verbs) | `terraspace` | **No — never in core.** Add it here. | Terraspace (Terraform/OpenTofu framework) as verbs: `up`/`down`/`plan` per stack, `all_up`/`all_down`, `output`, `import`, `logs`, `list`, `new`, … via the `terraspace` CLI. `TS_ENV` selects the environment. |
 | [`twilio`](docs/connectors/twilio.md) | connector (verbs + source) | `twilio` | **No — never in core.** Add it here. | Twilio: `send_sms`/`send_whatsapp`/`make_call` + an inbound SMS/voice webhook source (`X-Twilio-Signature` HMAC-verified). Basic auth (account SID + token). |
