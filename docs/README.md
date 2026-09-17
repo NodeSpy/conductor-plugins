@@ -209,3 +209,12 @@ binaries + `checksums.txt`.
 | `pagerduty` | connector (source) | [connectors/pagerduty.md](connectors/pagerduty.md) |
 | `twilio` | connector (verbs + source) | [connectors/twilio.md](connectors/twilio.md) |
 | `paseo` | runtime | [runtimes/paseo.md](runtimes/paseo.md) |
+| `js` | engine | [engines/js.md](engines/js.md) |
+| `lua` | engine | [engines/lua.md](engines/lua.md) |
+| `risor` | engine | [engines/risor.md](engines/risor.md) |
+| `go-embed` | engine | [engines/go-embed.md](engines/go-embed.md) |
+| `starlark` | engine | [engines/starlark.md](engines/starlark.md) |
+| `cel` | engine | [engines/cel.md](engines/cel.md) |
+| `jq` | engine | [engines/jq.md](engines/jq.md) |
+| `yq` | engine | [engines/yq.md](engines/yq.md) |
+| `wasm` | engine | [engines/wasm.md](engines/wasm.md) |
