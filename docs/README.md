@@ -162,6 +162,11 @@ binaries + `checksums.txt`.
 | `truenas` | connector (verbs + source) | [connectors/truenas.md](connectors/truenas.md) |
 | `opnsense` | connector (verbs) | [connectors/opnsense.md](connectors/opnsense.md) |
 | `tailscale` | connector (verbs) | [connectors/tailscale.md](connectors/tailscale.md) |
+| `unifi` | connector (verbs) | [connectors/unifi.md](connectors/unifi.md) |
+| `pihole` | connector (verbs) | [connectors/pihole.md](connectors/pihole.md) |
+| `adguard` | connector (verbs) | [connectors/adguard.md](connectors/adguard.md) |
+| `portainer` | connector (verbs) | [connectors/portainer.md](connectors/portainer.md) |
+| `grafana` | connector (verbs + source) | [connectors/grafana.md](connectors/grafana.md) |
 | `ifttt` | connector (verbs + source) | [connectors/ifttt.md](connectors/ifttt.md) |
 | `healthchecks` | connector (verbs + source) | [connectors/healthchecks.md](connectors/healthchecks.md) |
 | `git` | connector (verbs) | [connectors/git.md](connectors/git.md) |
