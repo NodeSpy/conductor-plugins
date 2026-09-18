@@ -287,6 +287,15 @@ func (p paseoPlugin) createWorktree(bin string, opts map[string]any) (plugin.Inv
 		if nerr != nil {
 			return plugin.InvokeResult{}, nerr
 		}
+		// Create-or-reuse. The branch name is deterministic per (PR, kind), so a
+		// prior run's worktree for it may still exist and `paseo workspace create`
+		// is create-or-error. paseo names a branch-off workspace after its branch,
+		// so adopt the one already on this branch and hand it back — the runtime
+		// owns this recognition; conductor just asked for a worktree and neither
+		// knows nor cares whether it's fresh or reused.
+		if id, cwd, ok := worktreeOnBranch(bin, nb); ok {
+			return plugin.InvokeResult{Outputs: map[string]any{"workspaceId": id, "cwd": cwd}}, nil
+		}
 		args = append(args, "--new-branch", nb)
 		base, berr := argOf(opts, "baseRef")
 		if berr != nil {
@@ -310,6 +319,36 @@ func (p paseoPlugin) createWorktree(bin string, opts map[string]any) (plugin.Inv
 		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, "create_worktree: unparseable output: "+strings.TrimSpace(string(out)))
 	}
 	return plugin.InvokeResult{Outputs: map[string]any{"workspaceId": w.WorkspaceID, "cwd": w.Cwd}}, nil
+}
+
+// worktreeOnBranch returns the worktree workspace already on branch, if any — the
+// create-or-reuse lookup for createWorktree. paseo names a branch-off workspace
+// after its branch, so the match is exact on that. A listing failure is treated
+// as "none": the create then runs and surfaces the real error rather than this
+// masking it.
+func worktreeOnBranch(bin, branch string) (id, cwd string, ok bool) {
+	if branch == "" {
+		return "", "", false
+	}
+	out, _, err := runCmd(bin, "workspace", "ls", "--json")
+	if err != nil {
+		return "", "", false
+	}
+	var wl []struct {
+		WorkspaceID string `json:"workspaceId"`
+		Name        string `json:"name"`
+		Isolation   string `json:"isolation"`
+		Cwd         string `json:"cwd"`
+	}
+	if json.Unmarshal(out, &wl) != nil {
+		return "", "", false
+	}
+	for _, w := range wl {
+		if w.Isolation == "worktree" && w.Name == branch && w.WorkspaceID != "" && w.Cwd != "" {
+			return w.WorkspaceID, w.Cwd, true
+		}
+	}
+	return "", "", false
 }
 
 func (p paseoPlugin) createWorkspace(bin string, opts map[string]any) (plugin.InvokeResult, error) {
