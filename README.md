@@ -23,9 +23,10 @@ Pin an exact build with `use: github@v1.2.3`; leave it off and it stays current.
 Each plugin has a full reference page under [`docs/`](docs/README.md).
 
 > **Logins are handled for you.** Connectors that use OAuth — **Xero**, the
-> **Google** set, **Tailscale** — plug into conductor's managed OAuth2: add an
-> `auth:` block and run `conductor connector auth <name>` once (a browser login),
-> and conductor stores and refreshes the token. The plugin never sees your secret.
+> **Google** set, **Tailscale**, optionally **Asana** — plug into conductor's
+> managed OAuth2: add an `auth:` block and run `conductor connector auth <name>`
+> once (a browser login), and conductor stores and refreshes the token. The
+> plugin never sees your secret.
 
 ---
 
@@ -36,6 +37,7 @@ Each plugin has a full reference page under [`docs/`](docs/README.md).
 - **[gitlab](docs/connectors/gitlab.md)** — merge requests, issues, labels, branches, pipelines + push/MR/pipeline webhooks.
 - **[gitea](docs/connectors/gitea.md)** — Gitea/Forgejo issues, PRs, releases, files + webhooks.
 - **[git](docs/connectors/git.md)** — the `git` CLI with managed credentials: clone, commit, push, branch, tag, merge…
+- **[asana](docs/connectors/asana.md)** — Asana tasks, projects, sections, comments, search + task/story/project webhook events. Token or managed OAuth2.
 - **[jira](docs/connectors/jira.md)** — Jira Cloud issues, comments, transitions, JQL search + webhooks.
 - **[linear](docs/connectors/linear.md)** — Linear issues: create/update/comment/search + webhooks.
 - **[notion](docs/connectors/notion.md)** — Notion pages, databases, blocks, search, comments.
