@@ -155,6 +155,7 @@ binaries + `checksums.txt`.
 | `prowlarr` | connector (verbs + source) | [connectors/prowlarr.md](connectors/prowlarr.md) |
 | `audiobookshelf` | connector (verbs) | [connectors/audiobookshelf.md](connectors/audiobookshelf.md) |
 | `datadog` | connector (verbs + source) | [connectors/datadog.md](connectors/datadog.md) |
+| `asana` | connector (verbs + source) | [connectors/asana.md](connectors/asana.md) |
 | `jira` | connector (verbs + source) | [connectors/jira.md](connectors/jira.md) |
 | `telegram` | connector (verbs + source) | [connectors/telegram.md](connectors/telegram.md) |
 | `matrix` | connector (verbs + source) | [connectors/matrix.md](connectors/matrix.md) |
