@@ -30,6 +30,7 @@ require (
 require (
 	cel.dev/cel-go v0.32.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/itchyny/gojq v0.12.19
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/mikefarah/yq/v4 v4.53.6
