@@ -1,4 +1,4 @@
-// Command conductor-sqs is the Amazon SQS connector as an external conductor
+// Command conductor-aws-sqs is the Amazon SQS connector as an external conductor
 // plugin. Its headline feature is a SOURCE: it long-polls a queue and emits one
 // event per message (deleting it after hand-off, by default). It also exposes
 // send_message / receive_message / delete_message / get_queue_attributes verbs.
@@ -48,7 +48,7 @@ type sqsPlugin struct{}
 func (sqsPlugin) Describe() plugin.Decl {
 	return plugin.Decl{
 		Kind: plugin.KindConnector,
-		Type: "sqs",
+		Type: "aws-sqs",
 		Desc: "Amazon SQS: long-poll a queue as a source (one event per message, auto-deleted after hand-off) plus send/receive/delete/get-attributes verbs. Hand-rolled SigV4 — no AWS SDK, no AWS CLI.",
 		Connection: plugin.Schema{
 			"region":             {Type: "string", Required: true, Desc: "AWS region, e.g. us-east-1"},
@@ -241,7 +241,7 @@ func (sqsPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest,
 
 func main() {
 	if err := plugin.Serve(sqsPlugin{}); err != nil {
-		fmt.Fprintf(os.Stderr, "conductor-sqs: %v\n", err)
+		fmt.Fprintf(os.Stderr, "conductor-aws-sqs: %v\n", err)
 		os.Exit(1)
 	}
 }

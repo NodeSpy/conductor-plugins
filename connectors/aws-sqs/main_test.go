@@ -58,7 +58,7 @@ func testConn(m *mockSQS) map[string]any {
 
 func TestDescribe(t *testing.T) {
 	d := sqsPlugin{}.Describe()
-	if d.Kind != plugin.KindConnector || d.Type != "sqs" {
+	if d.Kind != plugin.KindConnector || d.Type != "aws-sqs" {
 		t.Fatalf("kind/type = %v/%v", d.Kind, d.Type)
 	}
 	if d.Connection["region"].Required != true {

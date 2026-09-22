@@ -1,4 +1,4 @@
-# `sqs` connector
+# `aws-sqs` connector
 
 Amazon SQS as a connector: a **source** that long-polls a queue and emits one
 event per message (deleting it after hand-off by default), plus `send_message` /
@@ -9,14 +9,14 @@ endpoint, signed with hand-rolled AWS SigV4 ([`internal/awskit`](../../internal/
 verified against AWS's documented test vector).
 
 - **Kind:** connector (verbs **and** source)
-- **Source:** [`connectors/sqs/main.go`](../../connectors/sqs/main.go)
-- **Provides:** `sqs`
+- **Source:** [`connectors/aws-sqs/main.go`](../../connectors/aws-sqs/main.go)
+- **Provides:** `aws-sqs`
 - **Capabilities:** no fixed egress — the endpoint is region-derived; narrow it with `network:`.
 
 ```yaml
 connectors:
   jobs:
-    use: sqs
+    use: aws-sqs
     region: us-east-1
     queue_url: https://sqs.us-east-1.amazonaws.com/123456789012/jobs
     network: ["sqs.us-east-1.amazonaws.com:443"]
@@ -46,7 +46,7 @@ call it.
 ```yaml
 connectors:
   jobs:
-    use: sqs
+    use: aws-sqs
     region: us-east-1
     queue_url: https://sqs.us-east-1.amazonaws.com/123456789012/jobs
     access_key_id: ${AWS_ACCESS_KEY_ID}
