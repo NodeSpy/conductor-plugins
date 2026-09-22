@@ -62,7 +62,11 @@ func describe() plugin.Decl {
 func run(ctx context.Context, req plugin.RunRequest, host *plugin.Host) (plugin.RunResult, error) {
 	fmt.Fprintf(os.Stderr, "conductor-risor: run instance=%s inputs=%d data-plane=%v\n",
 		req.Instance, len(req.Inputs), host.Available())
-	outputs, err := execRisor(ctx, req.Code, req.Inputs, host)
+	code, lerr := enginekit.LoadCode(req.Code)
+	if lerr != nil {
+		return plugin.RunResult{}, lerr
+	}
+	outputs, err := execRisor(ctx, code, req.Inputs, host)
 	if err != nil {
 		return plugin.RunResult{}, err
 	}

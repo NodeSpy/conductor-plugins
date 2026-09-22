@@ -139,6 +139,11 @@ result becomes the step's outputs.
 All run sandboxed — no filesystem, network, or spawns unless the step is granted
 conductor's `ctx.store` / `ctx.sql` / `ctx.memory`.
 
+Every engine's `code:` can be a **`file:` path** instead of inline source —
+`code: "file:./transforms/shape.jq"` loads the script from a file (the `wasm`
+engine takes a `file:` path to a `.wasm` module the same way). Host interpreters
+and the built-in `cli` engine honor the same convention in conductor core.
+
 ## Runtimes
 
 - **[paseo](docs/runtimes/paseo.md)** — run agents through the `paseo` CLI.

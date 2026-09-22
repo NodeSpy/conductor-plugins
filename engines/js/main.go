@@ -61,7 +61,11 @@ func describe() plugin.Decl {
 func run(ctx context.Context, req plugin.RunRequest, host *plugin.Host) (out plugin.RunResult, err error) {
 	fmt.Fprintf(os.Stderr, "conductor-js: run instance=%s inputs=%d data-plane=%v\n",
 		req.Instance, len(req.Inputs), host.Available())
-	outputs, err := execJS(ctx, req.Code, req.Inputs, host)
+	code, lerr := enginekit.LoadCode(req.Code)
+	if lerr != nil {
+		return plugin.RunResult{}, lerr
+	}
+	outputs, err := execJS(ctx, code, req.Inputs, host)
 	if err != nil {
 		return plugin.RunResult{}, err
 	}

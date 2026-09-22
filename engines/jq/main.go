@@ -68,7 +68,11 @@ func describe() plugin.Decl {
 
 func run(ctx context.Context, req plugin.RunRequest, host *plugin.Host) (plugin.RunResult, error) {
 	fmt.Fprintf(os.Stderr, "conductor-jq: run instance=%s inputs=%d vars=%d\n", req.Instance, len(req.Inputs), len(req.Env))
-	outputs, err := execJQ(ctx, req.Code, req.Inputs, req.Env)
+	code, lerr := enginekit.LoadCode(req.Code)
+	if lerr != nil {
+		return plugin.RunResult{}, lerr
+	}
+	outputs, err := execJQ(ctx, code, req.Inputs, req.Env)
 	if err != nil {
 		return plugin.RunResult{}, err
 	}
