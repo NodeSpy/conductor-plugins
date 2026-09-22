@@ -21,11 +21,12 @@ for the four scripting engines conductor used to run in-process (`js`,
 
 Compile your module for `wasm32-wasip1` (a WASI **command** module — one
 with an exported `_start`, which `rustc`/TinyGo/Zig all produce by
-default for a `fn main()`), then base64-encode the binary into `code:`:
+default for a `fn main()`), then point `code:` at it — either as a **file
+path** (the common case for a real module) or as a **base64-encoded**
+binary inline:
 
 ```console
 $ rustc --target wasm32-wasip1 -O -o transform.wasm transform.rs
-$ base64 -w0 transform.wasm
 ```
 
 ```yaml
@@ -33,8 +34,19 @@ steps:
   - id: transform
     use: wasm
     args: ["--mode", "strict"]
+    code: "file:/opt/conductor/modules/transform.wasm"   # a .wasm file on disk
+```
+
+`code:` accepts, in order: a `file:`-prefixed path; a bare path that exists on
+disk; otherwise the base64 of the module (`base64 -w0 transform.wasm`), for
+inlining a small module or shipping it in the config itself:
+
+```yaml
     code: "AGFzbQEAAAABsAECYAJ/fwF/YAAAAwIBAQ==...<rest of the base64 module>..."
 ```
+
+Reading the `.wasm` file is a **host-side load of the code to run** — it does
+**not** give the guest filesystem access; the sandbox below is unchanged.
 
 The module reads its JSON input from stdin and writes its JSON output to
 stdout — for example, in Rust:
@@ -50,9 +62,9 @@ fn main() {
 
 ## Contract
 
-- `code:` is a **base64-encoded WASM module binary**, not source text —
-  a decode failure, or bytes that don't compile as WASM, is a clear
-  error.
+- `code:` is a **WASM module binary**, not source text — given as a `file:`
+  path, a bare path that exists on disk, or base64. A read/decode failure, or
+  bytes that don't compile as WASM, is a clear error.
 - The step's inputs are `json.Marshal`'d onto the module's stdin (fd 0);
   the module parses that however its language does JSON.
 - A step's `args:` become the module's `argv` (after a fixed `argv[0]`),
