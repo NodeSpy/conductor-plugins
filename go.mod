@@ -29,7 +29,9 @@ require (
 
 require (
 	cel.dev/cel-go v0.32.0
+	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/itchyny/gojq v0.12.19
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/mikefarah/yq/v4 v4.53.6
 	github.com/tetratelabs/wazero v1.9.0
 	go.starlark.net v0.0.0-20260908191801-89a6a09411d5
@@ -52,8 +54,11 @@ require (
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/hcl/v2 v2.24.0 // indirect
 	github.com/itchyny/timefmt-go v0.1.8 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jinzhu/copier v0.4.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/magiconair/properties v1.18.11 // indirect

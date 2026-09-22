@@ -50,6 +50,7 @@ Each plugin has a full reference page under [`docs/`](docs/README.md).
 - **[kubernetes](docs/connectors/kubernetes.md)** — `kubectl` lifecycle: apply, get, logs, exec, rollout, scale, drain…
 - **[helm](docs/connectors/helm.md)** — Helm releases: install, upgrade, rollback, list, status, template, repos.
 - **[docker](docs/connectors/docker.md)** — Docker/Podman lifecycle: run, exec, build, compose, buildx, logs… local or remote.
+- **[postgres](docs/connectors/postgres.md)** — PostgreSQL LISTEN/NOTIFY as an event source (react to a row change, no polling) + query/exec/notify verbs.
 
 ### Homelab — media
 - **[sonarr](docs/connectors/sonarr.md)** · **[radarr](docs/connectors/radarr.md)** · **[lidarr](docs/connectors/lidarr.md)** — Servarr for TV / movies / music: library CRUD, queue, calendar + Grab/Download webhooks.
@@ -73,6 +74,7 @@ Each plugin has a full reference page under [`docs/`](docs/README.md).
 - **[portainer](docs/connectors/portainer.md)** — container management: environments, stacks, containers, images.
 - **[homeassistant](docs/connectors/homeassistant.md)** — Home Assistant: call services, get/set state, fire events, templates + webhooks.
 - **[smart](docs/connectors/smart.md)** — disk S.M.A.R.T. health via `smartctl` + a failing-drive source.
+- **[mqtt](docs/connectors/mqtt.md)** — MQTT broker: subscribe to topic filters as a live message source + publish to a topic (Home Assistant, Zigbee2MQTT, sensors).
 
 ### Monitoring & alerting
 - **[grafana](docs/connectors/grafana.md)** — dashboards, datasources, folders, alert rules, annotations + a firing-alerts source.
