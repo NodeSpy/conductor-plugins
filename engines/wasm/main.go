@@ -8,11 +8,13 @@
 // source-snippet contract, which controls the guest's source and can inject
 // ctx bindings into it):
 //
-//	code     RunRequest.Code is a BASE64-ENCODED WASM MODULE BINARY: a WASI
-//	         COMMAND module (one compiled with an exported "_start" — e.g.
-//	         TinyGo, Rust's wasm32-wasip1 target, or Zig), not source text.
-//	         A decode failure, or bytes that don't compile as WASM, is a
-//	         clear error.
+//	code     RunRequest.Code is the WASI COMMAND module (one compiled with an
+//	         exported "_start" — e.g. TinyGo, Rust's wasm32-wasip1 target, or
+//	         Zig), given EITHER as a BASE64-encoded binary OR as a PATH to a
+//	         .wasm file on disk ("file:/opt/mods/x.wasm", or a bare path that
+//	         exists). Reading the file is a host-side load of the code to run;
+//	         it does not give the guest filesystem access. A read/decode
+//	         failure, or bytes that don't compile as WASM, is a clear error.
 //	inputs   RunRequest.Inputs, json.Marshal'd onto the module's stdin
 //	         (fd 0). The module reads it however its language does that —
 //	         conductor never parses the guest's argv or code, only feeds it.
@@ -78,7 +80,7 @@ func describe() plugin.Decl {
 		Kind: plugin.KindStep,
 		ABI:  plugin.EngineABI,
 		Type: "wasm",
-		Desc: "Runs an arbitrary WASI command module (base64-encoded in code:) under wazero (pure Go, no cgo): inputs are JSON on the module's stdin, its stdout parsed as JSON is the step's outputs. Sandboxed to stdin/stdout/stderr/args/env only — no filesystem, no network.",
+		Desc: "Runs an arbitrary WASI command module under wazero (pure Go, no cgo): code: is the module, either base64-encoded or a path to a .wasm file (file:/path or a bare path). Inputs are JSON on the module's stdin, its stdout parsed as JSON is the step's outputs. The guest is sandboxed to stdin/stdout/stderr/args/env only — no filesystem, no network.",
 		// No egress, no fs, no spawns: the guest gets a WASI runtime with
 		// nothing mounted and no socket syscalls, so the manifest matches
 		// the sandbox exactly.
@@ -101,9 +103,9 @@ func run(ctx context.Context, req plugin.RunRequest, host *plugin.Host) (plugin.
 // captured stdout into the step's outputs. See the package doc for the full
 // contract, including how a non-zero exit and non-JSON stdout are handled.
 func execWASM(ctx context.Context, req plugin.RunRequest) (map[string]any, error) {
-	wasmBytes, derr := base64.StdEncoding.DecodeString(strings.TrimSpace(req.Code))
+	wasmBytes, derr := loadModule(req.Code)
 	if derr != nil {
-		return nil, fmt.Errorf("wasm: code is not valid base64: %w", derr)
+		return nil, derr
 	}
 
 	stdinJSON, merr := json.Marshal(req.Inputs)
@@ -193,6 +195,55 @@ func execWASM(ctx context.Context, req plugin.RunRequest) (map[string]any, error
 		return map[string]any{}, nil
 	}
 	return enginekit.WrapValue(v), nil
+}
+
+// loadModule turns the step's code: into the WASM module bytes. It accepts
+// either the module inline (BASE64) or a PATH to a .wasm file on disk, so a
+// module doesn't have to be base64-inlined into the config:
+//
+//   - a "file:" prefix ("file:/opt/mods/resize.wasm") is always a path;
+//   - a bare value that stat()s as a regular file is read as that file;
+//   - anything else is decoded as base64 (the original contract).
+//
+// Reading the file is a HOST-side load of the module to execute — it does NOT
+// give the guest filesystem access; the sandbox below is unchanged (no
+// WithFS). A leading "~/" is expanded to the user's home directory.
+func loadModule(code string) ([]byte, error) {
+	raw := strings.TrimSpace(code)
+	if raw == "" {
+		return nil, fmt.Errorf("wasm: code is empty (expected a base64 module or a .wasm file path)")
+	}
+
+	path, isPath := "", false
+	if rest, ok := strings.CutPrefix(raw, "file:"); ok {
+		path, isPath = strings.TrimSpace(rest), true
+	} else if info, err := os.Stat(expandHome(raw)); err == nil && info.Mode().IsRegular() {
+		path, isPath = raw, true
+	}
+
+	if isPath {
+		b, err := os.ReadFile(expandHome(path))
+		if err != nil {
+			return nil, fmt.Errorf("wasm: read module file: %w", err)
+		}
+		return b, nil
+	}
+
+	b, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return nil, fmt.Errorf("wasm: code is neither an existing .wasm file path nor valid base64: %w", err)
+	}
+	return b, nil
+}
+
+// expandHome replaces a leading "~/" (or a bare "~") with the user's home dir.
+func expandHome(p string) string {
+	if p == "~" || strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home + strings.TrimPrefix(p, "~")
+		}
+	}
+	return p
 }
 
 func main() {

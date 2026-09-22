@@ -26,6 +26,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -394,5 +395,46 @@ func TestExecWASM_ArgsAndEnvDoNotError(t *testing.T) {
 	}
 	if !reflect.DeepEqual(out, map[string]any{"ok": true}) {
 		t.Fatalf("out = %#v", out)
+	}
+}
+
+// --- module loading: base64 (default) OR a .wasm file path ---
+
+func TestExecWASM_FromFilePath(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/mod.wasm"
+	if err := os.WriteFile(path, wasmHello(`{"from":"file"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// a bare existing path is read as the module
+	out, err := execWASM(context.Background(), plugin.RunRequest{Code: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(out, map[string]any{"from": "file"}) {
+		t.Fatalf("bare path: out = %#v", out)
+	}
+	// the file: prefix form works too
+	out, err = execWASM(context.Background(), plugin.RunRequest{Code: "file:" + path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(out, map[string]any{"from": "file"}) {
+		t.Fatalf("file: prefix: out = %#v", out)
+	}
+}
+
+func TestLoadModule(t *testing.T) {
+	// base64 still works
+	if _, err := loadModule(b64(wasmEmpty())); err != nil {
+		t.Fatalf("base64: %v", err)
+	}
+	// a missing file: path is a clear read error, not a base64 error
+	if _, err := loadModule("file:/no/such/module.wasm"); err == nil || !strings.Contains(err.Error(), "read module file") {
+		t.Fatalf("missing file: err = %v", err)
+	}
+	// empty is rejected
+	if _, err := loadModule("   "); err == nil {
+		t.Fatal("empty code should error")
 	}
 }
