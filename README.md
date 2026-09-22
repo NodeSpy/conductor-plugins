@@ -113,6 +113,9 @@ Each plugin has a full reference page under [`docs/`](docs/README.md).
 - **[xero](docs/connectors/xero.md)** — Xero accounting: invoices, contacts, accounts, payments, bank transactions.  *(managed OAuth2)*
 - **[ffmpeg](docs/connectors/ffmpeg.md)** — media via `ffmpeg`/`ffprobe`: transcode, thumbnail, trim, concat, probe.
 
+### Development & testing
+- **[test](docs/connectors/test.md)** — a synthetic connector for smoke-testing conductor itself: a `tick` source on an interval + `ping`/`echo`/`sleep`/`fail`/`counter`/`random`/`now` verbs. No service, no deps.
+
 ---
 
 ## Code engines
