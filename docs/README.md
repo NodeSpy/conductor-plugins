@@ -149,6 +149,7 @@ binaries + `checksums.txt`.
 | `mqtt` | connector (verbs + source) | [connectors/mqtt.md](connectors/mqtt.md) |
 | `redis` | connector (verbs + source) | [connectors/redis.md](connectors/redis.md) |
 | `aws-sqs` | connector (verbs + source) | [connectors/aws-sqs.md](connectors/aws-sqs.md) |
+| `test` | connector (verbs + source) | [connectors/test.md](connectors/test.md) |
 | `smart` | connector (verbs + source) | [connectors/smart.md](connectors/smart.md) |
 | `libation` | connector (verbs) | [connectors/libation.md](connectors/libation.md) |
 | `email` | connector (verbs + source) | [connectors/email.md](connectors/email.md) |
