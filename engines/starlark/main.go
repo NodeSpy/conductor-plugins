@@ -62,7 +62,11 @@ func describe() plugin.Decl {
 func run(ctx context.Context, req plugin.RunRequest, host *plugin.Host) (plugin.RunResult, error) {
 	fmt.Fprintf(os.Stderr, "conductor-starlark: run instance=%s inputs=%d data-plane=%v\n",
 		req.Instance, len(req.Inputs), host.Available())
-	outputs, err := execStarlark(ctx, req.Code, req.Inputs)
+	code, lerr := enginekit.LoadCode(req.Code)
+	if lerr != nil {
+		return plugin.RunResult{}, lerr
+	}
+	outputs, err := execStarlark(ctx, code, req.Inputs)
 	if err != nil {
 		return plugin.RunResult{}, err
 	}

@@ -62,7 +62,11 @@ func describe() plugin.Decl {
 func run(ctx context.Context, req plugin.RunRequest, host *plugin.Host) (plugin.RunResult, error) {
 	fmt.Fprintf(os.Stderr, "conductor-cel: run instance=%s inputs=%d data-plane=%v\n",
 		req.Instance, len(req.Inputs), host.Available())
-	outputs, err := evalCEL(ctx, req.Code, req.Inputs)
+	code, lerr := enginekit.LoadCode(req.Code)
+	if lerr != nil {
+		return plugin.RunResult{}, lerr
+	}
+	outputs, err := evalCEL(ctx, code, req.Inputs)
 	if err != nil {
 		return plugin.RunResult{}, err
 	}
