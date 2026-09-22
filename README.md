@@ -51,6 +51,8 @@ Each plugin has a full reference page under [`docs/`](docs/README.md).
 - **[helm](docs/connectors/helm.md)** — Helm releases: install, upgrade, rollback, list, status, template, repos.
 - **[docker](docs/connectors/docker.md)** — Docker/Podman lifecycle: run, exec, build, compose, buildx, logs… local or remote.
 - **[postgres](docs/connectors/postgres.md)** — PostgreSQL LISTEN/NOTIFY as an event source (react to a row change, no polling) + query/exec/notify verbs.
+- **[redis](docs/connectors/redis.md)** — Redis / Valkey: get/set/del/incr/expire, publish, raw `command`, and a live pub/sub source (SUBSCRIBE / PSUBSCRIBE).
+- **[sqs](docs/connectors/sqs.md)** — Amazon SQS: long-poll a queue as an event source + send/receive/delete/attributes verbs. SDK-free & CLI-free (hand-rolled SigV4).
 
 ### Homelab — media
 - **[sonarr](docs/connectors/sonarr.md)** · **[radarr](docs/connectors/radarr.md)** · **[lidarr](docs/connectors/lidarr.md)** — Servarr for TV / movies / music: library CRUD, queue, calendar + Grab/Download webhooks.
