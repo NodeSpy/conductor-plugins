@@ -145,6 +145,8 @@ binaries + `checksums.txt`.
 | `aws-ses` | connector (verbs) | [connectors/aws-ses.md](connectors/aws-ses.md) |
 | `cloudflare` | connector (verbs) | [connectors/cloudflare.md](connectors/cloudflare.md) |
 | `docker` | connector (verbs) | [connectors/docker.md](connectors/docker.md) |
+| `postgres` | connector (verbs + source) | [connectors/postgres.md](connectors/postgres.md) |
+| `mqtt` | connector (verbs + source) | [connectors/mqtt.md](connectors/mqtt.md) |
 | `smart` | connector (verbs + source) | [connectors/smart.md](connectors/smart.md) |
 | `libation` | connector (verbs) | [connectors/libation.md](connectors/libation.md) |
 | `email` | connector (verbs + source) | [connectors/email.md](connectors/email.md) |
