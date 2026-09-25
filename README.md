@@ -147,6 +147,7 @@ and the built-in `cli` engine honor the same convention in conductor core.
 ## Runtimes
 
 - **[paseo](docs/runtimes/paseo.md)** — run agents through the `paseo` CLI.
+- **[jev](docs/runtimes/jev.md)** — answer `decide:` steps with TypeSafe's Jev (a decision runtime; never runs agents).
 
 ---
 

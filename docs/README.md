@@ -39,7 +39,7 @@ block (`connectors:` vs `runtimes:`) selects the kind.
 | Kind | Declared as | Provides |
 |------|-------------|----------|
 | **connector** | `plugin.KindConnector` | **verbs** (`uses: <name>.<verb>` actions), and/or **source events** (`on: <name>.<event>` triggers) |
-| **runtime** | `plugin.KindRuntime` | the operations conductor's `internal/dispatch.Backend` drives, over the plugin RPC |
+| **runtime** | `plugin.KindRuntime` | the operations conductor's `internal/dispatch.Backend` drives, over the plugin RPC — or, for a **decision runtime** (declares `protocols: [system_one/v1]`), the `decide` and `models` verbs that answer `decide:` steps |
 
 A connector can be verbs-only (docker, the verb half of github), source-only
 (sentry, pagerduty), or both (github).
@@ -215,6 +215,7 @@ binaries + `checksums.txt`.
 | `pagerduty` | connector (source) | [connectors/pagerduty.md](connectors/pagerduty.md) |
 | `twilio` | connector (verbs + source) | [connectors/twilio.md](connectors/twilio.md) |
 | `paseo` | runtime | [runtimes/paseo.md](runtimes/paseo.md) |
+| `jev` | runtime (decision) | [runtimes/jev.md](runtimes/jev.md) |
 | `js` | engine | [engines/js.md](engines/js.md) |
 | `lua` | engine | [engines/lua.md](engines/lua.md) |
 | `risor` | engine | [engines/risor.md](engines/risor.md) |
