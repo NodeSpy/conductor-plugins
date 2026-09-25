@@ -13,8 +13,11 @@ go 1.26.3
 // v0.11.0 is the SDK release that carries the STEP-ENGINE surface the
 // engines/ plugins are built on: plugin.KindStep, Decl.ABI/EngineABI,
 // plugin.EngineFunc, the plugin.run request/result, and the plugin.Host client
-// for the host.kv/host.sql/host.memory callbacks.
-require github.com/NodeSpy/conductor v0.17.0
+// for the host.kv/host.sql/host.memory callbacks. The decision-runtime
+// surface runtimes/jev is built on — Decl.Protocols, ProtocolSystemOneV1,
+// VerbDecide/VerbModels — arrived with conductor's decide: steps; this pin
+// moves to that release's tag once it is cut.
+require github.com/NodeSpy/conductor v0.53.2-0.20260925200246-dfe99b4358b0
 
 // The interpreters the four step engines embed. These are the SAME versions
 // conductor pinned while the engines lived in its binary, so the port is a
