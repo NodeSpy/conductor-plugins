@@ -163,19 +163,19 @@ func (g *githubPlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{"ok": {Type: "boolean"}},
 			},
 			{
-				// Back-compat alias of request_review: GitHub has one endpoint for
-				// requesting reviewers, and re-requesting a prior reviewer is the
-				// same call. Kept because live configs reference it for the
-				// re-review-on-new-changes flow.
-				Name: "rerequest_review", Desc: "re-request review (alias of request_review)",
+				// Re-requesting a prior reviewer is the same GitHub call as
+				// request_review, but guarded: by default only reviewers still
+				// waiting on changes are pinged (see only_outstanding).
+				Name: "rerequest_review", Desc: "re-request review from reviewers whose latest review requested changes on an older commit (skips approvers, pending requests, closed PRs)",
 				Options: plugin.Schema{
-					"repo":           {Type: "string", Required: true},
-					"pr":             {Type: "integer", Required: true},
-					"reviewers":      {Type: "list", Desc: "logins"},
-					"team_reviewers": {Type: "list", Desc: "team slugs"},
-					"as":             {Type: "string", Enum: []string{"me", "bot"}},
+					"repo":             {Type: "string", Required: true},
+					"pr":               {Type: "integer", Required: true},
+					"reviewers":        {Type: "list", Desc: "logins"},
+					"team_reviewers":   {Type: "list", Desc: "team slugs"},
+					"as":               {Type: "string", Enum: []string{"me", "bot"}},
+					"only_outstanding": {Type: "boolean", Desc: "default true: ping only reviewers whose latest review is CHANGES_REQUESTED on an older commit and who aren't already requested, on an open PR; false re-requests unconditionally"},
 				},
-				Outputs: plugin.Schema{"ok": {Type: "boolean"}},
+				Outputs: plugin.Schema{"ok": {Type: "boolean"}, "skipped": {Type: "string"}},
 			},
 			{
 				Name: "remove_reviewer", Desc: "cancel a pending review request (remove requested users/teams)",

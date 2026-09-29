@@ -148,7 +148,7 @@ templates (`{{.field}}`) read. `repo` and `number`/`pr` are always available.
 | event | fires when | context fields (filter / template) |
 |-------|-----------|-------------------------------------|
 | `review_requested` | your review was requested on a PR | — |
-| `changes_requested` | a review requested changes on your PR | `head_ref`, `author`, `author_is_bot` |
+| `changes_requested` | a review requested changes on your PR, or (sweep) it has unresolved review threads from a reviewer who hasn't since approved | `head_ref`, `author`, `author_is_bot` |
 | `new_comment` | a new comment on a PR | `author`, `author_is_bot`, `comment_body`, `head_ref`, `comment_id`, `comment_kind` |
 | `release` | a release was published | `tag_name`, `prerelease`, `draft` |
 | `deployment_status` | a deployment failed or errored | `state`, `environment`, `description` |
@@ -157,6 +157,10 @@ templates (`{{.field}}`) read. `repo` and `number`/`pr` are always available.
 
 `author_is_bot` is true when the actor's account type is `Bot` or its login ends
 in `[bot]` — the usual way to skip automated actors.
+
+Events whose fixer pushes to the PR branch (`changes_requested`, `new_comment`,
+`failing_checks`, `merge_conflict`, `pr_behind`) carry `head_ref`, and are not
+emitted once the PR is closed or merged.
 
 ### Filtering
 
@@ -237,7 +241,7 @@ Required options are marked `*`.
 - **`reply`** — reply to a PR review-comment thread. `repo`*, `pr`*, `in_reply_to`* (the review-comment id), `body`*. → `id`, `url`.
 - **`submit_review`** — submit a PR review: a summary + verdict, with optional inline comments. `repo`*, `pr`*, `event`* (`APPROVE` | `REQUEST_CHANGES` | `COMMENT`), `body` (the summary), `comments` (a list of `{path, line, body, side?, start_line?, start_side?}`; `line` is the file line, `side` defaults to `RIGHT`; every commented line **must** fall inside the PR diff or GitHub rejects the whole review). → `id`, `comments` (count posted).
 - **`request_review`** — request review from users/teams (also re-requests someone who already reviewed). `repo`*, `pr`*, `reviewers` (user logins), `team_reviewers` (team slugs). → `ok`.
-- **`rerequest_review`** — alias of `request_review` (GitHub has one endpoint); kept for the re-review-on-new-changes flow. Same options. → `ok`.
+- **`rerequest_review`** — `request_review` for the re-review-after-a-fix flow, guarded. Same options, plus `only_outstanding` (default `true`): only reviewers whose latest review is `CHANGES_REQUESTED` on an older commit than the PR head, who aren't already requested, on an open PR, are pinged — never one who has since approved. State is read fresh; if it can't be read nobody is pinged. `only_outstanding: false` re-requests unconditionally. Review bots and the PR author are always dropped. → `ok`, and `skipped` (the reason) when nobody was left to ping.
 - **`remove_reviewer`** — cancel a pending review request. `repo`*, `pr`*, `reviewers`, `team_reviewers`. → `ok`.
 - **`review_comments`** — existing inline review comments on the PR: `[{path, line, body, user, id}]` (100/page). `repo`*, `pr`*, `all`. → `comments`.
 
