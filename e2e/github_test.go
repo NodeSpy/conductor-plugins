@@ -234,3 +234,50 @@ func TestGithubPluginSourceWebhook(t *testing.T) {
 		t.Fatalf("bad-signature delivery produced an event: before=%d after=%d", before, after)
 	}
 }
+
+// TestGithubPluginProgressVerbs: react and set_status perform the same calls
+// as the bundled connector's — a REST reaction on a comment, and a commit
+// status whose context defaults to the token's own login (GET /user).
+func TestGithubPluginProgressVerbs(t *testing.T) {
+	bin := rpctest.BuildConnector(t, "github")
+	var calls []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method + " " + r.URL.Path {
+		case "GET /user":
+			_ = json.NewEncoder(w).Encode(map[string]any{"login": "octo-me"})
+			return
+		case "POST /repos/o/r/issues/comments/5/reactions", "POST /repos/o/r/statuses/abc123":
+			calls = append(calls, fmt.Sprintf("%s %v %v %v", r.URL.Path, body["content"], body["state"], body["context"]))
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		t.Errorf("unexpected API call: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	c := rpctest.Start(t, bin)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	conn := map[string]any{"api_base": srv.URL, "identity": map[string]any{"write_token": "tok123"}}
+	if _, err := c.Invoke(ctx, plugin.InvokeRequest{Instance: "github1", Verb: "react", Connection: conn,
+		Options: map[string]any{"repo": "o/r", "subjects": []any{map[string]any{"kind": "issue_comment", "id": 5}}, "content": "eyes"}}); err != nil {
+		t.Fatalf("react: %v", err)
+	}
+	out, err := c.Invoke(ctx, plugin.InvokeRequest{Instance: "github1", Verb: "set_status", Connection: conn,
+		Options: map[string]any{"repo": "o/r", "sha": "abc123", "state": "pending", "description": "working"}})
+	if err != nil {
+		t.Fatalf("set_status: %v", err)
+	}
+	if out["context"] != "octo-me" {
+		t.Fatalf("set_status context = %v, want the token's login", out["context"])
+	}
+	want := "/repos/o/r/issues/comments/5/reactions eyes <nil> <nil>\n/repos/o/r/statuses/abc123 <nil> pending octo-me"
+	if got := strings.Join(calls, "\n"); got != want {
+		t.Fatalf("calls:\n%s\nwant:\n%s", got, want)
+	}
+}

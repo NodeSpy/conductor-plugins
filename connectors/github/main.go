@@ -110,6 +110,8 @@ func (g *githubPlugin) Describe() plugin.Decl {
 				plugin.Schema{
 					"head_ref": {Type: "string"},
 					"author":   {Type: "string"}, "author_is_bot": {Type: "boolean", Desc: "the reviewer is an automated bot (account type Bot, or a [bot] login)"},
+					"review_id":         {Type: "integer", Desc: "the submitted review's id"},
+					"reaction_subjects": {Type: "list", Desc: "what a run handling this event reacts on, as [{kind, id}] for github.react"},
 				}),
 			githubEvent("new_comment", "a new comment on a PR",
 				nil,
@@ -117,6 +119,7 @@ func (g *githubPlugin) Describe() plugin.Decl {
 					"author": {Type: "string"}, "author_is_bot": {Type: "boolean", Desc: "the commenter is an automated bot (account type Bot, or a [bot] login)"},
 					"comment_body": {Type: "string"}, "head_ref": {Type: "string"},
 					"comment_id": {Type: "integer"}, "comment_kind": {Type: "string"},
+					"reaction_subjects": {Type: "list", Desc: "what a run handling this event reacts on, as [{kind, id}] for github.react"},
 				}),
 			githubEvent("release", "a release was published",
 				nil,
@@ -536,6 +539,32 @@ func (g *githubPlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{"gists": {Type: "list"}},
 			},
 			{
+				Name: "react", Desc: "add a reaction to comments/reviews (idempotent: an existing reaction is kept, not duplicated)",
+				Options: plugin.Schema{
+					"repo":     {Type: "string", Required: true},
+					"pr":       {Type: "integer", Desc: "the PR (required for a review subject)"},
+					"subjects": {Type: "list", Desc: "[{kind, id}] — kind is issue_comment | review_comment | review; an event's reaction_subjects is this shape"},
+					"kind":     {Type: "string", Enum: []string{"issue_comment", "review_comment", "review"}, Desc: "single-subject shorthand (with id)"},
+					"id":       {Type: "integer", Desc: "single-subject shorthand (with kind)"},
+					"content":  {Type: "string", Required: true, Enum: []string{"+1", "-1", "laugh", "confused", "heart", "hooray", "rocket", "eyes"}},
+					"as":       {Type: "string", Enum: []string{"me", "bot"}},
+				},
+				Outputs: plugin.Schema{"ok": {Type: "boolean"}, "reacted": {Type: "integer", Desc: "subjects reacted to"}},
+			},
+			{
+				Name: "set_status", Desc: "post a commit status on a sha (shown on any PR whose head it is)",
+				Options: plugin.Schema{
+					"repo":        {Type: "string", Required: true},
+					"sha":         {Type: "string", Required: true},
+					"state":       {Type: "string", Required: true, Enum: []string{"pending", "success", "failure", "error"}},
+					"description": {Type: "string", Desc: "clipped to GitHub's 140 characters"},
+					"context":     {Type: "string", Desc: "the status's name on the PR (default: the login the call acts as)"},
+					"target_url":  {Type: "string"},
+					"as":          {Type: "string", Enum: []string{"me", "bot"}},
+				},
+				Outputs: plugin.Schema{"ok": {Type: "boolean"}, "context": {Type: "string"}},
+			},
+			{
 				Name: "add_labels", Desc: "add labels to an issue or PR",
 				Options: plugin.Schema{
 					"repo":   {Type: "string", Required: true},
@@ -816,6 +845,7 @@ func commentEvents(eventType, repo, owner, name string, p ghPayload) []wireEvent
 			"author": p.Comment.User.Login, "author_is_bot": authorIsBot,
 			"comment_body": p.Comment.Body, "head_ref": headRef,
 			"comment_id": p.Comment.ID, "comment_kind": kind,
+			"reaction_subjects": []any{map[string]any{"kind": kind + "_comment", "id": p.Comment.ID}},
 		},
 	}}
 }
@@ -853,6 +883,8 @@ func reviewEvents(repo, owner, name string, p ghPayload) []wireEvent {
 			"repo": repo, "owner": owner, "name": name, "pr": pr.Number, "number": pr.Number,
 			"head": pr.Head.SHA, "base": pr.Base.Ref, "url": pr.HTMLURL, "kind": "changes_requested",
 			"head_ref": pr.Head.Ref, "author": p.Review.User.Login, "author_is_bot": reviewerIsBot,
+			"review_id":         p.Review.ID,
+			"reaction_subjects": []any{map[string]any{"kind": "review", "id": p.Review.ID}},
 		},
 	}}
 }
