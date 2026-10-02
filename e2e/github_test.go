@@ -252,6 +252,15 @@ func TestGithubPluginProgressVerbs(t *testing.T) {
 		case "GET /repos/o/r/pulls/7":
 			_ = json.NewEncoder(w).Encode(map[string]any{"head": map[string]any{"sha": "def456"}})
 			return
+		case "GET /repos/o/r/issues/comments/5/reactions":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": 71, "content": "eyes", "user": map[string]any{"login": "someone-else"}},
+				{"id": 72, "content": "eyes", "user": map[string]any{"login": "octo-me"}}})
+			return
+		case "DELETE /repos/o/r/issues/comments/5/reactions/72":
+			calls = append(calls, "DELETE reaction 72")
+			w.WriteHeader(http.StatusNoContent)
+			return
 		case "POST /repos/o/r/issues/comments/5/reactions", "POST /repos/o/r/statuses/abc123", "POST /repos/o/r/statuses/def456":
 			calls = append(calls, fmt.Sprintf("%s %v %v %v", r.URL.Path, body["content"], body["state"], body["context"]))
 			w.WriteHeader(http.StatusCreated)
@@ -285,7 +294,13 @@ func TestGithubPluginProgressVerbs(t *testing.T) {
 	if err != nil || out["sha"] != "def456" {
 		t.Fatalf("set_status pr: %v %v", out, err)
 	}
-	want := "/repos/o/r/issues/comments/5/reactions eyes <nil> <nil>\n/repos/o/r/statuses/abc123 <nil> pending octo-me\n/repos/o/r/statuses/def456 <nil> failure octo-me / ci-fix"
+	// remove: true takes back only the acting user's 👀 (72), never someone else's (71).
+	out, err = c.Invoke(ctx, plugin.InvokeRequest{Instance: "github1", Verb: "react", Connection: conn,
+		Options: map[string]any{"repo": "o/r", "kind": "issue_comment", "id": 5, "content": "eyes", "remove": true}})
+	if err != nil || out["removed"] != float64(1) {
+		t.Fatalf("react remove: %v %v", out, err)
+	}
+	want := "/repos/o/r/issues/comments/5/reactions eyes <nil> <nil>\n/repos/o/r/statuses/abc123 <nil> pending octo-me\n/repos/o/r/statuses/def456 <nil> failure octo-me / ci-fix\nDELETE reaction 72"
 	if got := strings.Join(calls, "\n"); got != want {
 		t.Fatalf("calls:\n%s\nwant:\n%s", got, want)
 	}

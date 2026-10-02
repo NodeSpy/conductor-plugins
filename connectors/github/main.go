@@ -539,7 +539,7 @@ func (g *githubPlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{"gists": {Type: "list"}},
 			},
 			{
-				Name: "react", Desc: "add a reaction to comments/reviews (idempotent: an existing reaction is kept, not duplicated)",
+				Name: "react", Desc: "add (or, remove: true, take away) your reaction on comments/reviews — idempotent both ways",
 				Options: plugin.Schema{
 					"repo":     {Type: "string", Required: true},
 					"pr":       {Type: "integer", Desc: "the PR (required for a review subject)"},
@@ -547,9 +547,10 @@ func (g *githubPlugin) Describe() plugin.Decl {
 					"kind":     {Type: "string", Enum: []string{"issue_comment", "review_comment", "review"}, Desc: "single-subject shorthand (with id)"},
 					"id":       {Type: "integer", Desc: "single-subject shorthand (with kind)"},
 					"content":  {Type: "string", Required: true, Enum: []string{"+1", "-1", "laugh", "confused", "heart", "hooray", "rocket", "eyes"}},
+					"remove":   {Type: "boolean", Desc: "take the reaction away instead: only the acting user's reaction of this content; a no-op where there is none"},
 					"as":       {Type: "string", Enum: []string{"me", "bot"}},
 				},
-				Outputs: plugin.Schema{"ok": {Type: "boolean"}, "reacted": {Type: "integer", Desc: "subjects reacted to"}},
+				Outputs: plugin.Schema{"ok": {Type: "boolean"}, "reacted": {Type: "integer", Desc: "subjects reacted to"}, "removed": {Type: "integer", Desc: "reactions removed (remove: true)"}},
 			},
 			{
 				Name: "set_status", Desc: "post a commit status on a sha, or on a PR's head as it is at call time (shown on any PR whose head it is)",
