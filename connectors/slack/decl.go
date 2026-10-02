@@ -45,6 +45,7 @@ func slackCtxSchema() plugin.Schema {
 		"slack.via":         {Type: "string", Desc: "shortcut | mention (how a form trigger fired)"},
 		"slack.callback_id": {Type: "string", Desc: "message_shortcut: the shortcut's callback id"},
 		"slack.files":       {Type: "list", Desc: "files on the triggering message: {id, name, mimetype}"},
+		"slack.trigger_id":  {Type: "string", Desc: "slash_command: the invocation's unique trigger id (Slack mints no message ts for a command, so this is its target discriminator instead)"},
 		// slack_bot_token sits OUTSIDE the .slack map (a sibling root fact),
 		// exactly as the builtin published it, so an action can still reply
 		// directly via the Web API with {{.slack_bot_token}}. secret:
@@ -114,7 +115,7 @@ func Decl() plugin.Decl {
 					"users":   {Type: "list"},
 				},
 				Context:   slackCtxSchema(),
-				Semantics: msgSemantics(),
+				Semantics: slashCommandSemantics(),
 			},
 			{
 				Name: "reply", Desc: "a thread reply or a DM, as Socket Mode delivers them — consumed by a pending ask/hand-off when one is waiting on it, otherwise an ordinary event a trigger may match with `on: slack.reply`",

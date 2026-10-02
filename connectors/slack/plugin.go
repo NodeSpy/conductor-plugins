@@ -81,7 +81,7 @@ func (p *Plugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeResult, error) {
 		if botToken == "" {
 			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, "slack.download needs a bot_token (the webhook_url connection is post-only)")
 		}
-		out, err := p.downloadVerb(ctx, api, req.Options)
+		out, err := p.downloadVerb(ctx, api, req.Options, req.Staging)
 		if err != nil {
 			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, err.Error())
 		}

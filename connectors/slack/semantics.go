@@ -51,3 +51,16 @@ func replySemantics() *plugin.EventSemantics {
 	}
 	return s
 }
+
+// slashCommandSemantics is msgSemantics with ONE difference: the target key.
+// A slash command carries no message ts (Slack never attaches one to the
+// invocation), so keying it on {{.slack.ts}} like every other event would
+// collapse every command fired in a channel onto one target — the per-
+// invocation `trigger_id` Slack does always mint is the discriminator
+// instead (events.go's discriminator keeps the wire event's Target.Key
+// in agreement with this template).
+func slashCommandSemantics() *plugin.EventSemantics {
+	s := msgSemantics()
+	s.Target.Key = "slack:{{.slack.channel}}:{{.slack.trigger_id}}"
+	return s
+}

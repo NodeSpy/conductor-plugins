@@ -29,21 +29,38 @@ type eventCallback struct {
 	} `json:"event"`
 }
 
-// slashPayload is the slash_commands envelope payload.
+// slashPayload is the slash_commands envelope payload. TriggerID is unique
+// per invocation (Slack mints a fresh one for every slash command, same as
+// an interactive payload's) -- unlike every other event here, a slash
+// command carries no message ts, so this is what makes two invocations in
+// the same channel distinct targets (see discriminator).
 type slashPayload struct {
 	Command   string `json:"command"`
 	Text      string `json:"text"`
 	ChannelID string `json:"channel_id"`
 	UserID    string `json:"user_id"`
+	TriggerID string `json:"trigger_id"`
 }
 
 // evt is the normalized Slack event the plugin routes and templates on.
 type evt struct {
 	text, user, channel, ts, threadTS, reaction, command string
-	via, callbackID                                      string
+	via, callbackID, triggerID                           string
 	isBot                                                bool
 	files                                                []slackFile
 	form                                                 map[string]any
+}
+
+// discriminator is the per-physical-event value that, with channel, makes a
+// target (and a dedup signature) unique: a message's ts for every event that
+// has one, and -- since a slash command carries no ts -- its trigger_id
+// instead (unique per invocation, so two commands in one channel are
+// distinct targets rather than colliding on "slack:<channel>:").
+func (ev evt) discriminator(on string) string {
+	if on == "slash_command" {
+		return ev.triggerID
+	}
+	return ev.ts
 }
 
 // facts is what filter matching (slackMatch) reads: the plain values, not
@@ -73,7 +90,8 @@ func (ev evt) context(botToken string) map[string]any {
 			"channel": ev.channel, "user": ev.user, "text": ev.text, "ts": ev.ts,
 			"thread_ts": ev.threadTS, "reaction": ev.reaction, "command": ev.command,
 			"is_bot": ev.isBot, "via": ev.via, "callback_id": ev.callbackID,
-			"files": files, "form": form,
+			"trigger_id": ev.triggerID,
+			"files":      files, "form": form,
 		},
 		"slack_bot_token": botToken,
 	}
@@ -126,7 +144,7 @@ func (s *instanceSource) handleSlash(ctx context.Context, emit emitFunc, raw jso
 	if json.Unmarshal(raw, &p) != nil {
 		return
 	}
-	ev := evt{text: p.Text, user: p.UserID, channel: p.ChannelID, command: p.Command}
+	ev := evt{text: p.Text, user: p.UserID, channel: p.ChannelID, command: p.Command, triggerID: p.TriggerID}
 	if !s.dedup.Add("slash_command:" + ev.channel + ":" + ev.user + ":" + ev.command + ":" + ev.text) {
 		return
 	}
@@ -167,11 +185,12 @@ func (s *instanceSource) fire(ctx context.Context, emit emitFunc, on string, ev 
 
 func (s *instanceSource) emitEvent(_ context.Context, emit emitFunc, on, trigger string, ev evt) {
 	title := firstLine(firstNonEmpty(ev.text, ev.command+" reaction:"+ev.reaction, "slack "+on))
+	disc := ev.discriminator(on)
 	se := plugin.SourceEvent{
 		Event: on, Title: title,
-		Target:  plugin.Target{Key: "slack:" + ev.channel + ":" + ev.ts, Assigned: true},
+		Target:  plugin.Target{Key: "slack:" + ev.channel + ":" + disc, Assigned: true},
 		Context: ev.context(s.botToken),
-		Dedup:   on + ":" + ev.channel + ":" + firstNonEmpty(ev.ts, ev.reaction+ev.text),
+		Dedup:   on + ":" + ev.channel + ":" + firstNonEmpty(disc, ev.reaction+ev.text),
 		Trigger: trigger,
 	}
 	if err := emit(se); err != nil {

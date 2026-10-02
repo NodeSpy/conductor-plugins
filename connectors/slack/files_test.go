@@ -7,7 +7,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/NodeSpy/conductor/pkg/plugin"
 )
 
 // fakeRepliesServer answers conversations.replies, users.info and
@@ -84,7 +87,7 @@ func TestDownloadVerbSanitizesAndStages(t *testing.T) {
 	stagingRoot = func() string { return dir }
 	defer func() { stagingRoot = old }()
 
-	out, err := p.downloadVerb(context.Background(), api, map[string]any{"channel": "C1", "ts": "1.000"})
+	out, err := p.downloadVerb(context.Background(), api, map[string]any{"channel": "C1", "ts": "1.000"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,6 +116,53 @@ func TestDownloadVerbSanitizesAndStages(t *testing.T) {
 	}
 }
 
+// TestDownloadVerbUsesHostStaging proves download writes under
+// InvokeRequest.Staging — the host-made per-instance directory
+// (plugin-contract.md Q7) — rather than the plugin's own fallback
+// stagingRoot, when the host supplies one. Driven through the full
+// Plugin.Invoke path so plugin.go's wiring (req.Staging -> downloadVerb) is
+// exercised, not just the function signature.
+func TestDownloadVerbUsesHostStaging(t *testing.T) {
+	srv, want := fakeRepliesServer(t)
+	p := New()
+
+	hostStaging := t.TempDir()
+	fallback := t.TempDir()
+	old := stagingRoot
+	stagingRoot = func() string { return fallback }
+	defer func() { stagingRoot = old }()
+
+	res, err := p.Invoke(plugin.InvokeRequest{
+		Instance:   "x",
+		Verb:       "download",
+		Connection: map[string]any{"bot_token": "xoxb-1", "api_base": srv.URL},
+		Options:    map[string]any{"channel": "C1", "ts": "1.000"},
+		Staging:    hostStaging,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Outputs["count"] != 1 {
+		t.Fatalf("count = %v, skipped = %v", res.Outputs["count"], res.Outputs["skipped"])
+	}
+	dir := res.Outputs["dir"].(string)
+	rel, err := filepath.Rel(hostStaging, dir)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, "..") {
+		t.Fatalf("download must land under the host's staging dir %q, got %q", hostStaging, dir)
+	}
+	if rel2, err := filepath.Rel(fallback, dir); err == nil && !strings.HasPrefix(rel2, "..") && rel2 != ".." {
+		t.Fatalf("download must NOT use the fallback stagingRoot when the host supplies one: %q", dir)
+	}
+	files := res.Outputs["files"].([]any)
+	data, err := os.ReadFile(files[0].(map[string]any)["path"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != want {
+		t.Fatal("downloaded content mismatch")
+	}
+}
+
 func TestDownloadVerbCaps(t *testing.T) {
 	srv, _ := fakeRepliesServer(t)
 	api := newSlackAPI("xoxb-1", "", srv.URL)
@@ -124,7 +174,7 @@ func TestDownloadVerbCaps(t *testing.T) {
 
 	out, err := p.downloadVerb(context.Background(), api, map[string]any{
 		"channel": "C1", "ts": "1.000", "max_file_bytes": 4, // smaller than the fixture file
-	})
+	}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +203,7 @@ func TestDownloadVerbRefusesOffSlackURL(t *testing.T) {
 	stagingRoot = func() string { return dir }
 	defer func() { stagingRoot = old }()
 
-	out, err := p.downloadVerb(context.Background(), api, map[string]any{"channel": "C1", "ts": "1.000"})
+	out, err := p.downloadVerb(context.Background(), api, map[string]any{"channel": "C1", "ts": "1.000"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -111,8 +111,11 @@ secrecy](#credentials-and-secrecy) below).
 applicable): `channel`, `user`, `text`, `ts`, `thread_ts`, `reaction`,
 `command`, `is_bot` (the acting user is a bot), `via` (`mention` \|
 `shortcut`, for a form/shortcut trigger), `callback_id` (the shortcut's
-callback id), `files` (`[{id, name, mimetype}]` on the triggering message),
-`form` (submitted values by field name — see [Forms](#forms)).
+callback id), `trigger_id` (`slash_command`'s per-invocation id — Slack
+mints no message `ts` for a command, so this is what keys its target
+instead, and two commands fired in the same channel are distinct targets),
+`files` (`[{id, name, mimetype}]` on the triggering message), `form`
+(submitted values by field name — see [Forms](#forms)).
 
 Filters: `channel` (scalar), `users` (list of Slack user ids), and per-event:
 `reaction_added` adds `reaction`; `slash_command` adds `command`;
@@ -236,11 +239,15 @@ agent step's `images:` or a file-reading tool.
 Outputs: `dir`, `files` (`[{name, path, mimetype, size}]`), `paths`, `images`
 (paths of the `image/*` files), `skipped` (`[{name, reason}]`), `count`.
 
-Files are staged under a per-plugin cache directory, with a sanitized name
-(no directory components, no template-unsafe characters), never a path
-outside the staging directory, and a file URL off `slack.com` (or the
-connection's own `api_base`, for tests) is refused outright. The bot token is
-only ever sent to those hosts.
+Files are staged under the per-instance staging directory conductor makes for
+this connector (writable in the plugin's sandbox; a templated `images:` path
+is only ever accepted from under it) — or, against an older conductor that
+gives the plugin none, a cache directory of the plugin's own. Either way:
+a sanitized name (no directory components, no template-unsafe characters),
+never a path outside the staging directory, and a file URL off `slack.com`
+(or the connection's own `api_base`, for tests) is refused outright. The bot
+token is only ever sent to those hosts. Old downloads inside the staging
+directory are pruned (by age) on each new one.
 
 ## Hand-offs and conversation replies
 

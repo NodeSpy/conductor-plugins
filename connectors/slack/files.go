@@ -152,8 +152,10 @@ func sanitizeFileName(name, fallback string) string {
 	return name
 }
 
-// stagingRoot is where downloaded Slack files land (overridable in tests).
-// A plugin has no conductor state dir to anchor to, so it uses its own
+// stagingRoot is the FALLBACK staging location (overridable in tests), used
+// only when the host gives the instance none (InvokeRequest.Staging empty —
+// an older host, or one not yet carrying Q7's staging directory). A plugin
+// has no conductor state dir to anchor to in that case, so it uses its own
 // cache-style directory under the user's cache dir, falling back to the OS
 // temp dir.
 var stagingRoot = func() string {
@@ -213,7 +215,13 @@ func fetchFile(ctx context.Context, a *slackAPI, rawURL, path string, max int64)
 
 func isImage(mime string) bool { return strings.HasPrefix(strings.ToLower(mime), "image/") }
 
-func (p *Plugin) downloadVerb(ctx context.Context, api *slackAPI, opts map[string]any) (map[string]any, error) {
+// downloadVerb stages a message's (or its thread's) files on disk. staging is
+// InvokeRequest.Staging — the per-instance directory the HOST made,
+// writable in the plugin's sandbox (plugin-contract.md Q7); an engine accepts
+// a templated images: path only when it resolves (symlinks included) under
+// the host's staging root. When the host gives none (an older host), it
+// falls back to the plugin's own stagingRoot().
+func (p *Plugin) downloadVerb(ctx context.Context, api *slackAPI, opts map[string]any, staging string) (map[string]any, error) {
 	channel, _ := opts["channel"].(string)
 	ts, _ := opts["ts"].(string)
 	if channel == "" || ts == "" {
@@ -241,7 +249,10 @@ func (p *Plugin) downloadVerb(ctx context.Context, api *slackAPI, opts map[strin
 		msgs = only
 	}
 
-	root := stagingRoot()
+	root := staging
+	if root == "" {
+		root = stagingRoot()
+	}
 	dir := filepath.Join(root, sanitizeFileName(channel, "channel")+"-"+sanitizeFileName(ts, "ts"))
 	if rel, err := filepath.Rel(root, dir); err != nil || rel == "." || strings.HasPrefix(rel, "..") {
 		return nil, fmt.Errorf("slack.download: bad staging dir for %s/%s", channel, ts)

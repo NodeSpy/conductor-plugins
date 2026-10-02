@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NodeSpy/conductor-plugins/internal/rpctest"
 	"github.com/NodeSpy/conductor-plugins/internal/githubkit/ghplugin"
-	"github.com/NodeSpy/conductor/pkg/githubkit/ghsource/ghsourcetest"
+	"github.com/NodeSpy/conductor-plugins/internal/githubkit/ghsource/ghsourcetest"
+	"github.com/NodeSpy/conductor-plugins/internal/rpctest"
 )
 
 // GITHUB PARITY, from this repository's side. Conductor's github source

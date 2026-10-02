@@ -89,14 +89,41 @@ func TestSlashCommandFilter(t *testing.T) {
 	s := newSource(t, []plugin.SourceTrigger{testTrigger(t, "t1", "slash_command", map[string]any{"command": "/conductor"}, nil)})
 	emit, got := collect()
 	s.handleSlash(context.Background(), emit, json.RawMessage(
-		`{"command":"/other","text":"x","channel_id":"C1","user_id":"U1"}`))
+		`{"command":"/other","text":"x","channel_id":"C1","user_id":"U1","trigger_id":"T1"}`))
 	if len(*got) != 0 {
 		t.Fatalf("non-matching command should not fire, got %d", len(*got))
 	}
 	s.handleSlash(context.Background(), emit, json.RawMessage(
-		`{"command":"/conductor","text":"deploy please","channel_id":"C1","user_id":"U1"}`))
+		`{"command":"/conductor","text":"deploy please","channel_id":"C1","user_id":"U1","trigger_id":"T2"}`))
 	if len(*got) != 1 || (*got)[0].Event != "slash_command" {
 		t.Fatalf("matching command should fire, got %+v", *got)
+	}
+}
+
+// TestSlashCommandTargetsAreDistinctPerInvocation proves two slash commands
+// fired in the SAME channel get DISTINCT targets, keyed on Slack's
+// per-invocation trigger_id rather than colliding on "slack:<channel>:"
+// (slash commands carry no message ts, unlike every other slack event).
+func TestSlashCommandTargetsAreDistinctPerInvocation(t *testing.T) {
+	s := newSource(t, []plugin.SourceTrigger{testTrigger(t, "t1", "slash_command", nil, nil)})
+	emit, got := collect()
+	s.handleSlash(context.Background(), emit, json.RawMessage(
+		`{"command":"/deploy","text":"staging","channel_id":"C1","user_id":"U1","trigger_id":"111.111"}`))
+	s.handleSlash(context.Background(), emit, json.RawMessage(
+		`{"command":"/deploy","text":"production","channel_id":"C1","user_id":"U1","trigger_id":"222.222"}`))
+	if len(*got) != 2 {
+		t.Fatalf("want 2 events, got %d: %+v", len(*got), *got)
+	}
+	k1, k2 := (*got)[0].Target.Key, (*got)[1].Target.Key
+	if k1 == k2 {
+		t.Fatalf("two distinct slash command invocations in one channel must not share a target, both got %q", k1)
+	}
+	if k1 != "slack:C1:111.111" || k2 != "slack:C1:222.222" {
+		t.Fatalf("target keys = %q, %q, want slack:C1:111.111 and slack:C1:222.222", k1, k2)
+	}
+	sctx1 := (*got)[0].Context["slack"].(map[string]any)
+	if sctx1["trigger_id"] != "111.111" {
+		t.Fatalf(".slack.trigger_id not published: %+v", sctx1)
 	}
 }
 
