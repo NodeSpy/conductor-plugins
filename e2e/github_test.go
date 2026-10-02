@@ -249,7 +249,10 @@ func TestGithubPluginProgressVerbs(t *testing.T) {
 		case "GET /user":
 			_ = json.NewEncoder(w).Encode(map[string]any{"login": "octo-me"})
 			return
-		case "POST /repos/o/r/issues/comments/5/reactions", "POST /repos/o/r/statuses/abc123":
+		case "GET /repos/o/r/pulls/7":
+			_ = json.NewEncoder(w).Encode(map[string]any{"head": map[string]any{"sha": "def456"}})
+			return
+		case "POST /repos/o/r/issues/comments/5/reactions", "POST /repos/o/r/statuses/abc123", "POST /repos/o/r/statuses/def456":
 			calls = append(calls, fmt.Sprintf("%s %v %v %v", r.URL.Path, body["content"], body["state"], body["context"]))
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{}`))
@@ -276,7 +279,13 @@ func TestGithubPluginProgressVerbs(t *testing.T) {
 	if out["context"] != "octo-me" {
 		t.Fatalf("set_status context = %v, want the token's login", out["context"])
 	}
-	want := "/repos/o/r/issues/comments/5/reactions eyes <nil> <nil>\n/repos/o/r/statuses/abc123 <nil> pending octo-me"
+	// pr: instead of sha — the PR's head at call time; a custom context.
+	out, err = c.Invoke(ctx, plugin.InvokeRequest{Instance: "github1", Verb: "set_status", Connection: conn,
+		Options: map[string]any{"repo": "o/r", "pr": 7, "state": "failure", "context": "octo-me / ci-fix"}})
+	if err != nil || out["sha"] != "def456" {
+		t.Fatalf("set_status pr: %v %v", out, err)
+	}
+	want := "/repos/o/r/issues/comments/5/reactions eyes <nil> <nil>\n/repos/o/r/statuses/abc123 <nil> pending octo-me\n/repos/o/r/statuses/def456 <nil> failure octo-me / ci-fix"
 	if got := strings.Join(calls, "\n"); got != want {
 		t.Fatalf("calls:\n%s\nwant:\n%s", got, want)
 	}

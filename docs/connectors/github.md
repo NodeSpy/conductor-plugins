@@ -245,14 +245,14 @@ Required options are marked `*`.
 - **`remove_reviewer`** — cancel a pending review request. `repo`*, `pr`*, `reviewers`, `team_reviewers`. → `ok`.
 - **`review_comments`** — existing inline review comments on the PR: `[{path, line, body, user, id}]` (100/page). `repo`*, `pr`*, `all`. → `comments`.
 - **`react`** — add a reaction to comments or reviews. `repo`*, `content`* (`+1` `-1` `laugh` `confused` `heart` `hooray` `rocket` `eyes`), and the subjects: `subjects` (`[{kind, id}]`, the shape of an event's `reaction_subjects`) or the `kind` + `id` shorthand. `kind` is `issue_comment`, `review_comment`, or `review`; a `review` subject also needs `pr` (a review is reactable only over GraphQL). Idempotent: GitHub keeps one reaction per person and content, so a repeat isn't duplicated. → `ok`, `reacted`.
-- **`set_status`** — post a commit status on a sha; it shows on any PR whose head that sha is. `repo`*, `sha`*, `state`* (`pending` | `success` | `failure` | `error`), `description` (clipped to GitHub's 140 characters), `context` (default: the login the call acts as, so the row on the PR carries your name), `target_url`. → `ok`, `context`.
+- **`set_status`** — post a commit status; it shows on any PR whose head that commit is. `repo`*, `sha` **or** `pr` (the PR's head as it is at call time, read fresh; `sha` wins when both are set), `state`* (`pending` | `success` | `failure` | `error`), `context` (the row's name, entirely yours, templates included; only when unset does it default to the login the call acts as), `description` (clipped to GitHub's 140 characters), `target_url`. Last write to a (commit, context) wins, as on GitHub. → `ok`, `context`, `sha`.
 
-The bundled github connector uses these two verbs for its automatic run
-progress (👀 then 🚀/👍/😕 on the handled review or comment, plus a pending →
-success/failure status as you; see conductor's
-[Configuration](https://github.com/NodeSpy/conductor/wiki/Configuration#run-progress-on-the-pr-github)).
-This plugin doesn't drive that lifecycle. A flow on it can call `react` /
-`set_status` itself, for example from its `hooks:`.
+Progress on a PR is ordinary hooks calling these two verbs: 👀 / 🚀 / 👍 / 😕
+and a status row. See conductor's
+[Configuration](https://github.com/NodeSpy/conductor/wiki/Configuration#showing-progress-on-the-pr-github)
+and the pr-autopilot pack. The bundled connector also publishes `{{.me.login}}`
+and the `{{.run.*}}` head facts. This plugin doesn't (it has no head face), so a
+flow on it passes `pr:` and names its own context.
 
 ### Pull requests
 

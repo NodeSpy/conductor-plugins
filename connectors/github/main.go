@@ -552,17 +552,18 @@ func (g *githubPlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{"ok": {Type: "boolean"}, "reacted": {Type: "integer", Desc: "subjects reacted to"}},
 			},
 			{
-				Name: "set_status", Desc: "post a commit status on a sha (shown on any PR whose head it is)",
+				Name: "set_status", Desc: "post a commit status on a sha, or on a PR's head as it is at call time (shown on any PR whose head it is)",
 				Options: plugin.Schema{
 					"repo":        {Type: "string", Required: true},
-					"sha":         {Type: "string", Required: true},
+					"sha":         {Type: "string", Desc: "the commit (one of sha / pr)"},
+					"pr":          {Type: "integer", Desc: "a PR whose CURRENT head gets the status, read at call time (one of sha / pr; sha wins when both are set)"},
 					"state":       {Type: "string", Required: true, Enum: []string{"pending", "success", "failure", "error"}},
 					"description": {Type: "string", Desc: "clipped to GitHub's 140 characters"},
-					"context":     {Type: "string", Desc: "the status's name on the PR (default: the login the call acts as)"},
+					"context":     {Type: "string", Desc: "the status's name on the PR, entirely yours (templates allowed); default only when unset: the login the call acts as"},
 					"target_url":  {Type: "string"},
 					"as":          {Type: "string", Enum: []string{"me", "bot"}},
 				},
-				Outputs: plugin.Schema{"ok": {Type: "boolean"}, "context": {Type: "string"}},
+				Outputs: plugin.Schema{"ok": {Type: "boolean"}, "context": {Type: "string"}, "sha": {Type: "string", Desc: "the commit the status went on"}},
 			},
 			{
 				Name: "add_labels", Desc: "add labels to an issue or PR",
