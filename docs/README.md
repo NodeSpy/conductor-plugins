@@ -14,7 +14,9 @@ it, and runs it.
 
 Each plugin is built **only** against conductor's public SDK — `pkg/plugin`,
 plus `pkg/sourcekit` for webhook sources and `pkg/githubkit` for the GitHub
-client — and imports **no** conductor internals. That is enforced at release
+client (with `pkg/githubkit/ghsource` / `ghplugin`, the github event source and
+plugin handler conductor's own bundled connector runs) — and imports **no**
+conductor internals. That is enforced at release
 time (`go list -deps ./... | grep NodeSpy/conductor/internal` must print
 nothing), not merely asserted.
 

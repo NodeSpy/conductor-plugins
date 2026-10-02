@@ -67,8 +67,11 @@ func TestGithubPluginVerbTokenAuth(t *testing.T) {
 	if !hasComment {
 		t.Fatal("decl missing comment verb")
 	}
-	if hasSweep {
-		t.Fatal("decl should not declare the daemon-global sweep verb")
+	if !hasSweep {
+		t.Fatal("decl must declare the conductor-defined sweep verb (the daemon answers it)")
+	}
+	if decl.ABI < plugin.ConnectorABI {
+		t.Fatalf("decl.ABI = %d, want >= %d (the source extension)", decl.ABI, plugin.ConnectorABI)
 	}
 
 	out, err := c.Invoke(ctx, plugin.InvokeRequest{
@@ -173,11 +176,14 @@ func writeTestRSAKey(t *testing.T) string {
 	return p
 }
 
-// TestGithubPluginSourceWebhook proves the source path: a signed
-// X-Hub-Signature-256 issue_comment webhook delivered to the plugin's listener
-// streams a normalized new_comment event with the daemon-compatible
-// target/context shape; a bad-signature delivery is rejected and produces no
-// event.
+// TestGithubPluginSourceWebhook proves the source path over the wire, the way
+// a ConnectorABI daemon drives it: start_source carries the instance's
+// triggers, a signed issue_comment delivery on a PR you authored streams a
+// new_comment ROUTED to the trigger it fired for (its id), with the target and
+// context the bundled source hands the engine; a bad-signature delivery is
+// dropped and produces no event. (Like the bundled listener, the plugin
+// answers a bad signature 202 and logs it — what matters is that nothing
+// fires.)
 func TestGithubPluginSourceWebhook(t *testing.T) {
 	bin := rpctest.BuildConnector(t, "github")
 	c := rpctest.Start(t, bin)
@@ -189,8 +195,11 @@ func TestGithubPluginSourceWebhook(t *testing.T) {
 	secret := "github-hmac-secret"
 	sink := rpctest.NewEventSink()
 	req := plugin.StartSourceRequest{Instance: "github3", Config: map[string]any{
+		"token":   "pat",
+		"me":      map[string]any{"logins": []any{"me"}},
+		"sweep":   map[string]any{"enabled": false},
 		"webhook": map[string]any{"listen": addr, "path": "/github", "secret": secret},
-	}}
+	}, Triggers: []plugin.SourceTrigger{{ID: "0:gh.new_comment", Name: "fix", Event: "new_comment"}}}
 	if err := c.StartSource(ctx, req, sink.Emit); err != nil {
 		t.Fatalf("StartSource: %v", err)
 	}
@@ -198,12 +207,13 @@ func TestGithubPluginSourceWebhook(t *testing.T) {
 	body := []byte(`{
 		"action": "created",
 		"repository": {"full_name": "acme/widgets", "owner": {"login": "acme"}, "name": "widgets"},
-		"issue": {"number": 42, "html_url": "https://github.com/acme/widgets/pull/42", "pull_request": {}},
+		"issue": {"number": 42, "state": "open", "html_url": "https://github.com/acme/widgets/pull/42", "pull_request": {}, "user": {"login": "me"}},
 		"comment": {"id": 555, "body": "looks good", "user": {"login": "reviewer1", "type": "User"}}
 	}`)
 	url := "http://" + addr + "/github"
 	rpctest.PostUntilAccepted(t, url, map[string]string{
 		"X-GitHub-Event":      "issue_comment",
+		"X-GitHub-Delivery":   "d-1",
 		"X-Hub-Signature-256": "sha256=" + rpctest.HMACHex(secret, body),
 	}, body)
 
@@ -211,25 +221,27 @@ func TestGithubPluginSourceWebhook(t *testing.T) {
 		t.Fatalf("timed out waiting for the streamed new_comment event: %v", err)
 	}
 	ev := sink.At(0)
-	if ev["event"] != "new_comment" {
-		t.Fatalf("event = %v, want new_comment", ev["event"])
+	if ev["event"] != "new_comment" || ev["trigger"] != "0:gh.new_comment" || ev["instance"] != "github3" {
+		t.Fatalf("event = %v trigger = %v instance = %v, want new_comment routed to 0:gh.new_comment on github3", ev["event"], ev["trigger"], ev["instance"])
+	}
+	if ev["target_trusted"] != true {
+		t.Fatalf("a signature-verified delivery's target is GitHub's: target_trusted = %v", ev["target_trusted"])
 	}
 	target, _ := ev["target"].(map[string]any)
-	if fmt.Sprint(target["Repo"]) != "acme/widgets" || fmt.Sprint(target["Owner"]) != "acme" {
+	if fmt.Sprint(target["Repo"]) != "acme/widgets" || fmt.Sprint(target["Owner"]) != "acme" || fmt.Sprint(target["Number"]) != "42" {
 		t.Fatalf("event target wrong: %+v", target)
 	}
 	ectx, _ := ev["context"].(map[string]any)
-	if ectx["author"] != "reviewer1" || ectx["comment_body"] != "looks good" {
+	if ectx["author"] != "reviewer1" || ectx["comment_body"] != "looks good" || fmt.Sprint(ectx["comment_id"]) != "555" || ectx["comment_kind"] != "issue" {
 		t.Fatalf("event context wrong: %+v", ectx)
 	}
 
-	// A bad-signature delivery must be rejected (401) and produce no new event.
+	// A bad-signature delivery must produce no new event.
 	before := sink.Len()
-	if got := rpctest.PostStatus(t, url, map[string]string{
-		"X-GitHub-Event": "issue_comment", "X-Hub-Signature-256": "sha256=deadbeef",
-	}, body); got != http.StatusUnauthorized {
-		t.Fatalf("bad-signature webhook returned %d, want 401", got)
-	}
+	rpctest.PostStatus(t, url, map[string]string{
+		"X-GitHub-Event": "issue_comment", "X-GitHub-Delivery": "d-2", "X-Hub-Signature-256": "sha256=deadbeef",
+	}, body)
+	time.Sleep(300 * time.Millisecond)
 	if after := sink.Len(); after != before {
 		t.Fatalf("bad-signature delivery produced an event: before=%d after=%d", before, after)
 	}

@@ -33,7 +33,7 @@ Each plugin has a full reference page under [`docs/`](docs/README.md).
 ## Connectors
 
 ### Source control & project tracking
-- **[github](docs/connectors/github.md)** — pull requests, reviews, issues, checks, releases, gists + webhook events. Token or GitHub-App auth.
+- **[github](docs/connectors/github.md)** — pull requests, reviews, issues, checks, releases, gists + every webhook event and the catch-up sweep: the same implementation as conductor's bundled github connector, out of process. Token or GitHub-App auth.
 - **[gitlab](docs/connectors/gitlab.md)** — merge requests, issues, labels, branches, pipelines + push/MR/pipeline webhooks.
 - **[gitea](docs/connectors/gitea.md)** — Gitea/Forgejo issues, PRs, releases, files + webhooks.
 - **[git](docs/connectors/git.md)** — the `git` CLI with managed credentials: clone, commit, push, branch, tag, merge…

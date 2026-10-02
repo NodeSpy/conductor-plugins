@@ -16,7 +16,13 @@ go 1.26.3
 // for the host.kv/host.sql/host.memory callbacks. The decision-runtime
 // surface runtimes/jev is built on — Decl.Protocols, ProtocolSystemOneV1,
 // VerbDecide/VerbModels — arrived with conductor v0.54.0's decide: steps.
-require github.com/NodeSpy/conductor v0.60.0
+//
+// PRE-RELEASE PIN: the github connector is built on conductor's source
+// extension (plugin.ConnectorABI) and the public github source/plugin kits
+// (pkg/githubkit/ghsource, ghplugin), which are not in a conductor release yet.
+// This pseudo-version is the head of the conductor change that adds them; it
+// MUST be bumped to that change's release tag before this merges.
+require github.com/NodeSpy/conductor v0.60.1-0.20261002073552-a843f217848a
 
 // The interpreters the four step engines embed. These are the SAME versions
 // conductor pinned while the engines lived in its binary, so the port is a

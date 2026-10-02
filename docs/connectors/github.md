@@ -1,30 +1,79 @@
 # `github` connector
 
-GitHub as a connector: a broad **verb** surface (comments, reviews, PRs, issues,
-files, workflow runs, releases, gists, labels) over token or GitHub-App auth,
-plus **source events** derived from a single webhook delivery. Built on
-`pkg/githubkit`.
+GitHub as a connector: the full **verb** surface (comments, reviews, PRs, issues,
+files, workflow runs, releases, gists, labels, reactions, commit statuses) and the
+full **event source** — webhook deliveries plus the adaptive catch-up **sweep** —
+of the github connector conductor bundles.
 
-- **Kind:** connector (verbs **and** source)
+It is not a re-implementation. The plugin serves conductor's own public
+`pkg/githubkit/ghplugin` handler: the same github declaration the bundled
+connector is built from, the same verb client (`pkg/githubkit`), and the same
+event source (`pkg/githubkit/ghsource`) — review folding with dispatch-once
+claims, the own-status guard, closed-PR drops, merge-state triggers, `me`
+identity, the unified `filter:`, the sweep. It runs out of process over the
+plugin SDK's **source extension** (connector ABI 1). A shared conformance suite
+proves the two fire the same triggers ([parity](#parity-with-the-bundled-connector)).
+
+- **Kind:** connector (verbs **and** source), connector ABI 1
 - **Source:** [`connectors/github/main.go`](../../connectors/github/main.go)
 - **Provides:** `github`
-- **Capabilities:** egress to `api.github.com:443` and `*.ghe.com:443`
+- **Capabilities:** egress to `api.github.com:443`, `*.ghe.com:443`, `smee.io:443`
 
 ```yaml
 connectors:
   gh:
-    use: github
+    use: NodeSpy/conductor-plugins/connectors/github   # while `github` is still bundled, name the plugin explicitly
+    trusted_source: true          # see "Trust" — required for the builtin's behavior
     token: ${GITHUB_TOKEN}
-    network: ["api.github.com:443"]   # narrow the declared egress
+    me: { logins: [your-login] }
 ```
+
+## Using the plugin instead of the builtin
+
+While conductor still bundles `github`, a bare `use: github` is the builtin. To
+run the plugin, point `use:` at it (the official repo path above, or a local
+`./conductor-github` build). Two rules:
+
+- **One or the other.** A config cannot use the builtin and the plugin side by
+  side — every `github` connector in it must be backed by the same one. Conductor
+  refuses a mixed config at boot, naming the connectors. (With no builtin user,
+  the plugin stands in for the bundled `github` type; nothing is redirected.)
+- **`trusted_source: true`.** See [Trust](#trust). Without it the plugin runs,
+  but conductor treats it as untrusted third-party input and drops the events
+  its engine acts on.
+
+Everything else — every connection key, event, filter key, option, verb — is
+the builtin's, and means what it means there.
+
+## Trust
+
+Conductor does not let a plugin source assert facts its engine acts on, or
+claim a target as the platform's, unless the operator vouches for it:
+
+```yaml
+    trusted_source: true
+```
+
+With it, this connector's events are treated as the bundled connector's are:
+their targets get own-repo trust (an agent may address the repo the event
+names without a grant), and the engine-interpreted kinds — `new_comment`,
+`review_requested`, `merge_conflict`, `failing_checks`, and the `_closed`
+lifecycle event — are accepted (only for events the plugin declares). Without
+it, those kinds are dropped (logged once, naming the setting) and every target
+is untrusted. `trusted_source` is refused on a builtin connector and is never
+passed to the plugin.
+
+Grant it to a plugin build you trust to verify GitHub's deliveries — this one
+checks every delivery's `X-Hub-Signature-256` and reads everything else with
+your connector's own credentials.
 
 ## Setup
 
 Two ways to authenticate. A **personal access token** is the quickest and is
 enough for every verb; a **GitHub App** additionally carries the webhook
 subscription (the source events), a separate API rate pool, and a bot identity
-for attributed writes. Credentials resolve in order: `app:` → `token:` → the
-`gh` CLI's stored login.
+for attributed writes. Reads resolve credentials in order: `app:` → `token:` →
+the `gh` CLI's stored login.
 
 ### Option A — personal access token (quickest)
 
@@ -35,20 +84,11 @@ for attributed writes. Credentials resolve in order: `app:` → `token:` → the
 2. Put it in `token:` (or omit `token:` and the connector falls back to
    `gh auth token`).
 
-```yaml
-connectors:
-  gh:
-    use: github
-    token: ${GITHUB_TOKEN}
-```
-
-That's it for verbs. Events (`on: gh.*`) need a webhook — the App path below (or
-a plain repo webhook pointed at `webhook.listen`).
+Events then arrive through a plain repository webhook pointed at
+`webhook.listen` (with the same secret in the repo webhook and `webhook.secret`),
+or through the sweep alone (the default when no webhook is configured).
 
 ### Option B — GitHub App (full-featured)
-
-An App is the full path: it owns the webhook subscription, reads on its own rate
-pool, and lets writes be attributed to a bot identity.
 
 **1. Register the App** at `https://github.com/settings/apps/new` (personal) or
 `https://github.com/organizations/<org>/settings/apps/new` (org).
@@ -56,169 +96,153 @@ pool, and lets writes be attributed to a bot identity.
 | Field | Value |
 | --- | --- |
 | GitHub App name | Globally unique — e.g. `conductor-<your-handle>`. Becomes the bot login. |
-| Homepage URL | Anything valid (your repo, or `https://paseo.sh`). |
+| Homepage URL | Anything valid. |
 | Webhook URL | A smee.io channel URL, or your own listener's public address (see [Webhook transport](#webhook-transport)). |
 | Webhook secret | A random string — `openssl rand -hex 32`. Store it as `GH_WEBHOOK_SECRET`. |
 
-**2. Set permissions** (do this *before* events — GitHub only lists events for
-granted permissions):
+**2. Set permissions** (before events — GitHub only lists events for granted
+permissions): Contents read & write, Pull requests read & write, Issues read &
+write, Checks read, Actions read (write for `rerun_run`/`dispatch_workflow`),
+Commit statuses read & write (for `set_status`), Metadata read.
 
-| Scope | Permission | Access |
-| --- | --- | --- |
-| Repository | Contents | Read & write |
-| Repository | Pull requests | Read & write |
-| Repository | Issues | Read & write |
-| Repository | Checks | Read-only |
-| Repository | Metadata | Read-only |
-
-**3. Subscribe to webhook events** — the ones the source events below derive from:
+**3. Subscribe to webhook events:**
 
 ```
-pull_request   pull_request_review   pull_request_review_comment   issue_comment
-check_run   check_suite   workflow_run   push   issues   release   deployment_status
+pull_request   pull_request_review   pull_request_review_comment   pull_request_review_thread
+issue_comment   issues   check_run   check_suite   workflow_run   status
+release   deployment_status   dependabot_alert   secret_scanning_alert   projects_v2_item
 ```
 
-**4. Generate a private key** (App settings → "Generate a private key"), save the
-`.pem`, then **install the App** on your repos/orgs and note the **App ID** (top
-of the App settings page).
+**4. Generate a private key**, save the `.pem`, **install the App** on your
+repos/orgs, and note the **App ID**.
 
 **5. Configure:**
 
 ```yaml
 connectors:
   gh:
-    use: github
+    use: NodeSpy/conductor-plugins/connectors/github
+    trusted_source: true
     app:
-      app_id: 123456                                        # numeric App id
-      private_key_path: ~/.config/conductor/github-app.pem  # the generated .pem
-      webhook_secret: ${GH_WEBHOOK_SECRET}                  # verifies each delivery's HMAC
+      app_id: 123456
+      private_key_path: ~/.config/conductor/github-app.pem
     webhook:
-      smee: ${GH_SMEE_URL}          # https://smee.io/<channel> — or a direct listener:
-      # listen: ":9099"
+      smee_url: ${GH_SMEE_URL}        # https://smee.io/<channel> — or a direct listener:
+      # listen: "127.0.0.1:8787"
       # path: /webhook
+      secret: ${GH_WEBHOOK_SECRET}    # verifies each delivery's HMAC
     identity:
-      write_token: ${GH_WRITE_TOKEN}   # a PAT writes are attributed to; "gh_auth" shells out to `gh auth token`
+      write_token: ${GH_WRITE_TOKEN}  # writes act as you with this; "gh_auth" (default) = `gh auth token`
+    me: { logins: [your-login] }      # optional: discovered from the write identity when unset
 ```
-
-The **installation id** is implicit — conductor resolves it from the App's
-installations at startup; the App only needs to be installed on the target
-repos/orgs.
 
 ### Webhook transport
 
-The source events need deliveries to reach conductor. Set `webhook.smee`,
-`webhook.listen`, or both. Either way the delivery's `X-Hub-Signature-256` HMAC
-is checked against the webhook secret; set `webhook.allow_unsigned: true` only if
-something else already authenticates the listener.
-
-- **smee.io (no inbound port).** Open <https://smee.io/new>, and use the **same**
-  channel URL as the App's Webhook URL and as `webhook.smee`. Conductor
-  subscribes to the channel itself (auto-reconnecting) — you don't run the `smee`
-  client. smee.io doesn't buffer, so a delivery sent while conductor is offline is
-  lost.
-- **Direct HTTP.** `webhook.listen: ":9099"` (with optional `webhook.path`) runs a
-  plain receiver; point the App's Webhook URL at it, typically via your own
-  tunnel.
-
-### Running without an App
-
-An App isn't required. App-less: events arrive via a **plain repository webhook**
-pointed at `webhook.listen` (set the same secret in the repo webhook and in
-`webhook.secret`, no `app:` block); reads use the PAT / `gh` token; writes are
-you. Verb calls that need App credentials (e.g. the bot identity) fail with a
-clear error without them.
+Set `webhook.smee_url`, `webhook.listen`, or both. Every delivery's
+`X-Hub-Signature-256` is verified against `webhook.secret`; verification is on
+unless `webhook.verify_signature: false`, and a webhook with verification on and
+no secret is refused at start. With no webhook at all, the sweep is the event
+source and polls at a fixed `sweep.min_interval`.
 
 ## Connection
 
+The bundled connector's connection block, key for key:
+
 | key | type | purpose |
 |-----|------|---------|
-| `app` | map | GitHub App credentials: `app_id`, `private_key_path`, `webhook_secret` |
-| `token` | string | PAT used when no App is configured (chain: app → token → `gh auth token`) |
-| `identity` | map | credential policy: `write_token` (the credential writes are attributed to; `"gh_auth"` shells out to `gh auth token`) |
-| `webhook` | map | source transport: `listen` (optional if `smee` is set), `path`, `secret` (or `app.webhook_secret`), `smee` (SSE relay URL, e.g. `https://smee.io/AbC123`), `allow_unsigned` |
-| `api_base` | string | override the API base URL (GitHub Enterprise Server, or tests) |
+| `app` | map | GitHub App credentials: `app_id`, `private_key_path` (the retired `app.webhook_secret` / `app.verify_signature` are refused — they live under `webhook:`) |
+| `token` | string | PAT for reads when no App is configured (chain: app → token → `gh auth token`) |
+| `webhook` | map | `smee_url` and/or `listen` (+ `path`, default `/webhook`), `secret`, `verify_signature` (default true) |
+| `sweep` | map | catch-up sweep: `enabled` (default true), `interval` (adaptive ceiling, default 1h), `min_interval` (floor / fixed poll, default 2m), `repos` (default: the connector's `repos:`, else every installed repo) |
+| `me` | map | your login(s): `{ logins: [...] }` — defines "you" (your PRs, your reviews); discovered from the write identity when unset |
+| `repos` | list | default repo globs for triggers whose filter names no repo |
+| `identity` | map | `read_token` (`app` default), `write_token` (`gh_auth` default, or a literal), `commit_author` (`self`) — also the credentials conductor hands the agents this connector's events dispatch |
+| `retry` | map | transient dispatch retry: `max`, `backoff` |
+| `project_map` | map | repo → paseo project checkout remap |
+| `project_rewrite` | map | blanket `org:` rewrite for checkouts |
+| `api_base` | string | GitHub API base URL (GitHub Enterprise Server). A plugin's environment is scrubbed, so it cannot inherit `PC_GITHUB_API_BASE` — set this. |
 
 ## Source events
 
-Trigger with `on: <name>.<event>`. Events are derived from a single webhook
-delivery and HMAC-verified (`X-Hub-Signature-256`). Each event publishes a set of
-**context fields** — the facts a trigger's `filter:` matches on and that
-templates (`{{.field}}`) read. `repo` and `number`/`pr` are always available.
+Trigger with `on: <name>.<event>`. Every event publishes the base context
+(`repo`, `owner`, `name`, `pr`, `issue`, `number`, `head`, `base`, `url`,
+`kind`, `title`, `labels`, `me`), and events whose fixer pushes to the PR branch
+(`changes_requested`, `new_comment`, `failing_checks`, `merge_conflict`,
+`pr_behind`) carry `head_ref` and are never emitted for a closed or merged PR.
+Autopilot events (`new_comment`, `changes_requested`, `failing_checks`,
+`merge_conflict`, `pr_behind`, `merge_ready`, `self_review`, `stuck_checks`)
+fire for PRs **you** authored; `review_requested` for reviews requested of you
+(or the trigger's `reviewer`), `issue_matched` for issues assigned to you (or the
+trigger's `assignee`).
 
-| event | fires when | context fields (filter / template) |
-|-------|-----------|-------------------------------------|
-| `review_requested` | your review was requested on a PR | — |
-| `changes_requested` | a review requested changes on your PR, or (sweep) it has unresolved review threads from a reviewer who hasn't since approved | `head_ref`, `author`, `author_is_bot`, `review_id`, `reaction_subjects` (the review) |
-| `new_comment` | a new comment on a PR | `author`, `author_is_bot`, `comment_body`, `head_ref`, `comment_id`, `comment_kind`, `reaction_subjects` (the comment) |
-| `release` | a release was published | `tag_name`, `prerelease`, `draft` |
-| `deployment_status` | a deployment failed or errored | `state`, `environment`, `description` |
-| `dependabot_alert` | a new Dependabot alert | `severity`, `package`, `summary` |
-| `secret_scanning_alert` | a new secret-scanning alert | `secret_type` |
+| event | fires when | extra context | options |
+|-------|-----------|---------------|---------|
+| `review_requested` | your review was requested (webhook, a draft becoming ready, or the sweep finding it pending) | — | `reviewer` |
+| `changes_requested` | a review requested changes, or left inline comments without approving — ONE event per review; or (sweep) unresolved threads from a reviewer who hasn't since approved | `head_ref`, `author`, `author_is_bot`, `review_id`, `review_body`, `review_state`, `review_comments`, `review_comments_omitted`, `comment_id`, `comment_kind`, `reaction_subjects` | — |
+| `new_comment` | a standalone comment, or ONE submitted review no `changes_requested` trigger takes (always so for an approval) with all its inline comments; or (sweep) a comment the webhook missed | `author`, `author_is_bot`, `comment_body`, `head_ref`, `comment_id`, `comment_kind`, `review_*`, `reaction_subjects` | — |
+| `merge_conflict` | your PR became unmergeable | — | — |
+| `pr_behind` | your PR fell behind its base | — | — |
+| `failing_checks` | CI concluded failing | `failing_check`, `run_id` | `flaky_rerun`, `ignore_checks` |
+| `stuck_checks` | a run has been in progress too long (own poller) | `run_id`, `run_name`, `run_status` | `stuck_after` (30m), `poll_interval` (15m) |
+| `merge_ready` | your PR turned all-green (clean, approved by someone else, threads resolved, not draft) | — | — |
+| `self_review` | you opened/updated your own PR | — | — |
+| `issue_matched` | an issue matches (assigned to you by default) — on issue changes and Projects moves | — | `assignee` |
+| `release` | a release was published (prereleases skipped by default) | `tag_name`, `prerelease`, `draft` | `include_prereleases` |
+| `deployment_status` | a deployment failed or errored | `state`, `environment`, `description` | — |
+| `dependabot_alert` | a new Dependabot alert | `severity`, `package`, `summary` | — |
+| `secret_scanning_alert` | a new secret-scanning alert | `secret_type` | — |
 
-`author_is_bot` is true when the actor's account type is `Bot` or its login ends
-in `[bot]` — the usual way to skip automated actors.
+Every event also takes `max_attempts_per_head`. Closing a PR emits conductor's
+`_closed` lifecycle event (merged or not, with revert facts) — no trigger is on
+it; the engine consumes it.
 
-Events whose fixer pushes to the PR branch (`changes_requested`, `new_comment`,
-`failing_checks`, `merge_conflict`, `pr_behind`) carry `head_ref`, and are not
-emitted once the PR is closed or merged.
+**Review folding.** A submitted review reaches GitHub's webhook as one
+`pull_request_review` plus one `pull_request_review_comment` per inline comment,
+in no fixed order. Whichever delivery arrives first emits the review's ONE
+event and claims it; the rest emit nothing. Its `comment_id` is the review's
+highest inline comment id, so conductor's comment high-water mark dispatches it
+once durably — a redelivery, a later sweep still seeing its threads, or an edited
+review all fall at or below the mark.
 
 ### Filtering
 
-A trigger's `filter:` matches an event's published fields (the table above),
-plus `repo` and `number`/`pr` which every event carries. The grammar:
+A trigger's whole predicate is its `filter:` — the unified grammar: a condition
+string (`expr`), a map of match keys (AND), a list (OR), `not_` on any key. Each
+event declares its **facts** (readable in an expr) and **match keys**:
 
-- A key set to a value must match; a **list matches any of** its values —
-  `repo: [acme/api, acme/infra]`.
-- Prefix **`not_`** to negate a field — `not_author_is_bot: true` skips bots,
-  `not_repo: [acme/sandbox]` excludes.
-- **`expr:` / `not_expr:`** take an expression over the fields —
-  `not_expr: "startswith(comment_body, '/skip')"`.
-- Keys within one filter object are **AND**ed. A top-level **array** of filter
-  objects is **OR** across them (one arm per rule).
+| event | facts | match keys |
+|---|---|---|
+| `review_requested` | `head_branch`, `base_branch`, `title`, `labels`, `is_draft`, `author` | `branch`, `base_branch`, `title`, `label_any`, `label_all`, `require_label`, `author`, `draft` |
+| `changes_requested` | `head_branch`, `base_branch`, `title`, `labels`, `author`, `reviewer`, `author_is_bot` | `branch`, `base_branch`, `title`, `label_any`, `label_all`, `require_label`, `author`, `author_bot` |
+| `new_comment` | `comment_author`, `comment_body`, `author_is_bot` | `comment_author`, `author_bot` |
+| `issue_matched` | `title`, `labels`, `author`, `sole_assignee` | `title`, `label_any`, `label_all`, `require_label`, `author`, `sole_assignee` |
+| `merge_ready` | `labels`, `author`, `is_draft`, `merge_state`, `review_decision`, `non_author_approval`, `threads_resolved` | `label_any`, `label_all`, `require_label`, `author`, `draft`, `merge_state`, `review_decision`, `non_author_approval`, `threads_resolved` |
+| every event | — | `repo` (routing: scopes the trigger, its sweep, its stuck poller) |
 
-### Examples
-
-Scope a trigger to specific repos and re-request review from the author when they
-ask for changes:
-
-```yaml
-triggers:
-  - on: gh.changes_requested
-    filter:
-      repo: [acme/api, acme/infra]          # any of these repos
-    steps:
-      - uses: gh.rerequest_review
-        options: { repo: "{{.repo}}", pr: "{{.pr}}", reviewers: ["{{.author}}"] }
-```
-
-Act on new PR comments, but ignore automated ones:
+A filter that is only `repo` / `not_repo` keeps the event's intrinsic default
+(merge_ready's gates stay enforced); anything else replaces it.
 
 ```yaml
 triggers:
   - on: gh.new_comment
-    filter:
-      not_author_is_bot: true               # skip github-actions[bot] & friends
-    steps:
-      - uses: gh.comment
-        options: { repo: "{{.repo}}", pr: "{{.pr}}", body: "on it" }
+    filter: { repo: [acme/api], not_comment_author: ["ci[bot]"] }
+    steps: [ … ]
+  - on: gh.merge_ready
+    filter: { repo: [acme/api], threads_resolved: false }   # waive one gate
+    steps: [ … ]
 ```
 
-Different rules per org, as an OR of arms (each arm ANDs its own keys):
+### The sweep
 
-```yaml
-triggers:
-  - on: gh.changes_requested
-    filter:
-      - repo: [globex/web]                  # globex: any change request
-      - repo: [acme/api, acme/infra]        # acme: only from humans
-        not_author_is_bot: true
-    steps:
-      - uses: gh.pr_diff
-        options: { repo: "{{.repo}}", pr: "{{.pr}}" }
-```
-
-> `sweep` (the catch-up reconciliation source) is a daemon-global operation and
-> is **not** available from an external plugin instance.
+The sweep runs inside the plugin with the connector's credentials: on start,
+then on an adaptive cadence (`min_interval` → `interval`) when a webhook carries
+real time, or a fixed `min_interval` when it is the only source. It recovers
+pending review requests, merge conflicts / behind PRs, unresolved review threads
+(`changes_requested`), and comments a dropped webhook missed (`new_comment`,
+within 24h) — each marked catch-up, so conductor skips a PR an agent is already
+working. `SIGUSR1`, `conductor sweep --now`, and the `sweep` verb nudge it
+(conductor calls the plugin's `plugin.nudge`); a smee reconnect resets the
+cadence. `stuck_checks` has its own poller.
 
 ## Verbs
 
@@ -232,6 +256,8 @@ Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
   `comment`/`assign` accept either (`number`, alias `pr`).
 - **Pagination** — list verbs return the first page; pass `all: true` for every
   page, or `per_page` (max 100) to size it.
+- **`sweep`** — conductor-defined: the DAEMON answers it (a daemon-wide catch-up
+  sweep, as `conductor sweep --now`), it is never sent to the plugin. → `nudged`.
 
 Required options are marked `*`.
 
@@ -298,6 +324,7 @@ flow on it passes `pr:` and names its own context.
 - **`upload_asset`** — attach a file to a release. `repo`*, `release_id`* (from `create_release`), `name`* (asset file name), `content` (inline bytes) **or** `path` (local file), `content_type` (default `application/octet-stream`). → `id`, `url`.
 
 ### Gists  *(user-scoped, no `repo`)*
+### Gists  *(user-scoped, no `repo`)*
 
 - **`create_gist`** — `files`* (`{filename: content}`), `description`, `public` (default false = secret). → `id`, `url`.
 - **`get_gist`** — `id`*. → `files` (`{filename: content}`), `description`, `public`, `url`.
@@ -307,8 +334,68 @@ flow on it passes `pr:` and names its own context.
 
 ## Capabilities & security
 
-Declares egress to `api.github.com:443` and `*.ghe.com:443` only, and spawns no
-commands. Narrow it per instance with `network:`; it can never be widened past
-the declaration. Provide the least-privileged token or a scoped App installation
-for the repos you actually act on. Write attribution is controlled by
+Declares egress to `api.github.com:443`, `*.ghe.com:443`, and `smee.io:443`,
+and spawns nothing it names (the `gh auth token` fallback shells out to `gh`).
+An installed build is confined to that list; narrow it per instance with
+`network:`. A GitHub Enterprise Server on its own domain is outside the
+declaration — see [gaps](#known-gaps). Write attribution is
 `identity.write_token` and the per-call `as: me|bot`.
+
+## Parity with the bundled connector
+
+The bundled connector and this plugin run one implementation, and conductor's
+conformance suite (`pkg/githubkit/ghsource/ghsourcetest`) proves they agree. The
+same table runs against the bundled connector, against this plugin through
+conductor's real plugin path (spawn, describe, `start_source` with triggers,
+routed events, `trusted_source`), and — in this repository's `e2e/` — against
+this repository's build over the bare wire. Conductor's hermetic e2e suite also
+runs with every github connector on the plugin (`make e2e-plugin`).
+
+| surface | builtin | plugin | proven by |
+|---|---|---|---|
+| `review_requested` (webhook, ready-for-review, sweep) | ✓ | ✓ | conformance "review_requested for your review", "the sweep recovers …" |
+| `changes_requested`: one event per review, either delivery order | ✓ | ✓ | conformance "… are ONE changes_requested", "… arriving FIRST still fold into one" |
+| `new_comment`: own PRs only, never your own comments | ✓ | ✓ | conformance "new_comment on your PR, not on others or by you" |
+| approval with suggestions → one `new_comment` | ✓ | ✓ | conformance "an approval with suggestions is ONE new_comment" |
+| closed-PR drop; `_closed` on close | ✓ | ✓ | conformance "a closed PR's feedback is dropped; closing emits _closed" |
+| `failing_checks` + `ignore_checks`, `run_id` from details_url | ✓ | ✓ | conformance "failing_checks on your PR, minus ignore_checks" |
+| `merge_conflict` / `pr_behind` from merge state, own PRs only | ✓ | ✓ | conformance "merge_conflict and pr_behind …" |
+| `merge_ready` gate | ✓ | ✓ | conformance "merge_ready when all-green, held by a failing gate" |
+| `self_review` | ✓ | ✓ | conformance "self_review when you open a PR" |
+| `issue_matched` + assignee default + filter | ✓ | ✓ | conformance "issue_matched: assigned to you, and the trigger's filter" |
+| `release` + `include_prereleases` | ✓ | ✓ | conformance "release, with prereleases only where asked" |
+| `deployment_status`, `dependabot_alert`, `secret_scanning_alert` | ✓ | ✓ | conformance "deployment failures and security alerts" |
+| `stuck_checks` (own poller, stale runs, own PRs) | ✓ | ✓ | conformance "stuck_checks from the poller, on your PR only" |
+| repo routing between triggers on one event | ✓ | ✓ | conformance "triggers on one event route by their repo filters" |
+| unified `filter:` predicates | ✓ | ✓ | conformance "a unified filter predicate drops a commenter" |
+| sweep: pending reviews, conflicts, threads, missed comments, catch-up mark | ✓ | ✓ | conformance "the sweep recovers …" |
+| sweep nudge (`SIGUSR1`, `sweep --now`, `sweep` verb) | ✓ | ✓ | conformance "a nudge runs the sweep again"; conductor `TestSweepVerbIsAnsweredByTheDaemon` |
+| own-status guard (`set_status` contexts are conductor's own) | ✓ | ✓ | conductor `TestSetStatusMakesTheContextOwn` |
+| writes as `identity.write_token` | ✓ | ✓ | conductor `TestSetStatusMakesTheContextOwn`; e2e H4/I1 in plugin mode |
+| `conductor force` | ✓ | ✓ | conductor `TestABISourceExtensionCalls`; e2e (force-driven groups) in plugin mode |
+| App token re-mint on resume | ✓ | ✓ | conductor `TestABISourceExtensionCalls` |
+| run-fact head reads (`{{.run.start_sha}}`) | ✓ | ✓ | conductor `TestABITargetHeadOnlyForOwnTrustedTargets`; e2e H4 in plugin mode |
+| dispatch credential policy (`identity`, `retry`) | ✓ | ✓ | conductor `TestIdentitySourceReadsTheConnection`; e2e I1 in plugin mode |
+| declaration (connection, events, facts, match keys, verbs) | ✓ | ✓ | `e2e/TestGithubDeclIsTheBundledDecl` (byte-identical) |
+| every verb | ✓ | ✓ | same `pkg/githubkit` client; `e2e/github_test.go` |
+
+### Known gaps
+
+Not papered over — these differ from the builtin today:
+
+- **Nested secret references.** Conductor resolves secret references only in
+  the connection's top-level string fields for a plugin; a `vault:`-style
+  reference nested in `webhook.secret` or `identity.write_token` is passed
+  through unresolved (`${ENV}` expansion, which happens at config load, is
+  unaffected). The builtin resolves `token` and `webhook.secret`.
+- **`conductor validate`** does not run the connector's own config checks for a
+  plugin (missing webhook secret, unreadable App key, a sweep glob without an
+  App); they run when the source starts and are logged.
+- **GitHub Enterprise Server on its own domain** is outside the declared egress,
+  so an *installed* build cannot reach it (a local build is unconfined). The
+  builtin reaches any `api_base`.
+- **Own-status contexts** noted by `set_status` live as long as the plugin
+  process; the builtin keeps them for the daemon's lifetime. (Status deliveries
+  never fire a trigger either way, so this affects only the guard's bookkeeping.)
+- **A bad webhook signature** is answered `202` and dropped (logged), exactly as
+  the builtin does; the previous plugin answered `401`.
