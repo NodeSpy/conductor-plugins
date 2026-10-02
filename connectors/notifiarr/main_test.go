@@ -361,6 +361,9 @@ func TestInvokeAgainstFakeNotifiarr(t *testing.T) {
 			},
 		}
 		assertJSONEqual(t, gotBody, wantBody)
+		if bad := undeclaredOutputs(notifiarrPlugin{}.Describe(), "notify", res.Outputs); len(bad) > 0 {
+			t.Fatalf("notify returned undeclared outputs %v (conductor rejects the result)", bad)
+		}
 		if res.Outputs["ok"] != true {
 			t.Fatalf("ok: got %v, want true", res.Outputs["ok"])
 		}
@@ -447,4 +450,22 @@ func assertJSONEqual(t *testing.T, got, want any) {
 	if string(gs) != string(ws) {
 		t.Errorf("body mismatch:\n got: %s\nwant: %s", gs, ws)
 	}
+}
+
+// undeclaredOutputs lists the output keys verb returned that its declaration
+// does not name: conductor rejects a verb result carrying any.
+func undeclaredOutputs(d plugin.Decl, verb string, out map[string]any) []string {
+	for _, v := range d.Verbs {
+		if v.Name != verb {
+			continue
+		}
+		var bad []string
+		for k := range out {
+			if _, ok := v.Outputs[k]; !ok {
+				bad = append(bad, k)
+			}
+		}
+		return bad
+	}
+	return []string{"<no verb " + verb + ">"}
 }

@@ -61,7 +61,7 @@ func notifiarrVerbs() []plugin.Verb {
 				"text":       {Type: "string", Required: true},
 				"channel_id": {Type: "string", Scope: "channel", Desc: "Discord channel id (default: the connection's)"},
 			},
-			Outputs: plugin.Schema{"ok": {Type: "boolean"}},
+			Outputs: plugin.Schema{"ok": {Type: "boolean"}, "result": {Type: "any"}, "status_code": {Type: "integer"}},
 		},
 		{
 			Name: "passthrough", Desc: "send a Discord notification via Notifiarr's Passthrough integration",

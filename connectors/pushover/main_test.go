@@ -435,6 +435,9 @@ func TestInvokeNotify(t *testing.T) {
 	if res.Outputs["ok"] != true {
 		t.Fatalf("ok: got %v, want true", res.Outputs["ok"])
 	}
+	if bad := undeclaredOutputs(pushoverPlugin{}.Describe(), "notify", res.Outputs); len(bad) > 0 {
+		t.Fatalf("notify returned undeclared outputs %v (conductor rejects the result)", bad)
+	}
 	form, err := url.ParseQuery(gotBody)
 	if err != nil {
 		t.Fatalf("parsing sent body: %v", err)
@@ -474,4 +477,22 @@ func asPluginError(err error, target **plugin.Error) bool {
 		*target = pe
 	}
 	return ok
+}
+
+// undeclaredOutputs lists the output keys verb returned that its declaration
+// does not name: conductor rejects a verb result carrying any.
+func undeclaredOutputs(d plugin.Decl, verb string, out map[string]any) []string {
+	for _, v := range d.Verbs {
+		if v.Name != verb {
+			continue
+		}
+		var bad []string
+		for k := range out {
+			if _, ok := v.Outputs[k]; !ok {
+				bad = append(bad, k)
+			}
+		}
+		return bad
+	}
+	return []string{"<no verb " + verb + ">"}
 }

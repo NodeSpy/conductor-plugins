@@ -70,7 +70,7 @@ func pushoverVerbs() []plugin.Verb {
 				"message": {Type: "string", Required: true},
 				"title":   {Type: "string"},
 			},
-			Outputs: plugin.Schema{"ok": {Type: "boolean"}},
+			Outputs: plugin.Schema{"ok": {Type: "boolean"}, "result": {Type: "any"}, "status_code": {Type: "integer"}},
 		},
 		{
 			Name: "send", Desc: "send a push notification",
