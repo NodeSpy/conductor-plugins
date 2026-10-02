@@ -68,10 +68,16 @@ func TestGithubPluginVerbTokenAuth(t *testing.T) {
 		t.Fatal("decl missing comment verb")
 	}
 	if !hasSweep {
-		t.Fatal("decl must declare the conductor-defined sweep verb (the daemon answers it)")
+		t.Fatal("decl must declare the sweep verb (its poll semantic's name; the daemon answers it)")
 	}
-	if decl.ABI < plugin.ConnectorABI {
-		t.Fatalf("decl.ABI = %d, want >= %d (the source extension)", decl.ABI, plugin.ConnectorABI)
+	// One contract, no tiers: what the engine does with github's events is
+	// what it declares (and the host must understand every declaration).
+	raw, _ := json.Marshal(decl)
+	if p := append(plugin.CheckSemantics(raw), plugin.ValidateSemantics(*decl)...); len(p) > 0 {
+		t.Fatalf("declarations refused: %v", p)
+	}
+	if decl.Semantics == nil || len(decl.Semantics.Credentials) == 0 {
+		t.Fatal("github declares the credentials its agents receive")
 	}
 
 	out, err := c.Invoke(ctx, plugin.InvokeRequest{

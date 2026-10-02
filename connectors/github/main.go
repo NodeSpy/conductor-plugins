@@ -26,7 +26,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/NodeSpy/conductor/pkg/githubkit/ghplugin"
+	"github.com/NodeSpy/conductor-plugins/internal/githubkit/ghplugin"
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
 )
 

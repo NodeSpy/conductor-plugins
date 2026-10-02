@@ -22,7 +22,7 @@
 //	  smee:           "https://smee.io/xyz" # optional smee.io-style SSE relay,
 //	                                     # for when the listener has no public URL
 //
-// The shared sourcekit.Listener.ServeReq hands the callback the full request
+// The shared relay.Listener.ServeReq hands the callback the full request
 // (headers, query, body), so the ?token= query case is checked directly — and
 // the same Listener transparently accepts deliveries relayed over
 // webhook.smee. See checkToken below.
@@ -41,6 +41,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"github.com/NodeSpy/conductor-plugins/internal/relay"
 	"io"
 	"net/http"
 	"net/url"
@@ -590,7 +591,7 @@ func (w *wizPlugin) StartSource(ctx context.Context, req plugin.StartSourceReque
 	if wc.smeeURL != "" {
 		fmt.Fprintf(os.Stderr, "wiz[%s]: relaying via smee channel %s\n", req.Instance, wc.smeeURL)
 	}
-	ln := sourcekit.Listener{Addr: wc.addr, Path: wc.path, Relay: wc.smeeURL}
+	ln := relay.Listener{Addr: wc.addr, Path: wc.path, Relay: wc.smeeURL}
 	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
 		if wc.secret != "" && !checkToken(wc, rq) {
 			return

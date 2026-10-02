@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/NodeSpy/conductor-plugins/internal/relay"
 	"net/http"
 	"os"
 	"strings"
@@ -69,7 +70,7 @@ func (sentry) Invoke(plugin.InvokeRequest) (plugin.InvokeResult, error) {
 
 func (sentry) StartSource(ctx context.Context, req plugin.StartSourceRequest, emit func(any) error) error {
 	cfg := req.Config
-	ln := sourcekit.Listener{
+	ln := relay.Listener{
 		Addr:      str(cfg["listen"]),
 		Path:      strOr(cfg["path"], "/sentry"),
 		Secret:    str(cfg["client_secret"]),

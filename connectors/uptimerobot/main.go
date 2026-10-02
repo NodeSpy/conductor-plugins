@@ -30,9 +30,9 @@
 // UptimeRobot alert contacts of type "Web-Hook" are entirely operator
 // templated: there is no signature scheme at all, only whatever the operator
 // pastes into the POST value/URL. So, like the datadog connector,
-// sourcekit.Listener.Secret is left EMPTY (its HMAC check does not apply) and
+// relay.Listener.Secret is left EMPTY (its HMAC check does not apply) and
 // a shared token — from either the X-Conductor-Token header or a ?token=
-// query parameter — is checked by hand. The shared sourcekit.Listener.ServeReq
+// query parameter — is checked by hand. The shared relay.Listener.ServeReq
 // hands the callback the full request (headers, query, body), so the ?token=
 // query case is checked directly — and the same Listener transparently
 // accepts deliveries relayed over webhook.smee for endpoints with no public
@@ -46,6 +46,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"github.com/NodeSpy/conductor-plugins/internal/relay"
 	"io"
 	"net/http"
 	"net/url"
@@ -443,7 +444,7 @@ func (uptimerobotPlugin) StartSource(ctx context.Context, req plugin.StartSource
 	if smeeURL != "" {
 		fmt.Fprintf(os.Stderr, "uptimerobot[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
 	}
-	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smeeURL}
+	ln := relay.Listener{Addr: addr, Path: path, Relay: smeeURL}
 	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
 		if secret != "" && !verifyTokenFromRequest(secret, rq) {
 			return

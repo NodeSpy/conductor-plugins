@@ -411,7 +411,7 @@ func TestStartSourceRequiresListenOrSmee(t *testing.T) {
 	}
 }
 
-// --- smee relay: now handled by sourcekit.Listener{Relay: ...} itself (see
+// --- smee relay: now handled by relay.Listener{Relay: ...} itself (see
 // pkg/sourcekit's own relay tests); handle()'s msgType=="" -> msg.Type
 // fallback (exercised below) is what keeps relayed deliveries — which carry
 // no x-amz-sns-message-type header unless the origin request had one —

@@ -17,7 +17,7 @@
 //
 // Unlike sentry/pagerduty, Alertmanager and Grafana webhooks carry no HMAC
 // signature — only, optionally, a bearer token configured on the receiver. So
-// sourcekit.Listener.Secret is left EMPTY here (its HMAC check does not apply)
+// relay.Listener.Secret is left EMPTY here (its HMAC check does not apply)
 // and the bearer token is checked by hand inside the handler below.
 //
 // stdout is the RPC transport; all logging goes to stderr.
@@ -28,6 +28,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"github.com/NodeSpy/conductor-plugins/internal/relay"
 	"net/http"
 	"os"
 	"strings"
@@ -81,7 +82,7 @@ func (alertmanager) Invoke(plugin.InvokeRequest) (plugin.InvokeResult, error) {
 func (alertmanager) StartSource(ctx context.Context, req plugin.StartSourceRequest, emit func(any) error) error {
 	cfg := req.Config
 	secret := str(cfg["secret"])
-	ln := sourcekit.Listener{
+	ln := relay.Listener{
 		Addr: str(cfg["listen"]),
 		Path: strOr(cfg["path"], "/alertmanager"),
 		// Secret intentionally left empty — see the package comment. The

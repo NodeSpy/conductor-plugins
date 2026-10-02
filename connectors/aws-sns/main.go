@@ -31,6 +31,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"github.com/NodeSpy/conductor-plugins/internal/relay"
 	"io"
 	"net/http"
 	"net/url"
@@ -118,7 +119,7 @@ func (sns) StartSource(ctx context.Context, req plugin.StartSourceRequest, emit 
 	// Secret is intentionally empty: SNS carries its own RSA signature, not
 	// an HMAC, so verification happens in handle() against the message body,
 	// not the sourcekit listener's HMAC check.
-	ln := sourcekit.Listener{Addr: listen, Path: path, Relay: smeeURL}
+	ln := relay.Listener{Addr: listen, Path: path, Relay: smeeURL}
 	if listen != "" {
 		fmt.Fprintf(os.Stderr, "sns[%s]: listening on %s%s\n", req.Instance, listen, path)
 	}
