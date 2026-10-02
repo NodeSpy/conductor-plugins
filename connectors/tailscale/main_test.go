@@ -1,14 +1,28 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
 )
+
+// stubTool writes an executable named name into a dir prepended to PATH.
+func stubTool(t *testing.T, name, script string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/usr/bin/env bash\n"+script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return dir
+}
 
 // testConnManaged builds a connection map carrying conductor's managed
 // OAuth2 token (the preferred credential path).
@@ -555,6 +569,7 @@ func TestDescribe(t *testing.T) {
 		"devices", "device_get", "device_delete", "device_authorize", "device_set_tags",
 		"device_routes", "device_set_routes", "keys", "key_get", "key_create", "key_delete",
 		"acl_get", "acl_set", "dns_nameservers", "dns_set_nameservers", "dns_preferences", "api",
+		"funnel_open", "funnel_close",
 	}
 	got := map[string]bool{}
 	for _, v := range d.Verbs {
@@ -587,5 +602,150 @@ func TestDescribe(t *testing.T) {
 	}
 	if !foundClientCreds {
 		t.Errorf("Auth.Grants missing client_credentials: %v", d.Auth.Grants)
+	}
+}
+
+// ---- funnel_open / funnel_close (the local tailscale CLI, not the API) ----
+
+func TestFunnelOpenNeedsNoAPICredentials(t *testing.T) {
+	stubTool(t, "tailscale", `case "$1" in
+  serve|funnel) echo "Available at https://box.tailnet.ts.net/" ;;
+  status) echo '{"Self":{"DNSName":"box.tailnet.ts.net."}}' ;;
+esac`)
+	p := newTailscalePlugin()
+	// No tailnet, no api_key, no managed token — funnel_open must not need them.
+	res, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_open", Options: map[string]any{"local_addr": "127.0.0.1:8099"}})
+	if err != nil || !strings.HasPrefix(res.Outputs["public_url"].(string), "https://box.tailnet.ts.net") {
+		t.Fatalf("funnel_open: %v %v", res.Outputs, err)
+	}
+	lease, _ := res.Outputs["lease"].(string)
+	if _, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_close", Options: map[string]any{"lease": lease}}); err != nil {
+		t.Fatal(err)
+	}
+	if p.leases.Len() != 0 {
+		t.Fatalf("leases after close = %d, want 0", p.leases.Len())
+	}
+}
+
+func TestFunnelStatusFallbackWhenNoURLInOutput(t *testing.T) {
+	stubTool(t, "tailscale", `case "$1" in
+  serve|funnel) echo "ok" ;;
+  status) echo '{"Self":{"DNSName":"fb.tailnet.ts.net."}}' ;;
+esac`)
+	p := newTailscalePlugin()
+	res, err := p.Invoke(plugin.InvokeRequest{
+		Verb: "funnel_open", Options: map[string]any{"local_addr": "127.0.0.1:8099"},
+		Connection: map[string]any{"funnel_mode": "serve"},
+	})
+	if err != nil || res.Outputs["public_url"] != "https://fb.tailnet.ts.net" {
+		t.Fatalf("funnel_open status fallback: %v %v", res.Outputs, err)
+	}
+	p.leases.Release(res.Outputs["lease"].(string))
+}
+
+func TestFunnelOpenBadLocalAddrErrors(t *testing.T) {
+	p := newTailscalePlugin()
+	if _, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_open", Options: map[string]any{"local_addr": "bad"}}); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestFunnelOpenBadModeErrors(t *testing.T) {
+	p := newTailscalePlugin()
+	if _, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_open", Options: map[string]any{"local_addr": "127.0.0.1:8099"}, Connection: map[string]any{"funnel_mode": "bogus"}}); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestFunnelOpenMissingBinaryErrorsClearly(t *testing.T) {
+	p := newTailscalePlugin()
+	_, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_open", Options: map[string]any{"local_addr": "127.0.0.1:8099"}, Connection: map[string]any{"binary": "no-such-tailscale-xyz"}})
+	if err == nil || !strings.Contains(err.Error(), "no-such-tailscale-xyz") {
+		t.Fatalf("expected a clear missing-binary error, got %v", err)
+	}
+}
+
+// REGRESSION: close used to run a blanket `tailscale serve --https=443 off`,
+// wiping any serve mapping the operator had configured BEFORE the lease.
+// Close now tears 443 down only when no mapping existed beforehand. Ported
+// from conductor's pre-contract-cutover internal/handoff/tunnel_more_test.go.
+func TestFunnelClosePreservesPreexistingServe(t *testing.T) {
+	dir := stubTool(t, "tailscale", `echo "$@" >> "$(dirname "$0")/calls"
+case "$1 $2" in
+  "serve status") echo "https://box.tailnet.ts.net (tailnet only)"; exit 0 ;;
+esac
+case "$1" in
+  serve) echo "Available at https://box.tailnet.ts.net/" ;;
+  status) echo '{"Self":{"DNSName":"box.tailnet.ts.net."}}' ;;
+esac`)
+	p := newTailscalePlugin()
+	res, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_open", Options: map[string]any{"local_addr": "127.0.0.1:8099"}, Connection: map[string]any{"funnel_mode": "serve"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_close", Options: map[string]any{"lease": res.Outputs["lease"]}}); err != nil {
+		t.Fatal(err)
+	}
+	calls, _ := os.ReadFile(filepath.Join(dir, "calls"))
+	if strings.Contains(string(calls), "off") {
+		t.Fatalf("close clobbered a pre-existing serve mapping: %s", calls)
+	}
+
+	// No pre-existing mapping → close tears our own mapping down.
+	dir = stubTool(t, "tailscale", `echo "$@" >> "$(dirname "$0")/calls"
+case "$1 $2" in
+  "serve status") echo "No serve config"; exit 0 ;;
+esac
+case "$1" in
+  serve) echo "Available at https://box.tailnet.ts.net/" ;;
+  status) echo '{"Self":{"DNSName":"box.tailnet.ts.net."}}' ;;
+esac`)
+	res, err = p.Invoke(plugin.InvokeRequest{Verb: "funnel_open", Options: map[string]any{"local_addr": "127.0.0.1:8099"}, Connection: map[string]any{"funnel_mode": "serve"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_close", Options: map[string]any{"lease": res.Outputs["lease"]}}); err != nil {
+		t.Fatal(err)
+	}
+	calls, _ = os.ReadFile(filepath.Join(dir, "calls"))
+	if !strings.Contains(string(calls), "--https=443 off") {
+		t.Fatalf("close did not tear down conductor's own mapping: %s", calls)
+	}
+}
+
+func TestFunnelStopReleasesOnlyThatInstance(t *testing.T) {
+	stubTool(t, "tailscale", `case "$1" in
+  serve|funnel) echo "Available at https://box.tailnet.ts.net/" ;;
+  status) echo '{"Self":{"DNSName":"box.tailnet.ts.net."}}' ;;
+esac`)
+	p := newTailscalePlugin()
+	for _, inst := range []string{"a", "b"} {
+		if _, err := p.Invoke(plugin.InvokeRequest{Instance: inst, Verb: "funnel_open", Options: map[string]any{"local_addr": "127.0.0.1:8099"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if p.leases.Len() != 2 {
+		t.Fatalf("leases = %d, want 2", p.leases.Len())
+	}
+	if err := p.Stop(context.Background(), plugin.StopRequest{Instance: "a"}); err != nil {
+		t.Fatal(err)
+	}
+	if p.leases.Len() != 1 {
+		t.Fatalf("leases after stop a = %d, want 1", p.leases.Len())
+	}
+}
+
+func TestDeclarationsAreValid(t *testing.T) {
+	d := newTailscalePlugin().Describe()
+	d.ProtocolVersion = plugin.ProtocolVersion
+	raw, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := plugin.CheckSemantics(raw); len(p) > 0 {
+		t.Fatalf("CheckSemantics: %v", p)
+	}
+	if p := plugin.ValidateSemantics(d); len(p) > 0 {
+		t.Fatalf("ValidateSemantics: %v", p)
 	}
 }

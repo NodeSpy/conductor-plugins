@@ -54,6 +54,15 @@ Each plugin has a full reference page under [`docs/`](docs/README.md).
 - **[redis](docs/connectors/redis.md)** — Redis / Valkey: get/set/del/incr/expire, publish, raw `command`, and a live pub/sub source (SUBSCRIBE / PSUBSCRIBE).
 - **[aws-sqs](docs/connectors/aws-sqs.md)** — Amazon SQS: long-poll a queue as an event source + send/receive/delete/attributes verbs. SDK-free & CLI-free (hand-rolled SigV4).
 
+### Exposure (tunnels & relays)
+Named-vendor counterparts to conductor's own vendor-neutral `lan`/`tunnel` exposure builtins — each declares an `exposes` verb, so any connector that names one in `expose:` (the web hand-off, or a webhook source declaring `listeners`) gets a public URL for a local address with no vendor code of its own.
+- **[cloudflared](docs/connectors/cloudflared.md)** — Cloudflare Tunnel: a free ephemeral `*.trycloudflare.com` quick tunnel, or a persistent named tunnel.
+- **[ngrok](docs/connectors/ngrok.md)** — ngrok: reads the public URL off ngrok's own local API, not its TUI output.
+- **[localxpose](docs/connectors/localxpose.md)** — LocalXpose (`loclx`): a `*.loclx.io` public URL.
+- **[sshtunnel](docs/connectors/sshtunnel.md)** — an ssh reverse tunnel to localhost.run, serveo.net, pinggy, or any host offering the same convention.
+- **[smee](docs/connectors/smee.md)** — a smee.io-style relay channel: receives deliveries over an outbound SSE connection and replays them locally, for reaching a listener with no inbound port to forward to.
+- Tailscale Funnel/Serve exposure lives on the **[tailscale](docs/connectors/tailscale.md)** connector itself (`funnel_open`/`funnel_close`), alongside its API verbs.
+
 ### Homelab — media
 - **[sonarr](docs/connectors/sonarr.md)** · **[radarr](docs/connectors/radarr.md)** · **[lidarr](docs/connectors/lidarr.md)** — Servarr for TV / movies / music: library CRUD, queue, calendar + Grab/Download webhooks.
 - **[prowlarr](docs/connectors/prowlarr.md)** — Servarr indexer manager: indexers, apps, release search + health webhooks.
@@ -70,7 +79,7 @@ Each plugin has a full reference page under [`docs/`](docs/README.md).
 - **[unifi](docs/connectors/unifi.md)** — UniFi Network: devices, clients (block/reconnect), WLANs, firewall, health, alarms.
 - **[unifi-protect](docs/connectors/unifi-protect.md)** — UniFi Protect cameras: snapshots, PTZ, NVR, sensors.
 - **[opnsense](docs/connectors/opnsense.md)** · **[pfsense](docs/connectors/pfsense.md)** — firewalls: rules, aliases, services, interfaces, DHCP, DNS.
-- **[tailscale](docs/connectors/tailscale.md)** — Tailscale mesh VPN: devices, auth keys, ACLs, DNS.
+- **[tailscale](docs/connectors/tailscale.md)** — Tailscale mesh VPN: devices, auth keys, ACLs, DNS, plus a `funnel`/`serve` exposure verb pair.
 - **[pihole](docs/connectors/pihole.md)** · **[adguard](docs/connectors/adguard.md)** — DNS ad-blocking: stats, blocking toggle, allow/deny lists.
 - **[nginx-proxy-manager](docs/connectors/nginx-proxy-manager.md)** — reverse proxy: proxy hosts, redirects, streams, certs.
 - **[portainer](docs/connectors/portainer.md)** — container management: environments, stacks, containers, images.

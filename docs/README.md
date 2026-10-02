@@ -217,6 +217,11 @@ binaries + `checksums.txt`.
 | `sentry` | connector (source) | [connectors/sentry.md](connectors/sentry.md) |
 | `pagerduty` | connector (source) | [connectors/pagerduty.md](connectors/pagerduty.md) |
 | `twilio` | connector (verbs + source) | [connectors/twilio.md](connectors/twilio.md) |
+| `cloudflared` | connector (verbs — exposure) | [connectors/cloudflared.md](connectors/cloudflared.md) |
+| `ngrok` | connector (verbs — exposure) | [connectors/ngrok.md](connectors/ngrok.md) |
+| `localxpose` | connector (verbs — exposure) | [connectors/localxpose.md](connectors/localxpose.md) |
+| `sshtunnel` | connector (verbs — exposure) | [connectors/sshtunnel.md](connectors/sshtunnel.md) |
+| `smee` | connector (verbs — exposure) | [connectors/smee.md](connectors/smee.md) |
 | `paseo` | runtime | [runtimes/paseo.md](runtimes/paseo.md) |
 | `jev` | runtime (decision) | [runtimes/jev.md](runtimes/jev.md) |
 | `js` | engine | [engines/js.md](engines/js.md) |
