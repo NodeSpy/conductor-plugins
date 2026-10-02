@@ -234,3 +234,74 @@ func TestGithubPluginSourceWebhook(t *testing.T) {
 		t.Fatalf("bad-signature delivery produced an event: before=%d after=%d", before, after)
 	}
 }
+
+// TestGithubPluginProgressVerbs: react and set_status perform the same calls
+// as the bundled connector's — a REST reaction on a comment, and a commit
+// status whose context defaults to the token's own login (GET /user).
+func TestGithubPluginProgressVerbs(t *testing.T) {
+	bin := rpctest.BuildConnector(t, "github")
+	var calls []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method + " " + r.URL.Path {
+		case "GET /user":
+			_ = json.NewEncoder(w).Encode(map[string]any{"login": "octo-me"})
+			return
+		case "GET /repos/o/r/pulls/7":
+			_ = json.NewEncoder(w).Encode(map[string]any{"head": map[string]any{"sha": "def456"}})
+			return
+		case "GET /repos/o/r/issues/comments/5/reactions":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": 71, "content": "eyes", "user": map[string]any{"login": "someone-else"}},
+				{"id": 72, "content": "eyes", "user": map[string]any{"login": "octo-me"}}})
+			return
+		case "DELETE /repos/o/r/issues/comments/5/reactions/72":
+			calls = append(calls, "DELETE reaction 72")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		case "POST /repos/o/r/issues/comments/5/reactions", "POST /repos/o/r/statuses/abc123", "POST /repos/o/r/statuses/def456":
+			calls = append(calls, fmt.Sprintf("%s %v %v %v", r.URL.Path, body["content"], body["state"], body["context"]))
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		t.Errorf("unexpected API call: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	c := rpctest.Start(t, bin)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	conn := map[string]any{"api_base": srv.URL, "identity": map[string]any{"write_token": "tok123"}}
+	if _, err := c.Invoke(ctx, plugin.InvokeRequest{Instance: "github1", Verb: "react", Connection: conn,
+		Options: map[string]any{"repo": "o/r", "subjects": []any{map[string]any{"kind": "issue_comment", "id": 5}}, "content": "eyes"}}); err != nil {
+		t.Fatalf("react: %v", err)
+	}
+	out, err := c.Invoke(ctx, plugin.InvokeRequest{Instance: "github1", Verb: "set_status", Connection: conn,
+		Options: map[string]any{"repo": "o/r", "sha": "abc123", "state": "pending", "description": "working"}})
+	if err != nil {
+		t.Fatalf("set_status: %v", err)
+	}
+	if out["context"] != "octo-me" {
+		t.Fatalf("set_status context = %v, want the token's login", out["context"])
+	}
+	// pr: instead of sha — the PR's head at call time; a custom context.
+	out, err = c.Invoke(ctx, plugin.InvokeRequest{Instance: "github1", Verb: "set_status", Connection: conn,
+		Options: map[string]any{"repo": "o/r", "pr": 7, "state": "failure", "context": "octo-me / ci-fix"}})
+	if err != nil || out["sha"] != "def456" {
+		t.Fatalf("set_status pr: %v %v", out, err)
+	}
+	// remove: true takes back only the acting user's 👀 (72), never someone else's (71).
+	out, err = c.Invoke(ctx, plugin.InvokeRequest{Instance: "github1", Verb: "react", Connection: conn,
+		Options: map[string]any{"repo": "o/r", "kind": "issue_comment", "id": 5, "content": "eyes", "remove": true}})
+	if err != nil || out["removed"] != float64(1) {
+		t.Fatalf("react remove: %v %v", out, err)
+	}
+	want := "/repos/o/r/issues/comments/5/reactions eyes <nil> <nil>\n/repos/o/r/statuses/abc123 <nil> pending octo-me\n/repos/o/r/statuses/def456 <nil> failure octo-me / ci-fix\nDELETE reaction 72"
+	if got := strings.Join(calls, "\n"); got != want {
+		t.Fatalf("calls:\n%s\nwant:\n%s", got, want)
+	}
+}

@@ -148,8 +148,8 @@ templates (`{{.field}}`) read. `repo` and `number`/`pr` are always available.
 | event | fires when | context fields (filter / template) |
 |-------|-----------|-------------------------------------|
 | `review_requested` | your review was requested on a PR | — |
-| `changes_requested` | a review requested changes on your PR, or (sweep) it has unresolved review threads from a reviewer who hasn't since approved | `head_ref`, `author`, `author_is_bot` |
-| `new_comment` | a new comment on a PR | `author`, `author_is_bot`, `comment_body`, `head_ref`, `comment_id`, `comment_kind` |
+| `changes_requested` | a review requested changes on your PR, or (sweep) it has unresolved review threads from a reviewer who hasn't since approved | `head_ref`, `author`, `author_is_bot`, `review_id`, `reaction_subjects` (the review) |
+| `new_comment` | a new comment on a PR | `author`, `author_is_bot`, `comment_body`, `head_ref`, `comment_id`, `comment_kind`, `reaction_subjects` (the comment) |
 | `release` | a release was published | `tag_name`, `prerelease`, `draft` |
 | `deployment_status` | a deployment failed or errored | `state`, `environment`, `description` |
 | `dependabot_alert` | a new Dependabot alert | `severity`, `package`, `summary` |
@@ -244,6 +244,15 @@ Required options are marked `*`.
 - **`rerequest_review`** — `request_review` for the re-review-after-a-fix flow, guarded. Same options, plus `only_outstanding` (default `true`): only reviewers whose latest review is `CHANGES_REQUESTED` on an older commit than the PR head, who aren't already requested, on an open PR, are pinged — never one who has since approved. State is read fresh; if it can't be read nobody is pinged. `only_outstanding: false` re-requests unconditionally. Review bots and the PR author are always dropped. → `ok`, and `skipped` (the reason) when nobody was left to ping.
 - **`remove_reviewer`** — cancel a pending review request. `repo`*, `pr`*, `reviewers`, `team_reviewers`. → `ok`.
 - **`review_comments`** — existing inline review comments on the PR: `[{path, line, body, user, id}]` (100/page). `repo`*, `pr`*, `all`. → `comments`.
+- **`react`** — add a reaction to comments or reviews, or with `remove: true` take yours of that content away (only yours, never anyone else's). `repo`*, `content`* (`+1` `-1` `laugh` `confused` `heart` `hooray` `rocket` `eyes`), and the subjects: `subjects` (`[{kind, id}]`, the shape of an event's `reaction_subjects`) or the `kind` + `id` shorthand. `kind` is `issue_comment`, `review_comment`, or `review`; a `review` subject also needs `pr` (a review is reachable only over GraphQL: `addReaction` / `removeReaction`). Idempotent both ways: a repeat isn't duplicated, and removing one that isn't there is a no-op. → `ok`, `reacted` / `removed`.
+- **`set_status`** — post a commit status; it shows on any PR whose head that commit is. `repo`*, `sha` **or** `pr` (the PR's head as it is at call time, read fresh; `sha` wins when both are set), `state`* (`pending` | `success` | `failure` | `error`), `context` (the row's name, entirely yours, templates included; only when unset does it default to the login the call acts as), `description` (clipped to GitHub's 140 characters), `target_url`. Last write to a (commit, context) wins, as on GitHub. → `ok`, `context`, `sha`.
+
+Progress on a PR is ordinary hooks calling these two verbs: 👀 / 🚀 / 👍 / 😕
+and a status row. See conductor's
+[Configuration](https://github.com/NodeSpy/conductor/wiki/Configuration#showing-progress-on-the-pr-github)
+and the pr-autopilot pack. The bundled connector also publishes `{{.me.login}}`
+and the `{{.run.*}}` head facts. This plugin doesn't (it has no head face), so a
+flow on it passes `pr:` and names its own context.
 
 ### Pull requests
 
