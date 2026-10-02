@@ -76,8 +76,8 @@ func (discordPlugin) Describe() plugin.Decl {
 		Type: "discord",
 		Desc: "Discord: post messages and hand-off questions over a bot (or a post-only incoming webhook); captures gateway replies as conversation_reply events.",
 		Connection: plugin.Schema{
-			"bot_token":   {Type: "string", Desc: "Discord bot token (from the developer portal)"},
-			"webhook_url": {Type: "string", Desc: "an incoming-webhook URL — post-only alternative to a bot token"},
+			"bot_token":   {Type: "string", Secret: true, Desc: "Discord bot token (from the developer portal)"},
+			"webhook_url": {Type: "string", Secret: true, Desc: "an incoming-webhook URL — post-only alternative to a bot token"},
 			"api_base":    {Type: "string", Desc: "override the Discord REST API base URL (tests, or a private gateway); default " + defaultAPIBase},
 			"gateway_url": {Type: "string", Desc: "override the gateway URL this plugin dials to capture replies (tests only); when set, the GET /gateway/bot bootstrap call is skipped"},
 		},

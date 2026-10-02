@@ -38,7 +38,7 @@ func (notifiarrPlugin) Describe() plugin.Decl {
 		Type: "notifiarr",
 		Desc: "Notifiarr: send Discord notifications via Notifiarr's Passthrough integration, plus a generic API escape hatch.",
 		Connection: plugin.Schema{
-			"api_key":    {Type: "string", Required: true, Desc: "Notifiarr API key"},
+			"api_key":    {Type: "string", Required: true, Secret: true, Desc: "Notifiarr API key"},
 			"api_base":   {Type: "string", Desc: "override the Notifiarr API base URL (tests, or a private gateway)"},
 			"channel_id": {Type: "string", Desc: "default Discord channel id override (used by `notify` when its own channel_id option is omitted)"},
 		},

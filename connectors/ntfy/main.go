@@ -45,7 +45,7 @@ func (ntfyPlugin) Describe() plugin.Decl {
 		Desc: "ntfy.sh push notifications: publish a message (verb), and subscribe to topics as a live source over ntfy's JSON-stream endpoint.",
 		Connection: plugin.Schema{
 			"server":    {Type: "string", Desc: "ntfy server base URL (default https://ntfy.sh); a self-hosted server changes/widens the egress target beyond the declared capability"},
-			"token":     {Type: "string", Desc: "Bearer access token"},
+			"token":     {Type: "string", Secret: true, Desc: "Bearer access token"},
 			"username":  {Type: "string", Desc: "Basic auth username (paired with password)"},
 			"password":  {Type: "string", Desc: "Basic auth password (paired with username)"},
 			"topic":     {Type: "string", Desc: "default topic for publish (used when a call's own topic option is omitted)"},

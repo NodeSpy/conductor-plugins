@@ -22,7 +22,7 @@ go 1.26.3
 // (pkg/githubkit/ghsource, ghplugin), which are not in a conductor release yet.
 // This pseudo-version is the head of the conductor change that adds them; it
 // MUST be bumped to that change's release tag before this merges.
-require github.com/NodeSpy/conductor v0.60.1-0.20261002210707-7bc118405529
+require github.com/NodeSpy/conductor v0.60.1-0.20261002220903-3bf8be85f8c6
 
 // The interpreters the four step engines embed. These are the SAME versions
 // conductor pinned while the engines lived in its binary, so the port is a

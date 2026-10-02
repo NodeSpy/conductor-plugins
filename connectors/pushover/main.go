@@ -46,7 +46,7 @@ func (pushoverPlugin) Describe() plugin.Decl {
 		Type: "pushover",
 		Desc: "Pushover: send push notifications (including emergency priority), validate users/groups, check delivery receipts, post glances, and a generic API escape hatch.",
 		Connection: plugin.Schema{
-			"token":    {Type: "string", Required: true, Desc: "Pushover application API token"},
+			"token":    {Type: "string", Required: true, Secret: true, Desc: "Pushover application API token"},
 			"user":     {Type: "string", Required: true, Desc: "Pushover user or group key"},
 			"api_base": {Type: "string", Desc: "override the Pushover API base URL (tests, or a private gateway)"},
 		},

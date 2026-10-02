@@ -70,9 +70,9 @@ func Decl() plugin.Decl {
 		Type: Type,
 		Desc: "Slack: mentions/reactions/slash commands/shortcuts/forms in (Socket Mode); messages, reactions, asks, thread reads and file downloads out.",
 		Connection: plugin.Schema{
-			"app_token":   {Type: "string", Desc: "Socket Mode app token (xapp-…) — needed for events and ask replies"},
-			"bot_token":   {Type: "string", Desc: "bot token (xoxb-…) for the Web API verbs"},
-			"webhook_url": {Type: "string", Desc: "an incoming-webhook URL — post-only alternative to a bot token"},
+			"app_token":   {Type: "string", Secret: true, Desc: "Socket Mode app token (xapp-…) — needed for events and ask replies"},
+			"bot_token":   {Type: "string", Secret: true, Desc: "bot token (xoxb-…) for the Web API verbs"},
+			"webhook_url": {Type: "string", Secret: true, Desc: "an incoming-webhook URL — post-only alternative to a bot token"},
 			"api_base":    {Type: "string", Desc: "override the Slack Web API base URL (tests); default https://slack.com/api"},
 		},
 		Events: []plugin.Event{
