@@ -166,6 +166,7 @@ binaries + `checksums.txt`.
 | `jira` | connector (verbs + source) | [connectors/jira.md](connectors/jira.md) |
 | `telegram` | connector (verbs + source) | [connectors/telegram.md](connectors/telegram.md) |
 | `matrix` | connector (verbs + source) | [connectors/matrix.md](connectors/matrix.md) |
+| `discord` | connector (verbs + source) | [connectors/discord.md](connectors/discord.md) |
 | `homeassistant` | connector (verbs + source) | [connectors/homeassistant.md](connectors/homeassistant.md) |
 | `proxmox` | connector (verbs + source) | [connectors/proxmox.md](connectors/proxmox.md) |
 | `truenas` | connector (verbs + source) | [connectors/truenas.md](connectors/truenas.md) |

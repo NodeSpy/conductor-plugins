@@ -40,6 +40,7 @@ require (
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/gorilla/websocket v1.5.3
 	github.com/itchyny/gojq v0.12.19
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/mikefarah/yq/v4 v4.53.6
@@ -66,7 +67,6 @@ require (
 	github.com/goccy/go-json v0.10.6 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/hcl/v2 v2.24.0 // indirect
 	github.com/itchyny/timefmt-go v0.1.8 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
