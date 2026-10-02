@@ -23,7 +23,7 @@ func TestDescribe(t *testing.T) {
 	if len(d.Capabilities.Commands) != 0 || d.Capabilities.Spawns {
 		t.Fatalf("expected no commands/spawns, got %#v", d.Capabilities)
 	}
-	want := []string{"passthrough", "api"}
+	want := []string{"notify", "passthrough", "api"}
 	got := map[string]bool{}
 	for _, v := range d.Verbs {
 		got[v.Name] = true
@@ -167,7 +167,7 @@ func TestVerbCall(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			call, err := verbCall(tc.verb, tc.opts, tc.apiKey)
+			call, err := verbCall(tc.verb, tc.opts, tc.apiKey, "")
 			if err != nil {
 				t.Fatalf("verbCall(%s): unexpected error: %v", tc.verb, err)
 			}
@@ -196,7 +196,7 @@ func TestVerbCallErrors(t *testing.T) {
 		{"nope", map[string]any{}},                                    // unknown verb
 	}
 	for _, tc := range cases {
-		if _, err := verbCall(tc.verb, tc.opts, "key"); err == nil {
+		if _, err := verbCall(tc.verb, tc.opts, "key", ""); err == nil {
 			t.Errorf("verbCall(%s, %v): expected error, got nil", tc.verb, tc.opts)
 		}
 	}
@@ -338,6 +338,83 @@ func TestInvokeAgainstFakeNotifiarr(t *testing.T) {
 			t.Fatalf("result: %#v", res.Outputs["result"])
 		}
 	})
+
+	t.Run("notify: the former bundled connector's minimal shape", func(t *testing.T) {
+		respStatus = 200
+		respBody = `{}`
+		res, err := p.Invoke(plugin.InvokeRequest{
+			Verb:       "notify",
+			Connection: conn,
+			Options:    map[string]any{"text": "hello", "channel_id": "999"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotMethod != http.MethodPost || gotPath != "/notification/passthrough/key-abc" {
+			t.Fatalf("method/path: %s %s", gotMethod, gotPath)
+		}
+		wantBody := map[string]any{
+			"notification": map[string]any{"name": "conductor"},
+			"discord": map[string]any{
+				"text": map[string]any{"description": "hello"},
+				"ids":  map[string]any{"channel": "999"},
+			},
+		}
+		assertJSONEqual(t, gotBody, wantBody)
+		if res.Outputs["ok"] != true {
+			t.Fatalf("ok: got %v, want true", res.Outputs["ok"])
+		}
+	})
+
+	t.Run("notify: falls back to the connection's channel_id", func(t *testing.T) {
+		respStatus = 200
+		respBody = `{}`
+		connWithChannel := map[string]any{"api_key": "key-abc", "api_base": srv.URL, "channel_id": "default-channel"}
+		_, err := p.Invoke(plugin.InvokeRequest{
+			Verb:       "notify",
+			Connection: connWithChannel,
+			Options:    map[string]any{"text": "hello"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		discord, _ := gotBody["discord"].(map[string]any)
+		ids, _ := discord["ids"].(map[string]any)
+		if ids["channel"] != "default-channel" {
+			t.Fatalf("expected the connection's default channel_id, got %#v", ids)
+		}
+	})
+
+	t.Run("notify requires text", func(t *testing.T) {
+		_, err := p.Invoke(plugin.InvokeRequest{
+			Verb:       "notify",
+			Connection: conn,
+			Options:    map[string]any{},
+		})
+		pe, ok := err.(*plugin.Error)
+		if !ok || pe.Code != plugin.CodeInvalidParams {
+			t.Fatalf("want CodeInvalidParams, got %v", err)
+		}
+	})
+}
+
+// TestSemanticsPassContractChecks asserts this plugin's declarations are
+// must-understand-clean (CheckSemantics) and internally consistent
+// (ValidateSemantics) — notifiarr declares no semantics today, so both
+// should trivially pass.
+func TestSemanticsPassContractChecks(t *testing.T) {
+	d := notifiarrPlugin{}.Describe()
+	d.ProtocolVersion = plugin.ProtocolVersion
+	raw, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("marshal decl: %v", err)
+	}
+	if problems := plugin.CheckSemantics(raw); len(problems) != 0 {
+		t.Fatalf("CheckSemantics: %v", problems)
+	}
+	if problems := plugin.ValidateSemantics(d); len(problems) != 0 {
+		t.Fatalf("ValidateSemantics: %v", problems)
+	}
 }
 
 func contains(s []string, want string) bool {

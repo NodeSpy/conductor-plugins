@@ -48,16 +48,17 @@ func (ntfyPlugin) Describe() plugin.Decl {
 			"token":     {Type: "string", Desc: "Bearer access token"},
 			"username":  {Type: "string", Desc: "Basic auth username (paired with password)"},
 			"password":  {Type: "string", Desc: "Basic auth password (paired with username)"},
+			"topic":     {Type: "string", Desc: "default topic for publish (used when a call's own topic option is omitted)"},
 			"subscribe": {Type: "list", Desc: "topics to subscribe to (StartSource only)"},
 		},
 		Verbs: []plugin.Verb{
 			{
 				Name:  "publish",
 				Desc:  "publish a message to a topic",
-				Usage: "send a notification: topic is required, everything else shapes how it renders/behaves",
+				Usage: "send a notification: topic is required (the call's own, or the connection's default), everything else shapes how it renders/behaves",
 				Options: plugin.Schema{
-					"topic":    {Type: "string", Required: true, Scope: "topic", Desc: "the ntfy topic to publish to"},
-					"message":  {Type: "string", Desc: "message body"},
+					"topic":    {Type: "string", Scope: "topic", Desc: "topic (default: the connection's)"},
+					"message":  {Type: "string", Required: true, Desc: "message body"},
 					"title":    {Type: "string", Desc: "notification title"},
 					"priority": {Type: "any", Desc: "1 (min) .. 5 (max), or the name: min/low/default/high/max"},
 					"tags":     {Type: "list", Desc: "tags / emoji shortcodes"},
@@ -69,6 +70,7 @@ func (ntfyPlugin) Describe() plugin.Decl {
 					"markdown": {Type: "boolean", Desc: "render the message as Markdown"},
 				},
 				Outputs: plugin.Schema{
+					"ok":          {Type: "boolean"},
 					"status_code": {Type: "integer"},
 					"result":      {Type: "any", Desc: "the parsed JSON response body"},
 				},
@@ -116,7 +118,10 @@ func (ntfyPlugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeResult, error) 
 	}
 	topic := str(o["topic"])
 	if topic == "" {
-		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, "publish: topic is required")
+		topic = str(req.Connection["topic"])
+	}
+	if topic == "" {
+		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, "publish: no topic (set options.topic or the connection's topic:)")
 	}
 
 	body := map[string]any{"topic": topic}
@@ -181,6 +186,7 @@ func (ntfyPlugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeResult, error) 
 	_ = json.Unmarshal(respBody, &result)
 
 	return plugin.InvokeResult{Outputs: map[string]any{
+		"ok":          resp.StatusCode/100 == 2,
 		"status_code": resp.StatusCode,
 		"result":      result,
 	}}, nil

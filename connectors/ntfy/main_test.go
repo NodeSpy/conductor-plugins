@@ -25,8 +25,20 @@ func TestDescribe(t *testing.T) {
 	if len(d.Verbs) != 1 || d.Verbs[0].Name != "publish" {
 		t.Fatalf("verbs: %#v", d.Verbs)
 	}
-	if !d.Verbs[0].Options["topic"].Required {
-		t.Fatalf("publish.topic must be required: %#v", d.Verbs[0].Options["topic"])
+	// topic is optional per call now that the connection can supply a
+	// default (parity with the former bundled connector's connection-level
+	// topic:); message is the one option every call must carry.
+	if d.Verbs[0].Options["topic"].Required {
+		t.Fatalf("publish.topic should not be required (the connection may supply a default): %#v", d.Verbs[0].Options["topic"])
+	}
+	if !d.Verbs[0].Options["message"].Required {
+		t.Fatalf("publish.message must be required: %#v", d.Verbs[0].Options["message"])
+	}
+	if _, ok := d.Connection["topic"]; !ok {
+		t.Fatalf("connection should declare a default topic: %#v", d.Connection)
+	}
+	if _, ok := d.Verbs[0].Outputs["ok"]; !ok {
+		t.Fatalf("publish should declare an ok output: %#v", d.Verbs[0].Outputs)
 	}
 	if len(d.Events) != 1 || d.Events[0].Name != "message" {
 		t.Fatalf("events: %#v", d.Events)
@@ -35,6 +47,26 @@ func TestDescribe(t *testing.T) {
 		if _, ok := d.Events[0].Filters[k]; !ok {
 			t.Errorf("message event missing filter %q", k)
 		}
+	}
+}
+
+// TestSemanticsPassContractChecks asserts this plugin's declarations are
+// must-understand-clean (CheckSemantics) and internally consistent
+// (ValidateSemantics) — ntfy declares no semantics today, so both should
+// trivially pass, and a future semantic addition is caught here if it breaks
+// either check.
+func TestSemanticsPassContractChecks(t *testing.T) {
+	d := ntfyPlugin{}.Describe()
+	d.ProtocolVersion = plugin.ProtocolVersion
+	raw, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("marshal decl: %v", err)
+	}
+	if problems := plugin.CheckSemantics(raw); len(problems) != 0 {
+		t.Fatalf("CheckSemantics: %v", problems)
+	}
+	if problems := plugin.ValidateSemantics(d); len(problems) != 0 {
+		t.Fatalf("ValidateSemantics: %v", problems)
 	}
 }
 
@@ -103,9 +135,66 @@ func TestPublish(t *testing.T) {
 	if res.Outputs["status_code"] != http.StatusOK {
 		t.Errorf("status_code: got %v", res.Outputs["status_code"])
 	}
+	if res.Outputs["ok"] != true {
+		t.Errorf("ok: got %v, want true", res.Outputs["ok"])
+	}
 	result, ok := res.Outputs["result"].(map[string]any)
 	if !ok || result["topic"] != "alerts" {
 		t.Fatalf("result: got %#v", res.Outputs["result"])
+	}
+}
+
+// TestPublishUsesConnectionDefaultTopic proves a call that omits its own
+// topic falls back to the connection's — parity with the former bundled
+// connector's connection-level topic:, which made topic optional per call.
+func TestPublishUsesConnectionDefaultTopic(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	p := ntfyPlugin{}
+	res, err := p.Invoke(plugin.InvokeRequest{
+		Verb:       "publish",
+		Connection: map[string]any{"server": srv.URL, "topic": "default-topic"},
+		Options:    map[string]any{"message": "hi"},
+	})
+	if err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	if gotBody["topic"] != "default-topic" {
+		t.Fatalf("expected the connection's default topic, got %#v", gotBody["topic"])
+	}
+	if res.Outputs["ok"] != true {
+		t.Errorf("ok: got %v, want true", res.Outputs["ok"])
+	}
+}
+
+// TestPublishOwnTopicOverridesConnectionDefault proves a call's own topic
+// wins over the connection's default.
+func TestPublishOwnTopicOverridesConnectionDefault(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	p := ntfyPlugin{}
+	_, err := p.Invoke(plugin.InvokeRequest{
+		Verb:       "publish",
+		Connection: map[string]any{"server": srv.URL, "topic": "default-topic"},
+		Options:    map[string]any{"topic": "override-topic", "message": "hi"},
+	})
+	if err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	if gotBody["topic"] != "override-topic" {
+		t.Fatalf("expected the call's own topic to win, got %#v", gotBody["topic"])
 	}
 }
 
