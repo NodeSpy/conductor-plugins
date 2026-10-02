@@ -367,6 +367,8 @@ runs with every github connector on the plugin (`make e2e-plugin`).
 | `deployment_status`, `dependabot_alert`, `secret_scanning_alert` | ✓ | ✓ | conformance "deployment failures and security alerts" |
 | `stuck_checks` (own poller, stale runs, own PRs) | ✓ | ✓ | conformance "stuck_checks from the poller, on your PR only" |
 | repo routing between triggers on one event | ✓ | ✓ | conformance "triggers on one event route by their repo filters" |
+| `reviewer` / `assignee` options (gate on the named identity, not `me`) | ✓ | ✓ | conformance "reviewer and assignee options gate on the named identity, not on me" |
+| `max_attempts_per_head`, `flaky_rerun` (engine options, lowered daemon-side) | ✓ | ✓ | conductor `TestABISourceRoutesToTheNamedTrigger` (same `lowerEngineOptions` as the builtin) |
 | unified `filter:` predicates | ✓ | ✓ | conformance "a unified filter predicate drops a commenter" |
 | sweep: pending reviews, conflicts, threads, missed comments, catch-up mark | ✓ | ✓ | conformance "the sweep recovers …" |
 | sweep nudge (`SIGUSR1`, `sweep --now`, `sweep` verb) | ✓ | ✓ | conformance "a nudge runs the sweep again"; conductor `TestSweepVerbIsAnsweredByTheDaemon` |
