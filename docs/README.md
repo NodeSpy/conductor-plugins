@@ -164,6 +164,7 @@ binaries + `checksums.txt`.
 | `datadog` | connector (verbs + source) | [connectors/datadog.md](connectors/datadog.md) |
 | `asana` | connector (verbs + source) | [connectors/asana.md](connectors/asana.md) |
 | `jira` | connector (verbs + source) | [connectors/jira.md](connectors/jira.md) |
+| `slack` | connector (verbs + source) | [connectors/slack.md](connectors/slack.md) |
 | `telegram` | connector (verbs + source) | [connectors/telegram.md](connectors/telegram.md) |
 | `matrix` | connector (verbs + source) | [connectors/matrix.md](connectors/matrix.md) |
 | `discord` | connector (verbs + source) | [connectors/discord.md](connectors/discord.md) |

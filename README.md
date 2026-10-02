@@ -99,6 +99,7 @@ Named-vendor counterparts to conductor's own vendor-neutral `lan`/`tunnel` expos
 - **[wiz](docs/connectors/wiz.md)** — Wiz cloud security: issues & findings + a new-issue source.
 
 ### Notifications, chat & email
+- **[slack](docs/connectors/slack.md)** — Socket Mode events (mentions, reactions, slash commands, message shortcuts, modal forms), hand-off asks/approvals, thread reads + file downloads: the same implementation as conductor's bundled slack connector, out of process.
 - **[telegram](docs/connectors/telegram.md)** · **[matrix](docs/connectors/matrix.md)** · **[discord](docs/connectors/discord.md)** — messaging: send + inbound message source; discord adds hand-off `ask` questions over a bot gateway.
 - **[ntfy](docs/connectors/ntfy.md)** · **[pushover](docs/connectors/pushover.md)** · **[notifiarr](docs/connectors/notifiarr.md)** — push notifications.
 - **[twilio](docs/connectors/twilio.md)** — SMS / WhatsApp / voice + an inbound source.
