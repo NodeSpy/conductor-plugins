@@ -12,9 +12,10 @@
 // it fired for, and the daemon nudges its sweep, forces events, and asks it for
 // App tokens and target heads.
 //
-// For the daemon to treat its events as the builtin's — engine-interpreted
-// kinds like new_comment and merge_conflict, and own-repo trust in their
-// targets — the connector entry needs `trusted_source: true`. See
+// Installed from the official repo and verified against its release, it is a
+// trusted source by default: conductor treats its events as the builtin's —
+// engine-interpreted kinds like new_comment and merge_conflict, and own-repo
+// trust in their targets. A local build needs `trusted_source: true`. See
 // docs/connectors/github.md.
 //
 // Built only against conductor's public pkg/ packages. stdout is the RPC

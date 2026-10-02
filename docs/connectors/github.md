@@ -23,7 +23,6 @@ proves the two fire the same triggers ([parity](#parity-with-the-bundled-connect
 connectors:
   gh:
     use: NodeSpy/conductor-plugins/connectors/github   # while `github` is still bundled, name the plugin explicitly
-    trusted_source: true          # see "Trust" — required for the builtin's behavior
     token: ${GITHUB_TOKEN}
     me: { logins: [your-login] }
 ```
@@ -38,34 +37,40 @@ run the plugin, point `use:` at it (the official repo path above, or a local
   side — every `github` connector in it must be backed by the same one. Conductor
   refuses a mixed config at boot, naming the connectors. (With no builtin user,
   the plugin stands in for the bundled `github` type; nothing is redirected.)
-- **`trusted_source: true`.** See [Trust](#trust). Without it the plugin runs,
-  but conductor treats it as untrusted third-party input and drops the events
-  its engine acts on.
+- **Nothing to grant.** An official plugin whose installed binary was verified
+  against its release is a trusted source by default (see [Trust](#trust)).
 
 Everything else — every connection key, event, filter key, option, verb — is
 the builtin's, and means what it means there.
 
 ## Trust
 
-Conductor does not let a plugin source assert facts its engine acts on, or
-claim a target as the platform's, unless the operator vouches for it:
+Conductor lets a plugin source assert the facts its engine acts on — the
+`new_comment`, `review_requested`, `merge_conflict`, `failing_checks` and
+`_closed` kinds, and own-repo trust in event targets — only when the source is
+**trusted**. It follows the same model as installing plugins: the official repo
+needs no ceremony, anything else does.
+
+| | default | `trusted_source: true` | `trusted_source: false` |
+|---|---|---|---|
+| this plugin, installed from the official repo, release-verified | **trusted** | trusted | untrusted (opt out) |
+| an official release that published no checksums for the binary | untrusted | trusted | untrusted |
+| a local build (`use: ./conductor-github`) | untrusted | trusted | untrusted |
+| a fork / third-party build | untrusted | trusted | untrusted |
+
+*Release-verified* means the binary's sha matched the release's
+`checksums.txt` at install; conductor re-checks that sha before every start.
+For the **development loop** — running your own build of this plugin — name
+the local binary and grant it explicitly:
 
 ```yaml
+    use: ./conductor-github
     trusted_source: true
 ```
 
-With it, this connector's events are treated as the bundled connector's are:
-their targets get own-repo trust (an agent may address the repo the event
-names without a grant), and the engine-interpreted kinds — `new_comment`,
-`review_requested`, `merge_conflict`, `failing_checks`, and the `_closed`
-lifecycle event — are accepted (only for events the plugin declares). Without
-it, those kinds are dropped (logged once, naming the setting) and every target
-is untrusted. `trusted_source` is refused on a builtin connector and is never
-passed to the plugin.
-
-Grant it to a plugin build you trust to verify GitHub's deliveries — this one
-checks every delivery's `X-Hub-Signature-256` and reads everything else with
-your connector's own credentials.
+Untrusted, the plugin still runs, but conductor drops its engine-interpreted
+events (it logs the setting once) and every target is untrusted.
+`trusted_source` is never passed to the plugin, and is refused on a builtin.
 
 ## Setup
 
@@ -122,7 +127,6 @@ repos/orgs, and note the **App ID**.
 connectors:
   gh:
     use: NodeSpy/conductor-plugins/connectors/github
-    trusted_source: true
     app:
       app_id: 123456
       private_key_path: ~/.config/conductor/github-app.pem
@@ -347,7 +351,7 @@ The bundled connector and this plugin run one implementation, and conductor's
 conformance suite (`pkg/githubkit/ghsource/ghsourcetest`) proves they agree. The
 same table runs against the bundled connector, against this plugin through
 conductor's real plugin path (spawn, describe, `start_source` with triggers,
-routed events, `trusted_source`), and — in this repository's `e2e/` — against
+routed events, an official release-verified install with no `trusted_source` in the config), and — in this repository's `e2e/` — against
 this repository's build over the bare wire. Conductor's hermetic e2e suite also
 runs with every github connector on the plugin (`make e2e-plugin`).
 
