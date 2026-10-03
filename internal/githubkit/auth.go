@@ -148,7 +148,7 @@ func (a *AppAuth) installationIDByURL(ctx context.Context, url string) (int64, e
 	if resp.StatusCode/100 != 2 {
 		msg := readBody(resp)
 		if isRateLimited(resp, msg) {
-			return 0, rateLimitErrorForWait(retryAfter(resp))
+			return 0, rateLimitErrorForWait(retryAfter(resp, msg))
 		}
 		return 0, ghHTTPError("GET", url, resp.StatusCode, msg)
 	}
@@ -193,7 +193,7 @@ func (a *AppAuth) InstallationToken(ctx context.Context, instID int64) (string, 
 	if resp.StatusCode/100 != 2 {
 		msg := readBody(resp)
 		if isRateLimited(resp, msg) {
-			return "", rateLimitErrorForWait(retryAfter(resp))
+			return "", rateLimitErrorForWait(retryAfter(resp, msg))
 		}
 		return "", ghHTTPError("POST", url, resp.StatusCode, msg)
 	}

@@ -194,8 +194,11 @@ func (c *Client) get(ctx context.Context, token, url string, out any) error {
 }
 
 // getFresh issues an authenticated GET that bypasses the read cache — for a
-// decision that must see state as of now (review state before a re-request),
-// where a cached body up to CacheTTL old could be the wrong answer.
+// decision that must see state as of now (review state before a re-request,
+// repoVisible's visibility probe), where a cached body up to CacheTTL old
+// could be the wrong answer. A nil out (repoVisible cares only whether the
+// GET succeeded, not the body) drains and discards the body instead of
+// decoding it — json.Decode(nil) would otherwise error even on a 2xx.
 func (c *Client) getFresh(ctx context.Context, token, url string, out any) error {
 	resp, err := c.getRaw(ctx, token, url, "application/vnd.github+json", "")
 	if err != nil {
@@ -206,6 +209,10 @@ func (c *Client) getFresh(ctx context.Context, token, url string, out any) error
 		return c.httpFailure("GET", url, resp)
 	}
 	defer resp.Body.Close()
+	if out == nil {
+		_, err := io.Copy(io.Discard, io.LimitReader(resp.Body, maxReadBytes))
+		return err
+	}
 	return json.NewDecoder(io.LimitReader(resp.Body, maxReadBytes)).Decode(out)
 }
 
@@ -276,7 +283,7 @@ func (c *Client) cachedGet(ctx context.Context, token, url, accept string) ([]by
 		default:
 			msg := readBody(resp)
 			if isRateLimited(resp, msg) {
-				wait := retryAfter(resp)
+				wait := retryAfter(resp, msg)
 				if attempt == 0 && wait > 0 && wait <= maxRateWait {
 					if err := sleepCtx(ctx, wait); err != nil {
 						return nil, err
@@ -293,7 +300,7 @@ func (c *Client) cachedGet(ctx context.Context, token, url, accept string) ([]by
 					return body, nil
 				}
 				c.mu.Unlock()
-				return nil, c.rateLimitError(resp)
+				return nil, c.rateLimitError(resp, msg)
 			}
 			return nil, ghHTTPError("GET", url, resp.StatusCode, msg)
 		}
@@ -357,12 +364,16 @@ const defaultRateLimitWait = 60 * time.Second
 
 // rateLimitError builds the contract's rate_limited answer (§1.11):
 // data.retry_after is a Go duration string, taken from resp's own
-// Retry-After or X-RateLimit-Reset (retryAfter — covers both the secondary
-// and primary limit signals), falling back to the client's last-noted reset,
-// then to defaultRateLimitWait, when resp carries neither.
-func (c *Client) rateLimitError(resp *http.Response) error {
-	wait := retryAfter(resp)
-	if wait <= 0 {
+// Retry-After header, else — for a PRIMARY exhaustion only —
+// X-RateLimit-Reset (retryAfter); falling back to the client's last-noted
+// primary reset, then to defaultRateLimitWait, when resp carries neither.
+// The client's last-noted reset is itself a PRIMARY-budget signal (set by
+// noteRateLimit), so it is skipped for a secondary limit exactly like
+// X-RateLimit-Reset is — using it here would quietly reintroduce the same
+// wrong-reset bug through the fallback path.
+func (c *Client) rateLimitError(resp *http.Response, msg string) error {
+	wait := retryAfter(resp, msg)
+	if wait <= 0 && !isSecondaryRateLimit(resp, msg) {
 		c.mu.Lock()
 		reset := c.rlReset
 		c.mu.Unlock()
@@ -390,11 +401,20 @@ func rateLimitErrorForWait(wait time.Duration) error {
 // looksLikeSecondaryRateLimit reports whether an error message is GitHub's
 // secondary rate limit / abuse-detection refusal — a 403 (sometimes 429)
 // that carries neither Retry-After nor X-RateLimit-Remaining:0, so the
-// message is the only signal: "You have exceeded a secondary rate limit..."
-// or "...abuse detection mechanism...".
+// message (or, in the same spirit, the response's documentation_url) is the
+// only signal. Matched against GitHub's actual wording for the two refusals
+// ("You have exceeded a secondary rate limit...", "...abuse detection
+// mechanism...") and the documentation_url slug they both link
+// (#abuse-rate-limits/#secondary-rate-limits) — NOT a bare "abuse" substring,
+// which would also match an ordinary 403 whose message happens to use that
+// word in an unrelated sense (content moderation, a report of abuse, etc.)
+// and misclassify it as rate_limited.
 func looksLikeSecondaryRateLimit(msg string) bool {
 	lower := strings.ToLower(msg)
-	return strings.Contains(lower, "secondary rate limit") || strings.Contains(lower, "abuse")
+	return strings.Contains(lower, "secondary rate limit") ||
+		strings.Contains(lower, "abuse detection mechanism") ||
+		strings.Contains(lower, "abuse-rate-limits") ||
+		strings.Contains(lower, "secondary-rate-limits")
 }
 
 // IsRateLimited reports whether a response is a GitHub rate-limit refusal —
@@ -422,11 +442,29 @@ func isRateLimited(resp *http.Response, msg string) bool {
 }
 
 // RetryAfter is how long to wait before retrying a rate-limited response,
-// from Retry-After (seconds, or an HTTP-date) or the X-RateLimit-Reset
-// epoch, clamped to a sane bound.
-func RetryAfter(resp *http.Response) time.Duration { return retryAfter(resp) }
+// from Retry-After (seconds, or an HTTP-date) or — for a primary exhaustion
+// only — the X-RateLimit-Reset epoch, clamped to a sane bound. A caller with
+// only the *http.Response (its body already consumed or never read) can't
+// see the message-only secondary-limit case when X-RateLimit-Remaining is
+// also absent; retryAfter (internal, used on the read path while the body is
+// still available) covers that one too — see isSecondaryRateLimit.
+func RetryAfter(resp *http.Response) time.Duration { return retryAfter(resp, "") }
 
-func retryAfter(resp *http.Response) time.Duration {
+// retryAfter is RetryAfter plus the message-only secondary-limit case (msg
+// is the body's own "message" field, read once by readBody).
+//
+// Retry-After always wins when present — it's GitHub's own answer to "how
+// long", for either limit. Absent that, X-RateLimit-Reset is trustworthy
+// ONLY for a PRIMARY exhaustion: it is the primary budget's refill time, and
+// a secondary rate limit / abuse-detection refusal can fire with the
+// primary budget nowhere near exhausted (X-RateLimit-Remaining still
+// positive — or the header missing outright on some secondary-limit
+// responses) and a Reset that is simply unrelated to when the secondary
+// limit itself clears, sometimes tens of minutes away. Reading it anyway
+// turns a 60-second secondary cooldown into a wait tens of minutes too long.
+// isSecondaryRateLimit tells the two apart; a secondary limit with no
+// Retry-After falls through to the caller's defaultRateLimitWait instead.
+func retryAfter(resp *http.Response, msg string) time.Duration {
 	if ra := strings.TrimSpace(resp.Header.Get("Retry-After")); ra != "" {
 		if n, err := strconv.Atoi(ra); err == nil && n >= 0 {
 			return time.Duration(n) * time.Second
@@ -440,6 +478,9 @@ func retryAfter(resp *http.Response) time.Duration {
 			return 0
 		}
 	}
+	if isSecondaryRateLimit(resp, msg) {
+		return 0 // X-RateLimit-Reset describes the (unexhausted) primary budget — meaningless here
+	}
 	if rs := resp.Header.Get("X-RateLimit-Reset"); rs != "" {
 		if s, err := strconv.ParseInt(rs, 10, 64); err == nil {
 			if d := time.Until(time.Unix(s, 0)); d > 0 {
@@ -448,6 +489,20 @@ func retryAfter(resp *http.Response) time.Duration {
 		}
 	}
 	return 0
+}
+
+// isSecondaryRateLimit reports whether a rate-limited response (isRateLimited
+// already true) is GitHub's secondary limit rather than a primary
+// exhaustion: X-RateLimit-Remaining present and nonzero means the primary
+// budget is untouched, so whatever triggered the refusal must be the
+// secondary one. When that header is absent entirely (some secondary-limit
+// responses carry no rate-limit headers at all), fall back to GitHub's own
+// message/documentation_url wording.
+func isSecondaryRateLimit(resp *http.Response, msg string) bool {
+	if rem := resp.Header.Get("X-RateLimit-Remaining"); rem != "" {
+		return rem != "0"
+	}
+	return looksLikeSecondaryRateLimit(msg)
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) error {
@@ -494,7 +549,7 @@ func readBody(resp *http.Response) string {
 func (c *Client) httpFailure(method, url string, resp *http.Response) error {
 	msg := readBody(resp)
 	if isRateLimited(resp, msg) {
-		return c.rateLimitError(resp)
+		return c.rateLimitError(resp, msg)
 	}
 	return ghHTTPError(method, url, resp.StatusCode, msg)
 }

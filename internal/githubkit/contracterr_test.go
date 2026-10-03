@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -115,6 +116,35 @@ func TestTargetGoneOnTheMissingPROrIssue(t *testing.T) {
 	}
 }
 
+// TestTargetKeyMatchesDeclaredSemantics covers fix 5: targetKey — the one
+// builder invoke.go and reactstatus.go both use for data.target — must
+// mirror ghplugin/semantics.go's declared key templates exactly. prTarget
+// (every PR/issue-shaped event) declares "{{.repo}}#{{.number}}"; the
+// repo-level default (release, deployment_status, alerts — events with no
+// PR/issue number of their own) overrides it to the bare "{{.repo}}".
+// number == 0 means exactly that second case, so it must render as the bare
+// repo — a literal "repo#0" would never match either declared key, so a
+// target_gone built from it could never be honored by the host's
+// exact-match check.
+func TestTargetKeyMatchesDeclaredSemantics(t *testing.T) {
+	tests := []struct {
+		name   string
+		repo   string
+		number int
+		want   string
+	}{
+		{"PR/issue-shaped target (prTarget)", "acme/w", 42, "acme/w#42"},
+		{"repo-level target: release/deployment_status/alerts (number == 0)", "acme/w", 0, "acme/w"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := targetKey(tt.repo, tt.number); got != tt.want {
+				t.Fatalf("targetKey(%q, %d) = %q, want %q", tt.repo, tt.number, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestNoAccessRepoIsUpstreamNotTargetGone covers the other half of fix 2:
 // GitHub answers the identical 404 when the token can't see the repo at all
 // as when a PR/issue number is merely missing from a repo it CAN see — the
@@ -168,6 +198,141 @@ func TestRepoVisibilityCheckPropagatesRateLimit(t *testing.T) {
 	}
 	if wait, _ := pe.Data["retry_after"].(string); wait == "" {
 		t.Fatalf("retry_after = %#v, want a non-empty Go duration string", pe.Data["retry_after"])
+	}
+}
+
+// TestRepoVisibilityCheckIsFresh covers fix 1a: repoVisible must bypass the
+// Client's short-TTL GET cache. A cached "visible" answer primed moments ago
+// would otherwise mask a token that lost access in between — exactly the
+// race the visibility check exists to catch — turning a now-genuinely-gone
+// repo's 404 into a false target_gone.
+func TestRepoVisibilityCheckIsFresh(t *testing.T) {
+	visible := true
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repos/acme/w/issues/1", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+	})
+	mux.HandleFunc("/repos/acme/w", func(w http.ResponseWriter, r *http.Request) {
+		if visible {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"full_name":"acme/w"}`))
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"Forbidden"}`))
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	kit, err := NewClient(Config{WriteToken: "t", APIBase: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	// Prime the Client's ordinary GET cache with a "visible" answer — well
+	// under CacheTTL, so a cache-reading check would still serve it below.
+	if err := kit.get(ctx, "t", ts.URL+"/repos/acme/w", nil); err != nil {
+		t.Fatalf("priming the GET cache: %v", err)
+	}
+	// The token loses access right after: the repo now answers 403. The
+	// cache entry just primed is still fresh.
+	visible = false
+	_, ierr := kit.Invoke(ctx, "get_issue", map[string]any{"repo": "acme/w", "number": 1})
+	pe := asContractError(t, ierr)
+	if pe.Code == plugin.CodeTargetGone {
+		t.Fatalf("code = CodeTargetGone — the visibility check served a stale cached \"visible\" instead of seeing the access loss fresh")
+	}
+	if pe.Code != plugin.CodeUpstream {
+		t.Fatalf("code = %d, want CodeUpstream; msg=%s", pe.Code, pe.Message)
+	}
+	if retryable, _ := pe.Data["retryable"].(bool); retryable {
+		t.Fatal("retryable = true, want false")
+	}
+}
+
+// TestRepoVisibilityCheckTransientFailureIsNeverNotVisible covers fix 1b:
+// when the visibility check's OWN GET fails transiently (a 5xx here), that
+// must never be read as "not visible" — manufacturing the non-retryable
+// "can't see repo" upstream would turn a blip in this one extra call into a
+// false permanent failure for a target that might be perfectly fine. The
+// check's own answer is already a retryable upstream (a 5xx), so that is
+// what should come back, not a fabricated non-retryable 404.
+func TestRepoVisibilityCheckTransientFailureIsNeverNotVisible(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repos/acme/w/issues/1", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+	})
+	mux.HandleFunc("/repos/acme/w", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"message":"Service Unavailable"}`))
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	kit, err := NewClient(Config{WriteToken: "t", APIBase: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, ierr := kit.Invoke(context.Background(), "get_issue", map[string]any{"repo": "acme/w", "number": 1})
+	pe := asContractError(t, ierr)
+	if pe.Code == plugin.CodeTargetGone {
+		t.Fatalf("code = CodeTargetGone — a transient check failure must never be read as \"visible\" either")
+	}
+	if pe.Code != plugin.CodeUpstream {
+		t.Fatalf("code = %d, want CodeUpstream; msg=%s", pe.Code, pe.Message)
+	}
+	if retryable, _ := pe.Data["retryable"].(bool); !retryable {
+		t.Fatalf("retryable = false, want true (the visibility check's own 5xx is retryable — never manufacture a non-retryable answer from an inconclusive check); msg=%s", pe.Message)
+	}
+	if strings.Contains(pe.Message, "can't see repo") {
+		t.Fatalf("message = %q — must not be the manufactured \"can't see repo\" verdict when the check itself never confirmed that", pe.Message)
+	}
+}
+
+// TestRepoVisibilityCheckNetworkFailureFallsBackToOriginalError covers the
+// other shape of fix 1b: the visibility check's GET fails with a raw,
+// unclassified network error (not even an HTTP response — a connection the
+// server slams shut mid-request), so there is no retryable upstream of the
+// check's own to surface. The result must still never be the manufactured
+// "can't see repo" verdict; falling back to the ORIGINAL 404 (the real
+// answer GitHub gave for the issue itself) is distinguishable from that by
+// its message.
+func TestRepoVisibilityCheckNetworkFailureFallsBackToOriginalError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repos/acme/w/issues/1", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"Issue not found"}`))
+	})
+	mux.HandleFunc("/repos/acme/w", func(w http.ResponseWriter, r *http.Request) {
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			t.Fatal("ResponseWriter does not support hijacking")
+		}
+		conn, _, err := hj.Hijack()
+		if err != nil {
+			t.Fatal(err)
+		}
+		conn.Close() // abrupt close: the client sees a transport error, no HTTP response at all
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	kit, err := NewClient(Config{WriteToken: "t", APIBase: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, ierr := kit.Invoke(context.Background(), "get_issue", map[string]any{"repo": "acme/w", "number": 1})
+	pe := asContractError(t, ierr)
+	if pe.Code == plugin.CodeTargetGone {
+		t.Fatalf("code = CodeTargetGone — an inconclusive check must never be read as \"visible\"")
+	}
+	if pe.Code != plugin.CodeUpstream {
+		t.Fatalf("code = %d, want CodeUpstream; msg=%s", pe.Code, pe.Message)
+	}
+	if strings.Contains(pe.Message, "can't see repo") {
+		t.Fatalf("message = %q — a check that failed inconclusively (not even an HTTP response) must fall back to the ORIGINAL error, never a manufactured verdict", pe.Message)
+	}
+	if !strings.Contains(pe.Message, "Issue not found") {
+		t.Fatalf("message = %q, want the ORIGINAL issue 404's own message to stand", pe.Message)
 	}
 }
 
@@ -633,6 +798,126 @@ func TestRateLimitedSecondarySignal(t *testing.T) {
 	}
 	if got := pe.Data["retry_after"]; got != "30s" {
 		t.Fatalf("retry_after = %#v, want %q", got, "30s")
+	}
+}
+
+// TestSecondaryRateLimitIgnoresUnrelatedPrimaryReset covers fix 2 — the
+// reviewer's exact case: X-RateLimit-Remaining still almost full (4999, the
+// PRIMARY budget untouched) with X-RateLimit-Reset far in the future (that
+// untouched primary window's own refill time, totally unrelated to this
+// refusal) and no Retry-After at all. The secondary limit must never read
+// that Reset: retry_after falls back to the 60s default, not ~45 minutes.
+func TestSecondaryRateLimitIgnoresUnrelatedPrimaryReset(t *testing.T) {
+	reset := time.Now().Add(45 * time.Minute).Unix()
+	ts := canned(t, http.StatusForbidden, map[string]string{
+		"X-RateLimit-Remaining": "4999",
+		"X-RateLimit-Reset":     strconv.FormatInt(reset, 10),
+	}, `{"message":"You have exceeded a secondary rate limit. Please wait a few minutes before you try again."}`)
+	kit, err := NewClient(Config{WriteToken: "t", APIBase: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, ierr := kit.Invoke(context.Background(), "create_pr", createPROpts())
+	pe := asContractError(t, ierr)
+	if pe.Code != plugin.CodeRateLimited {
+		t.Fatalf("code = %d, want CodeRateLimited; msg=%s", pe.Code, pe.Message)
+	}
+	if got := pe.Data["retry_after"]; got != "1m0s" {
+		t.Fatalf("retry_after = %#v, want %q (the default — X-RateLimit-Reset describes the untouched primary budget, not this refusal)", got, "1m0s")
+	}
+}
+
+// TestPrimaryExhaustionStillUsesReset is the control for the fix above: an
+// actual primary exhaustion (X-RateLimit-Remaining: 0) with no Retry-After
+// must still read X-RateLimit-Reset — that header IS the right signal in
+// this case, and the fix must not have broken it.
+func TestPrimaryExhaustionStillUsesReset(t *testing.T) {
+	reset := time.Now().Add(45 * time.Minute).Unix()
+	ts := canned(t, http.StatusForbidden, map[string]string{
+		"X-RateLimit-Remaining": "0",
+		"X-RateLimit-Reset":     strconv.FormatInt(reset, 10),
+	}, `{"message":"API rate limit exceeded"}`)
+	kit, err := NewClient(Config{WriteToken: "t", APIBase: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, ierr := kit.Invoke(context.Background(), "create_pr", createPROpts())
+	pe := asContractError(t, ierr)
+	if pe.Code != plugin.CodeRateLimited {
+		t.Fatalf("code = %d, want CodeRateLimited; msg=%s", pe.Code, pe.Message)
+	}
+	wait, _ := pe.Data["retry_after"].(string)
+	d, perr := time.ParseDuration(wait)
+	if perr != nil {
+		t.Fatalf("retry_after = %q did not parse: %v", wait, perr)
+	}
+	if d < 44*time.Minute || d > 46*time.Minute {
+		t.Fatalf("retry_after = %s, want roughly 45m (from X-RateLimit-Reset)", d)
+	}
+}
+
+// TestSecondaryRateLimitNeverFallsBackToClientsPrimaryReset covers the other
+// half of fix 2: a secondary-limit response carrying NO rate-limit headers
+// at all (a real shape GitHub sends) must not fall back to the Client's own
+// previously-noted PRIMARY reset either — that fallback exists for a primary
+// exhaustion that itself gave no Reset, not for an unrelated secondary
+// refusal that happens to follow a normal call.
+func TestSecondaryRateLimitNeverFallsBackToClientsPrimaryReset(t *testing.T) {
+	var secondary bool
+	reset := time.Now().Add(45 * time.Minute).Unix()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if !secondary {
+			w.Header().Set("X-RateLimit-Remaining", "4999")
+			w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(reset, 10))
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"You have triggered an abuse detection mechanism."}`))
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	kit, err := NewClient(Config{WriteToken: "t", APIBase: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	// An ordinary successful call lets the Client note a PRIMARY reset far
+	// in the future (noteRateLimit, from the response headers).
+	if err := kit.get(ctx, "t", ts.URL+"/warmup", nil); err != nil {
+		t.Fatalf("priming the client's noted primary reset: %v", err)
+	}
+	secondary = true
+	_, ierr := kit.Invoke(ctx, "create_pr", createPROpts())
+	pe := asContractError(t, ierr)
+	if pe.Code != plugin.CodeRateLimited {
+		t.Fatalf("code = %d, want CodeRateLimited; msg=%s", pe.Code, pe.Message)
+	}
+	if got := pe.Data["retry_after"]; got != "1m0s" {
+		t.Fatalf("retry_after = %#v, want %q (must not fall back to the client's previously-noted PRIMARY reset)", got, "1m0s")
+	}
+}
+
+// TestAbuseWordInUnrelatedMessageIsNotRateLimited covers fix 3: narrowing
+// looksLikeSecondaryRateLimit off the bare "abuse" substring. A 403 whose
+// message happens to use that word in some unrelated sense (content
+// moderation, say) must NOT be classified rate_limited — only GitHub's own
+// secondary-limit/abuse-detection wording should be.
+func TestAbuseWordInUnrelatedMessageIsNotRateLimited(t *testing.T) {
+	ts := canned(t, http.StatusForbidden, nil, `{"message":"This content was flagged as abuse and removed."}`)
+	kit, err := NewClient(Config{WriteToken: "t", APIBase: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, ierr := kit.Invoke(context.Background(), "create_pr", createPROpts())
+	pe := asContractError(t, ierr)
+	if pe.Code != plugin.CodeUpstream {
+		t.Fatalf("code = %d, want CodeUpstream (not rate_limited — \"abuse\" here is unrelated to GitHub's rate-limit wording); msg=%s", pe.Code, pe.Message)
+	}
+	if retryable, _ := pe.Data["retryable"].(bool); retryable {
+		t.Fatal("retryable = true, want false (a plain, non-rate-limited 403)")
 	}
 }
 
