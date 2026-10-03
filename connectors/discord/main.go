@@ -36,10 +36,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -221,7 +223,7 @@ func invokePost(conn discordConn, o map[string]any) (plugin.InvokeResult, error)
 			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, "post: set bot_token or webhook_url")
 		}
 		if err := postWebhook(conn.WebhookURL, text); err != nil {
-			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, "post: "+err.Error())
+			return plugin.InvokeResult{}, wrapUpstream("post: ", err)
 		}
 		return plugin.InvokeResult{Outputs: map[string]any{"id": "", "channel": ""}}, nil
 	}
@@ -233,13 +235,13 @@ func invokePost(conn discordConn, o map[string]any) (plugin.InvokeResult, error)
 	if channel == "" {
 		dm, err := openDM(conn, user)
 		if err != nil {
-			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, "post: open dm: "+err.Error())
+			return plugin.InvokeResult{}, wrapUpstream("post: open dm: ", err)
 		}
 		channel = dm
 	}
 	id, err := postMessage(conn, channel, text)
 	if err != nil {
-		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, "post: "+err.Error())
+		return plugin.InvokeResult{}, wrapUpstream("post: ", err)
 	}
 	return plugin.InvokeResult{Outputs: map[string]any{"id": id, "channel": channel}}, nil
 }
@@ -270,7 +272,7 @@ func invokeAsk(conn discordConn, o map[string]any) (plugin.InvokeResult, error) 
 		}
 		dm, err := openDM(conn, user)
 		if err != nil {
-			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, "ask: open dm: "+err.Error())
+			return plugin.InvokeResult{}, wrapUpstream("ask: open dm: ", err)
 		}
 		channel = dm
 	case "thread":
@@ -284,7 +286,7 @@ func invokeAsk(conn discordConn, o map[string]any) (plugin.InvokeResult, error) 
 
 	msgID, err := postMessage(conn, channel, renderAsk(title, body))
 	if err != nil {
-		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, "ask: "+err.Error())
+		return plugin.InvokeResult{}, wrapUpstream("ask: ", err)
 	}
 	// channel alone collides two concurrent asks in the same channel (and,
 	// worse, the same thread/DM reused for a later ask) onto one
@@ -353,14 +355,7 @@ func discordCall(conn discordConn, method, path string, payload any) (map[string
 		return nil, fmt.Errorf("reading response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		var eb struct {
-			Message string `json:"message"`
-		}
-		_ = json.Unmarshal(raw, &eb)
-		if eb.Message != "" {
-			return nil, fmt.Errorf("%s %s: %s (%d)", method, path, eb.Message, resp.StatusCode)
-		}
-		return nil, fmt.Errorf("%s %s: unexpected status %d", method, path, resp.StatusCode)
+		return nil, discordAPIError(method, path, resp, raw)
 	}
 	var out map[string]any
 	if len(raw) > 0 {
@@ -369,6 +364,75 @@ func discordCall(conn discordConn, method, path string, payload any) (map[string
 		}
 	}
 	return out, nil
+}
+
+// discordErrBody is Discord's REST error envelope: {"message", "code"} on a
+// normal error, plus "retry_after" (seconds, possibly fractional) and
+// "global" on a 429.
+// https://discord.com/developers/docs/topics/opcodes-and-status-codes#json-error-codes
+type discordErrBody struct {
+	Message    string  `json:"message"`
+	Code       int     `json:"code"`
+	RetryAfter float64 `json:"retry_after"`
+}
+
+// Discord JSON error codes this classifies specifically — the rest stay a
+// plain error, same as before classification existed.
+const (
+	discordErrUnknownChannel = 10003
+	discordErrUnknownMessage = 10008
+)
+
+// discordAPIError classifies a non-2xx Discord REST answer into the plugin
+// contract's error codes (plugin-contract.md §1.11) where Discord's own
+// answer makes the code knowable: 429 is rate_limited, retry_after from the
+// body's own retry_after (Discord always sends this on a 429, in fractional
+// seconds) falling back to the Retry-After header; "Unknown Channel" and
+// "Unknown Message" are the addressed channel/message having gone away —
+// target_gone. Everything else is left as a plain error.
+func discordAPIError(method, path string, resp *http.Response, raw []byte) error {
+	var eb discordErrBody
+	_ = json.Unmarshal(raw, &eb)
+	if resp.StatusCode == http.StatusTooManyRequests {
+		wait := eb.RetryAfter
+		if wait <= 0 {
+			if ra := resp.Header.Get("Retry-After"); ra != "" {
+				if f, err := strconv.ParseFloat(strings.TrimSpace(ra), 64); err == nil {
+					wait = f
+				}
+			}
+		}
+		data := map[string]any{}
+		if wait > 0 {
+			data["retry_after"] = time.Duration(wait * float64(time.Second)).String()
+		}
+		msg := eb.Message
+		if msg == "" {
+			msg = "You are being rate limited."
+		}
+		return plugin.Fail(plugin.CodeRateLimited, fmt.Sprintf("%s %s: %s", method, path, msg), data)
+	}
+	switch eb.Code {
+	case discordErrUnknownChannel, discordErrUnknownMessage:
+		return plugin.Fail(plugin.CodeTargetGone, fmt.Sprintf("%s %s: %s", method, path, eb.Message), nil)
+	}
+	if eb.Message != "" {
+		return fmt.Errorf("%s %s: %s (%d)", method, path, eb.Message, resp.StatusCode)
+	}
+	return fmt.Errorf("%s %s: unexpected status %d", method, path, resp.StatusCode)
+}
+
+// wrapUpstream turns a REST call's error into the verb's answer: a contract
+// code discordAPIError already classified (rate_limited, target_gone) is
+// passed through as-is — the engine's retry/stop behavior is keyed on it —
+// anything else falls back to the generic internal error the call sites used
+// before classification existed.
+func wrapUpstream(prefix string, err error) error {
+	var pe *plugin.Error
+	if errors.As(err, &pe) {
+		return pe
+	}
+	return plugin.Errorf(plugin.CodeInternalError, prefix+err.Error())
 }
 
 // postMessage sends text to channel via POST /channels/{id}/messages and

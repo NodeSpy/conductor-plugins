@@ -18,6 +18,7 @@ package ghplugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -89,6 +90,15 @@ func (p *Plugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeResult, error) {
 	}
 	out, err := kit.Invoke(context.Background(), req.Verb, req.Options)
 	if err != nil {
+		// A verb call that answered with one of the contract's own codes
+		// (plugin-contract.md §1.11 — target_gone, invalid, rate_limited,
+		// upstream, not_ready) must reach the daemon as that code, not as a
+		// generic internal error: the engine's stop/retry/never-retry
+		// behavior for each is keyed on it.
+		var ce *plugin.Error
+		if errors.As(err, &ce) {
+			return plugin.InvokeResult{}, ce
+		}
 		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, err.Error())
 	}
 	if req.Verb == "set_status" {

@@ -4,12 +4,26 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/NodeSpy/conductor/pkg/plugin"
 )
+
+// wrapUpstream turns a slackAPI call's error into the verb's answer: a
+// contract code slackAPIError already classified (rate_limited, target_gone)
+// is passed through as-is — the engine's retry/stop behavior is keyed on it —
+// anything else falls back to the generic upstream error the call sites used
+// before classification existed.
+func wrapUpstream(prefix string, err error) error {
+	var pe *plugin.Error
+	if errors.As(err, &pe) {
+		return pe
+	}
+	return plugin.Errorf(plugin.CodeUpstream, prefix+err.Error())
+}
 
 func (p *Plugin) postVerb(ctx context.Context, api *slackAPI, botToken, webhookURL string, opts map[string]any) (plugin.InvokeResult, error) {
 	channel, _ := opts["channel"].(string)
@@ -25,7 +39,7 @@ func (p *Plugin) postVerb(ctx context.Context, api *slackAPI, botToken, webhookU
 			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, "slack.post: connection needs bot_token or webhook_url")
 		}
 		if err := postIncomingWebhook(ctx, api.httpc, webhookURL, map[string]string{"text": text}); err != nil {
-			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeUpstream, "slack.post: "+err.Error())
+			return plugin.InvokeResult{}, wrapUpstream("slack.post: ", err)
 		}
 		return plugin.InvokeResult{Outputs: map[string]any{"ts": "", "channel": ""}}, nil
 	}
@@ -37,21 +51,21 @@ func (p *Plugin) postVerb(ctx context.Context, api *slackAPI, botToken, webhookU
 			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, "slack.post: ephemeral needs both channel and user")
 		}
 		if err := api.postEphemeral(ctx, channel, user, text); err != nil {
-			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeUpstream, err.Error())
+			return plugin.InvokeResult{}, wrapUpstream("slack.post: ", err)
 		}
 		return plugin.InvokeResult{Outputs: map[string]any{"ts": "", "channel": channel}}, nil
 	}
 	if channel == "" {
 		dm, err := api.openDM(ctx, user)
 		if err != nil {
-			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeUpstream, "slack.post: open dm: "+err.Error())
+			return plugin.InvokeResult{}, wrapUpstream("slack.post: open dm: ", err)
 		}
 		channel = dm
 	}
 	threadTS, _ := opts["thread_ts"].(string)
 	ts, err := api.postMessage(ctx, channel, threadTS, text)
 	if err != nil {
-		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeUpstream, err.Error())
+		return plugin.InvokeResult{}, wrapUpstream("slack.post: ", err)
 	}
 	return plugin.InvokeResult{Outputs: map[string]any{"ts": ts, "channel": channel}}, nil
 }
@@ -67,7 +81,7 @@ func (p *Plugin) reactVerb(ctx context.Context, api *slackAPI, botToken string, 
 		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, "slack.react: options.channel, ts, and emoji are required")
 	}
 	if err := api.react(ctx, channel, ts, strings.Trim(emoji, ":")); err != nil {
-		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeUpstream, err.Error())
+		return plugin.InvokeResult{}, wrapUpstream("slack.react: ", err)
 	}
 	return plugin.InvokeResult{Outputs: map[string]any{"ok": true}}, nil
 }
@@ -97,11 +111,11 @@ func (p *Plugin) askVerb(ctx context.Context, api *slackAPI, botToken string, op
 		}
 		channel, err := api.openDM(ctx, user)
 		if err != nil {
-			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeUpstream, "slack.ask: open dm: "+err.Error())
+			return plugin.InvokeResult{}, wrapUpstream("slack.ask: open dm: ", err)
 		}
 		ts, err := api.postMessage(ctx, channel, "", text)
 		if err != nil {
-			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeUpstream, "slack.ask: post: "+err.Error())
+			return plugin.InvokeResult{}, wrapUpstream("slack.ask: post: ", err)
 		}
 		return plugin.InvokeResult{Outputs: map[string]any{
 			"conversation_id": channel + ":", "ref": "slack:" + channel + ":dm", "ts": ts, "channel": channel,
@@ -113,7 +127,7 @@ func (p *Plugin) askVerb(ctx context.Context, api *slackAPI, botToken string, op
 		}
 		ts, err := api.postMessage(ctx, channel, "", text)
 		if err != nil {
-			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeUpstream, "slack.ask: post: "+err.Error())
+			return plugin.InvokeResult{}, wrapUpstream("slack.ask: post: ", err)
 		}
 		return plugin.InvokeResult{Outputs: map[string]any{
 			"conversation_id": channel + ":" + ts, "ref": "slack:" + channel + ":" + ts, "ts": ts, "channel": channel,

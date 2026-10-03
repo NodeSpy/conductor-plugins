@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -74,6 +75,10 @@ func (p *Plugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeResult, error) {
 		}
 		out, err := p.threadVerb(ctx, api, req.Options)
 		if err != nil {
+			var pe *plugin.Error
+			if errors.As(err, &pe) {
+				return plugin.InvokeResult{}, pe
+			}
 			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, err.Error())
 		}
 		return plugin.InvokeResult{Outputs: out}, nil
@@ -83,6 +88,10 @@ func (p *Plugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeResult, error) {
 		}
 		out, err := p.downloadVerb(ctx, api, req.Options, req.Staging)
 		if err != nil {
+			var pe *plugin.Error
+			if errors.As(err, &pe) {
+				return plugin.InvokeResult{}, pe
+			}
 			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, err.Error())
 		}
 		return plugin.InvokeResult{Outputs: out}, nil

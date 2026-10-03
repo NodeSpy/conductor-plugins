@@ -147,7 +147,10 @@ func (a *AppAuth) installationIDByURL(ctx context.Context, url string) (int64, e
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
-		return 0, fmt.Errorf("installation lookup %s: HTTP %d", url, resp.StatusCode)
+		if isRateLimited(resp) {
+			return 0, rateLimitErrorForWait(retryAfter(resp))
+		}
+		return 0, ghHTTPError("GET", url, resp)
 	}
 	var out struct {
 		ID int64 `json:"id"`
@@ -188,7 +191,10 @@ func (a *AppAuth) InstallationToken(ctx context.Context, instID int64) (string, 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
-		return "", fmt.Errorf("installation token: HTTP %d", resp.StatusCode)
+		if isRateLimited(resp) {
+			return "", rateLimitErrorForWait(retryAfter(resp))
+		}
+		return "", ghHTTPError("POST", url, resp)
 	}
 	var out struct {
 		Token     string    `json:"token"`

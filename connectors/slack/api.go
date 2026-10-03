@@ -8,9 +8,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/NodeSpy/conductor/pkg/plugin"
 )
 
 // defaultAPIBase is the real Slack Web API. A connection's api_base field
@@ -67,7 +70,7 @@ func (a *slackAPI) call(ctx context.Context, method string, payload map[string]a
 		return fmt.Errorf("slack %s: HTTP %d: %w", method, resp.StatusCode, err)
 	}
 	if !env.OK {
-		return fmt.Errorf("slack %s: %s", method, env.Error)
+		return slackAPIError(method, resp, env.Error)
 	}
 	if out != nil {
 		return json.Unmarshal(raw, out)
@@ -99,9 +102,40 @@ func (a *slackAPI) get(ctx context.Context, method string, params url.Values, ou
 		return fmt.Errorf("slack %s: HTTP %d: %w", method, resp.StatusCode, err)
 	}
 	if !env.OK {
-		return fmt.Errorf("slack %s: %s", method, env.Error)
+		return slackAPIError(method, resp, env.Error)
 	}
 	return json.Unmarshal(raw, out)
+}
+
+// slackAPIError classifies a Web API failure into the plugin contract's
+// error codes (plugin-contract.md §1.11) where Slack's own answer makes the
+// code knowable: a 429 (or the "ratelimited" envelope error some methods use
+// without necessarily pairing it with one) is rate_limited, with retry_after
+// from Retry-After when Slack sent it; "channel_not_found" and
+// "message_not_found" are the addressed channel/message having gone away —
+// target_gone. Everything else is left as a plain error: Slack's error
+// strings are a large, evolving vocabulary (invalid_auth, missing_scope,
+// not_in_channel, …) and most of them aren't cleanly one contract bucket or
+// another.
+func slackAPIError(method string, resp *http.Response, envErr string) error {
+	switch {
+	case resp.StatusCode == http.StatusTooManyRequests || envErr == "ratelimited":
+		data := map[string]any{}
+		if ra := resp.Header.Get("Retry-After"); ra != "" {
+			if n, err := strconv.Atoi(strings.TrimSpace(ra)); err == nil && n >= 0 {
+				data["retry_after"] = (time.Duration(n) * time.Second).String()
+			}
+		}
+		msg := envErr
+		if msg == "" {
+			msg = "ratelimited"
+		}
+		return plugin.Fail(plugin.CodeRateLimited, fmt.Sprintf("slack %s: %s", method, msg), data)
+	case envErr == "channel_not_found", envErr == "message_not_found":
+		return plugin.Fail(plugin.CodeTargetGone, fmt.Sprintf("slack %s: %s", method, envErr), nil)
+	default:
+		return fmt.Errorf("slack %s: %s", method, envErr)
+	}
 }
 
 func (a *slackAPI) postMessage(ctx context.Context, channel, threadTS, text string) (string, error) {

@@ -53,7 +53,7 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 		err := c.post(ctx, tok, fmt.Sprintf("%s/repos/%s/issues/%d/comments", base, repo, number),
 			map[string]any{"body": opts["body"]}, &out)
 		if err != nil {
-			return nil, err
+			return nil, remapTargetGone(err)
 		}
 		return map[string]any{"id": out.ID, "url": out.HTMLURL}, nil
 	case "reply":
@@ -127,7 +127,7 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 			return map[string]any{"ok": true, "skipped": "reviewer is not a collaborator"}, nil
 		}
 		if err != nil {
-			return nil, err
+			return nil, remapTargetGone(err)
 		}
 		return map[string]any{"ok": true}, nil
 	case "submit_review":
@@ -153,7 +153,7 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 			body["comments"] = comments
 		}
 		if err := c.post(ctx, tok, fmt.Sprintf("%s/repos/%s/pulls/%d/reviews", base, repo, number), body, &out); err != nil {
-			return nil, err
+			return nil, remapTargetGone(err)
 		}
 		return map[string]any{"id": out.ID, "comments": len(comments)}, nil
 	case "pr_head":
@@ -173,7 +173,7 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 		}
 		diff, err := c.getText(ctx, tok, fmt.Sprintf("%s/repos/%s/pulls/%d", base, repo, number), "application/vnd.github.diff")
 		if err != nil {
-			return nil, err
+			return nil, remapTargetGone(err)
 		}
 		return map[string]any{"diff": diff}, nil
 	case "pr_get":
@@ -206,7 +206,7 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 			} `json:"labels"`
 		}
 		if err := c.get(ctx, tok, fmt.Sprintf("%s/repos/%s/pulls/%d", base, repo, number), &pr); err != nil {
-			return nil, err
+			return nil, remapTargetGone(err)
 		}
 		labels := make([]string, 0, len(pr.Labels))
 		for _, l := range pr.Labels {
@@ -251,7 +251,7 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 			return len(raw), nil
 		})
 		if err != nil {
-			return nil, err
+			return nil, remapTargetGone(err)
 		}
 		approvers := []string{}
 		changesRequested := false
@@ -301,7 +301,7 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 			return len(raw), nil
 		})
 		if err != nil {
-			return nil, err
+			return nil, remapTargetGone(err)
 		}
 		return map[string]any{"files": files}, nil
 	case "review_comments":
@@ -338,7 +338,7 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 			return len(raw), nil
 		})
 		if err != nil {
-			return nil, err
+			return nil, remapTargetGone(err)
 		}
 		return map[string]any{"comments": comments}, nil
 	case "file":
@@ -387,6 +387,9 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 		if number == 0 {
 			return nil, fmt.Errorf("github.merge_pr: options.pr is required")
 		}
+		if err := c.checkMergeReady(ctx, tok, base, repo, number); err != nil {
+			return nil, err
+		}
 		reqBody := map[string]any{}
 		if m, _ := opts["method"].(string); m != "" {
 			reqBody["merge_method"] = m
@@ -405,7 +408,10 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 			SHA    string `json:"sha"`
 		}
 		if err := c.put(ctx, tok, fmt.Sprintf("%s/repos/%s/pulls/%d/merge", base, repo, number), reqBody, &out); err != nil {
-			return nil, err
+			// The common cases (already merged/closed, mergeability still
+			// computing) were already caught by checkMergeReady above; this
+			// only remaps the race where the PR went away in between.
+			return nil, remapTargetGone(err)
 		}
 		return map[string]any{"merged": out.Merged, "sha": out.SHA}, nil
 	case "update_pr":
@@ -421,7 +427,7 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 			State  string `json:"state"`
 		}
 		if err := c.patch(ctx, tok, fmt.Sprintf("%s/repos/%s/pulls/%d", base, repo, number), reqBody, &out); err != nil {
-			return nil, err
+			return nil, remapTargetGone(err)
 		}
 		return map[string]any{"number": out.Number, "state": out.State}, nil
 	case "create_issue":
@@ -460,7 +466,7 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 			State  string `json:"state"`
 		}
 		if err := c.patch(ctx, tok, fmt.Sprintf("%s/repos/%s/issues/%d", base, repo, number), reqBody, &out); err != nil {
-			return nil, err
+			return nil, remapTargetGone(err)
 		}
 		return map[string]any{"number": out.Number, "state": out.State}, nil
 	case "assign":
@@ -479,12 +485,12 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 		u := fmt.Sprintf("%s/repos/%s/issues/%d/assignees", base, repo, number)
 		if len(add) > 0 {
 			if err := c.send(ctx, http.MethodPost, tok, u, map[string]any{"assignees": add}, &out); err != nil {
-				return nil, err
+				return nil, remapTargetGone(err)
 			}
 		}
 		if len(rem) > 0 {
 			if err := c.send(ctx, http.MethodDelete, tok, u, map[string]any{"assignees": rem}, &out); err != nil {
-				return nil, err
+				return nil, remapTargetGone(err)
 			}
 		}
 		logins := make([]string, 0, len(out.Assignees))
@@ -502,7 +508,9 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 		}
 		u := fmt.Sprintf("%s/repos/%s/issues/%d/labels/%s", base, repo, number, url.PathEscape(label))
 		if err := c.del(ctx, tok, u, nil); err != nil {
-			return nil, err
+			// "Label does not exist" means the issue is still there, just
+			// without that label — not the issue/PR itself being gone.
+			return nil, remapGoneIfMissing(err, "Label does not exist")
 		}
 		return map[string]any{"ok": true}, nil
 	case "get_issue":
@@ -525,7 +533,7 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 			} `json:"assignees"`
 		}
 		if err := c.get(ctx, tok, fmt.Sprintf("%s/repos/%s/issues/%d", base, repo, number), &iss); err != nil {
-			return nil, err
+			return nil, remapTargetGone(err)
 		}
 		labels := make([]string, 0, len(iss.Labels))
 		for _, l := range iss.Labels {
@@ -936,7 +944,7 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 			NodeID string `json:"node_id"`
 		}
 		if err := c.get(ctx, tok, fmt.Sprintf("%s/repos/%s/pulls/%d", base, repo, number), &pr); err != nil {
-			return nil, err
+			return nil, remapTargetGone(err)
 		}
 		if pr.NodeID == "" {
 			return nil, fmt.Errorf("github.%s: could not resolve the PR's node id", verb)
@@ -1071,7 +1079,7 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 		}
 		if err := c.post(ctx, tok, fmt.Sprintf("%s/repos/%s/issues/%d/labels", base, repo, number),
 			map[string]any{"labels": labels}, nil); err != nil {
-			return nil, err
+			return nil, remapTargetGone(err)
 		}
 		return map[string]any{"ok": true}, nil
 	}
