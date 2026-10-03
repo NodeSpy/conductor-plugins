@@ -2,6 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"net"
+	"path"
+	"strings"
 	"testing"
 
 	"github.com/NodeSpy/conductor/pkg/plugin"
@@ -90,4 +93,46 @@ func TestDeclBasics(t *testing.T) {
 	if !scopedChannel || !scopedUser {
 		t.Fatalf("app_mention target must scope channel and user: %+v", mention.Semantics.Target.Scope)
 	}
+}
+
+// TestEgressCoversSlackSubdomains is the regression test for finding #11:
+// the Web API lives on the bare slack.com host, but Socket Mode's WSS URL
+// (apps.connections.open returns something like wss-primary.slack.com) and
+// Slack's file download/upload URLs are on subdomains — a declared egress of
+// only "slack.com:443" would have conductor's sandbox block both.
+func TestEgressCoversSlackSubdomains(t *testing.T) {
+	egress := Decl().Capabilities.Egress
+	for _, hostport := range []string{"slack.com:443", "wss-primary.slack.com:443", "files.slack.com:443"} {
+		if !egressAllows(egress, hostport) {
+			t.Errorf("declared egress %v does not allow %q", egress, hostport)
+		}
+	}
+	// A host under a different domain must still be refused.
+	if egressAllows(egress, "evil.example:443") {
+		t.Errorf("declared egress %v wrongly allows an unrelated host", egress)
+	}
+}
+
+// egressAllows mirrors conductor's internal/sandbox.go EgressAllowed
+// matching semantics (a host glob via path.Match, port defaulting to 443)
+// closely enough for this test — that package is internal to the conductor
+// module and not importable from here.
+func egressAllows(allow []string, hostport string) bool {
+	host, port, err := net.SplitHostPort(hostport)
+	if err != nil {
+		host, port = hostport, "443"
+	}
+	for _, pat := range allow {
+		ph, pp, err := net.SplitHostPort(pat)
+		if err != nil {
+			ph, pp = pat, "443"
+		}
+		if pp != port {
+			continue
+		}
+		if ok, _ := path.Match(strings.ToLower(ph), strings.ToLower(host)); ok {
+			return true
+		}
+	}
+	return false
 }

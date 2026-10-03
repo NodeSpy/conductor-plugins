@@ -192,8 +192,13 @@ func Decl() plugin.Decl {
 			},
 		},
 		// Socket Mode dials out to Slack only; it listens on nothing and
-		// spawns nothing.
-		Capabilities: plugin.Capabilities{Egress: []string{"slack.com:443"}},
+		// spawns nothing. The Web API lives on slack.com itself, but the
+		// Socket Mode WSS URL apps.connections.open returns, and Slack's
+		// file download/upload URLs, are on subdomains (wss-primary.slack.com
+		// and files.slack.com, among others) — declaring only the bare host
+		// would have conductor's egress sandbox (internal/sandbox.go,
+		// EgressAllowed) block them.
+		Capabilities: plugin.Capabilities{Egress: []string{"slack.com:443", "*.slack.com:443"}},
 	}
 }
 
