@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NodeSpy/conductor-plugins/internal/exposurekit"
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
 )
 
@@ -210,6 +211,31 @@ sleep 30`)
 	}
 	if p.leases.Len() != 1 {
 		t.Fatalf("leases after stop a = %d, want 1", p.leases.Len())
+	}
+}
+
+// TestOpenRejectsPastTheLeaseCap is the connector-level half of finding #8
+// (no cap on concurrent leases per instance): once an instance holds
+// exposurekit.DefaultMaxLeasesPerInstance open leases, one more "open" must
+// fail with a clear error instead of spawning yet another cloudflared.
+func TestOpenRejectsPastTheLeaseCap(t *testing.T) {
+	stubTool(t, "cloudflared", `echo https://a.trycloudflare.com
+sleep 30`)
+	p := newCloudflaredPlugin()
+	for i := 0; i < exposurekit.DefaultMaxLeasesPerInstance; i++ {
+		if _, err := p.Invoke(plugin.InvokeRequest{Instance: "tun", Verb: "open", Options: map[string]any{"local_addr": "127.0.0.1:8099"}, Connection: map[string]any{"start_timeout": "5s"}}); err != nil {
+			t.Fatalf("lease %d: unexpected error: %v", i, err)
+		}
+	}
+	if p.leases.Len() != exposurekit.DefaultMaxLeasesPerInstance {
+		t.Fatalf("leases = %d, want %d", p.leases.Len(), exposurekit.DefaultMaxLeasesPerInstance)
+	}
+	if _, err := p.Invoke(plugin.InvokeRequest{Instance: "tun", Verb: "open", Options: map[string]any{"local_addr": "127.0.0.1:8099"}, Connection: map[string]any{"start_timeout": "5s"}}); err == nil {
+		t.Fatal("expected an error past the cap, got none")
+	}
+	// The rejected open must not have left a dangling process/lease behind.
+	if p.leases.Len() != exposurekit.DefaultMaxLeasesPerInstance {
+		t.Fatalf("leases after the rejected open = %d, want %d", p.leases.Len(), exposurekit.DefaultMaxLeasesPerInstance)
 	}
 }
 

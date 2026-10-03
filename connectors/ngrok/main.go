@@ -119,6 +119,7 @@ func (p *ngrokPlugin) open(req plugin.InvokeRequest) (plugin.InvokeResult, error
 
 	procCtx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(procCtx, argv[0], argv[1:]...)
+	exposurekit.SetNewProcessGroup(cmd)
 	// Read via explicit pipes (not cmd.Stdout/Stderr writers): ngrok may
 	// leave grandchildren holding the pipe's write end open, and Cmd.Wait
 	// with a plain io.Writer blocks until EOF on that pipe — i.e. until
@@ -158,14 +159,21 @@ func (p *ngrokPlugin) open(req plugin.InvokeRequest) (plugin.InvokeResult, error
 	}
 	go capture(stdout)
 	go capture(stderr)
+	// Always reap in the background, not only when stop() is called: ngrok
+	// exiting on its own (crash, killed by something else) would otherwise
+	// leave a zombie until close/plugin.stop happens to run cmd.Wait() —
+	// which, for a tunnel nobody explicitly closes, may be never.
+	reaped := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(reaped)
+	}()
 	var once sync.Once
 	stop := func() {
 		once.Do(func() {
 			cancel()
-			if cmd.Process != nil {
-				_ = cmd.Process.Kill()
-			}
-			_ = cmd.Wait()
+			exposurekit.KillProcessGroup(cmd)
+			<-reaped
 		})
 	}
 
@@ -178,7 +186,11 @@ func (p *ngrokPlugin) open(req plugin.InvokeRequest) (plugin.InvokeResult, error
 		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeUpstream,
 			fmt.Sprintf("ngrok: %v (output so far: %s)", pollErr, output), nil)
 	}
-	lease := p.leases.Add(req.Instance, stop)
+	lease, err := p.leases.AddCapped(req.Instance, stop, exposurekit.DefaultMaxLeasesPerInstance)
+	if err != nil {
+		stop()
+		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeInvalid, "ngrok: "+err.Error(), nil)
+	}
 	return plugin.InvokeResult{Outputs: map[string]any{"public_url": url, "lease": lease}}, nil
 }
 
@@ -238,7 +250,10 @@ func parseNgrokTunnelsResponse(body []byte) (string, error) {
 }
 
 func main() {
-	if err := plugin.Serve(newNgrokPlugin()); err != nil {
+	p := newNgrokPlugin()
+	err := plugin.Serve(p)
+	p.leases.ReleaseAll()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "conductor-ngrok:", err)
 		os.Exit(1)
 	}

@@ -120,7 +120,11 @@ func (p *sshtunnelPlugin) open(req plugin.InvokeRequest) (plugin.InvokeResult, e
 	if err != nil {
 		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeUpstream, "sshtunnel: "+err.Error(), nil)
 	}
-	lease := p.leases.Add(req.Instance, stop)
+	lease, err := p.leases.AddCapped(req.Instance, stop, exposurekit.DefaultMaxLeasesPerInstance)
+	if err != nil {
+		stop()
+		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeInvalid, "sshtunnel: "+err.Error(), nil)
+	}
 	return plugin.InvokeResult{Outputs: map[string]any{"public_url": url, "lease": lease}}, nil
 }
 
@@ -173,7 +177,10 @@ func sshArgv(a sshArgs) []string {
 }
 
 func main() {
-	if err := plugin.Serve(newSSHTunnelPlugin()); err != nil {
+	p := newSSHTunnelPlugin()
+	err := plugin.Serve(p)
+	p.leases.ReleaseAll()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "conductor-sshtunnel:", err)
 		os.Exit(1)
 	}

@@ -758,7 +758,11 @@ func (p *tailscalePlugin) funnelOpen(req plugin.InvokeRequest) (plugin.InvokeRes
 		}
 		_, _ = exposurekit.RunOnce(context.Background(), []string{binary, mode, "--https=443", "off"}, 10*time.Second)
 	}
-	lease := p.leases.Add(req.Instance, stop)
+	lease, err := p.leases.AddCapped(req.Instance, stop, exposurekit.DefaultMaxLeasesPerInstance)
+	if err != nil {
+		stop()
+		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeInvalid, "tailscale: "+err.Error(), nil)
+	}
 	return plugin.InvokeResult{Outputs: map[string]any{"public_url": url, "lease": lease}}, nil
 }
 
@@ -813,7 +817,10 @@ func parseTailscaleDNSName(body []byte) (string, error) {
 }
 
 func main() {
-	if err := plugin.Serve(newTailscalePlugin()); err != nil {
+	p := newTailscalePlugin()
+	err := plugin.Serve(p)
+	p.leases.ReleaseAll()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "conductor-tailscale:", err)
 		os.Exit(1)
 	}

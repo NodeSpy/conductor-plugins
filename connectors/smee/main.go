@@ -184,7 +184,11 @@ func (p *smeePlugin) open(req plugin.InvokeRequest) (plugin.InvokeResult, error)
 		cancel()
 		<-done
 	}
-	lease := p.leases.Add(req.Instance, stop)
+	lease, err := p.leases.AddCapped(req.Instance, stop, exposurekit.DefaultMaxLeasesPerInstance)
+	if err != nil {
+		stop()
+		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeInvalid, "smee: "+err.Error(), nil)
+	}
 	return plugin.InvokeResult{Outputs: map[string]any{"public_url": channel, "lease": lease}}, nil
 }
 
@@ -347,7 +351,10 @@ func replayFrame(client *http.Client, target string, headers map[string]string, 
 }
 
 func main() {
-	if err := plugin.Serve(newSmeePlugin()); err != nil {
+	p := newSmeePlugin()
+	err := plugin.Serve(p)
+	p.leases.ReleaseAll()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "conductor-smee:", err)
 		os.Exit(1)
 	}

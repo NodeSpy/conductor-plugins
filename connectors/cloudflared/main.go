@@ -162,12 +162,23 @@ func (p *cloudflaredPlugin) open(req plugin.InvokeRequest) (plugin.InvokeResult,
 	if runErr != nil {
 		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeUpstream, "cloudflared: "+runErr.Error(), nil)
 	}
-	lease := p.leases.Add(req.Instance, stop)
+	lease, err := p.leases.AddCapped(req.Instance, stop, exposurekit.DefaultMaxLeasesPerInstance)
+	if err != nil {
+		stop()
+		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeInvalid, "cloudflared: "+err.Error(), nil)
+	}
 	return plugin.InvokeResult{Outputs: map[string]any{"public_url": url, "lease": lease}}, nil
 }
 
 func main() {
-	if err := plugin.Serve(newCloudflaredPlugin()); err != nil {
+	p := newCloudflaredPlugin()
+	err := plugin.Serve(p)
+	// The plugin contract requires every child this plugin spawned to die
+	// when stdin closes; Serve returning here (clean EOF or not) is that
+	// signal, and a per-instance "stop" RPC is not guaranteed to have run
+	// for everything first.
+	p.leases.ReleaseAll()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "conductor-cloudflared:", err)
 		os.Exit(1)
 	}

@@ -33,12 +33,19 @@ import (
 	"net"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
 )
+
+// DefaultMaxLeasesPerInstance bounds how many concurrent exposures a single
+// instance may hold open. Without a cap, a misconfigured caller (or a bug
+// that retries "open" without ever calling "close") can spawn an unbounded
+// number of tunnel subprocesses.
+const DefaultMaxLeasesPerInstance = 16
 
 // Exposes is the verb-semantics value every exposure plugin's "open" verb
 // declares: {local: "local_addr", url: "public_url", lease: "lease",
@@ -107,6 +114,33 @@ func (l *Leases) Add(instance string, stop func()) string {
 	return id
 }
 
+// AddCapped is Add with a per-instance cap: if instance already holds max
+// open leases, it returns an error instead of adding one (the caller is
+// responsible for tearing down whatever it already started — the stub
+// subprocess, the relay goroutine — before returning that error, since this
+// call never takes ownership of stop). The check and the add happen under
+// one lock, so concurrent opens for the same instance cannot both slip past
+// the cap.
+func (l *Leases) AddCapped(instance string, stop func(), max int) (string, error) {
+	l.mu.Lock()
+	n := 0
+	for _, e := range l.m {
+		if e.instance == instance {
+			n++
+		}
+	}
+	if n >= max {
+		l.mu.Unlock()
+		return "", fmt.Errorf("too many open leases for instance %q (max %d); close one before opening another", instance, max)
+	}
+	b := make([]byte, 12)
+	_, _ = rand.Read(b)
+	id := hex.EncodeToString(b)
+	l.m[id] = &entry{instance: instance, stop: stop}
+	l.mu.Unlock()
+	return id, nil
+}
+
 // Release ends one lease (the "close" verb). A second call, or an unknown
 // id, is a no-op — close must be idempotent.
 func (l *Leases) Release(id string) {
@@ -135,6 +169,26 @@ func (l *Leases) StopInstance(instance string) {
 	}
 }
 
+// ReleaseAll releases every open lease, regardless of instance. The plugin
+// contract (docs/design/plugin-contract.md §"stdin closes": the plugin kills
+// its children when stdin closes) requires this on the way out: pkg/plugin's
+// Serve returns plainly on a clean stdin EOF with no per-instance "stop"
+// guaranteed to have run first, so a main that just exits after Serve leaves
+// every still-open tunnel subprocess running, reparented to init. Every
+// exposure plugin's main must call this after Serve returns, before the
+// process exits.
+func (l *Leases) ReleaseAll() {
+	l.mu.Lock()
+	ids := make([]string, 0, len(l.m))
+	for id := range l.m {
+		ids = append(ids, id)
+	}
+	l.mu.Unlock()
+	for _, id := range ids {
+		l.Release(id)
+	}
+}
+
 // Len reports how many leases are open (tests, status).
 func (l *Leases) Len() int {
 	l.mu.Lock()
@@ -147,11 +201,23 @@ func (l *Leases) Len() int {
 var DefaultURL = regexp.MustCompile(`https?://\S+`)
 
 // PortOf pulls the port out of a "host:port" (or ":port") address — every
-// spawning provider forwards to a local port.
+// spawning provider forwards to a local port, often by splicing the port
+// straight into a vendor CLI's argv (e.g. `tailscale serve --bg <port>`).
+// The port must be a bare 1-65535 number and the host (when present) must
+// not start with '-': either one landing in argv unchecked lets a crafted
+// local_addr inject an extra flag into that argv instead of being read as an
+// address.
 func PortOf(addr string) (string, error) {
-	_, port, err := net.SplitHostPort(addr)
+	host, port, err := net.SplitHostPort(addr)
 	if err != nil || port == "" {
 		return "", fmt.Errorf("local_addr %q is not host:port", addr)
+	}
+	if strings.HasPrefix(host, "-") {
+		return "", fmt.Errorf("local_addr %q: host must not start with '-'", addr)
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil || n < 1 || n > 65535 {
+		return "", fmt.Errorf("local_addr %q: port must be a number from 1-65535", addr)
 	}
 	return port, nil
 }
@@ -187,6 +253,7 @@ func RunAndScan(argv []string, urlRe *regexp.Regexp, timeout time.Duration, onLi
 
 	procCtx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(procCtx, argv[0], argv[1:]...)
+	SetNewProcessGroup(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		cancel()
@@ -202,14 +269,21 @@ func RunAndScan(argv []string, urlRe *regexp.Regexp, timeout time.Duration, onLi
 		return "", nil, fmt.Errorf("start %s: %w", argv[0], err)
 	}
 
+	// Always reap in the background, not only when stop() is called: a
+	// tunnel binary that crashes or exits on its own is otherwise left a
+	// zombie until (if ever) close/plugin.stop runs cmd.Wait() for it.
+	reaped := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(reaped)
+	}()
+
 	var closeOnce sync.Once
 	stopFn := func() {
 		closeOnce.Do(func() {
 			cancel()
-			if cmd.Process != nil {
-				_ = cmd.Process.Kill()
-			}
-			_ = cmd.Wait()
+			KillProcessGroup(cmd)
+			<-reaped // the background goroutine above owns the one Wait call
 		})
 	}
 
