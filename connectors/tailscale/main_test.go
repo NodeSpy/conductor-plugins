@@ -713,6 +713,61 @@ esac`)
 	}
 }
 
+// TestFunnelOpenRefCountsTheSharedMapping is the regression test for finding
+// #5: `tailscale serve`/`funnel --bg` is one global 443 mapping on the box,
+// not one per lease. Two concurrent funnel_open calls on the same
+// (binary, mode) share it, and closing one must NOT tear it down while the
+// other is still open — regardless of which lease is closed first.
+func TestFunnelOpenRefCountsTheSharedMapping(t *testing.T) {
+	for _, name := range []string{"close first-opened then second-opened", "close second-opened then first-opened"} {
+		t.Run(name, func(t *testing.T) {
+			dir := stubTool(t, "tailscale", `echo "$@" >> "$(dirname "$0")/calls"
+case "$1 $2" in
+  "serve status") echo "No serve config"; exit 0 ;;
+esac
+case "$1" in
+  serve) echo "Available at https://box.tailnet.ts.net/" ;;
+  status) echo '{"Self":{"DNSName":"box.tailnet.ts.net."}}' ;;
+esac`)
+			p := newTailscalePlugin()
+			resA, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_open", Options: map[string]any{"local_addr": "127.0.0.1:8099"}, Connection: map[string]any{"funnel_mode": "serve"}})
+			if err != nil {
+				t.Fatalf("open A: %v", err)
+			}
+			resB, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_open", Options: map[string]any{"local_addr": "127.0.0.1:8100"}, Connection: map[string]any{"funnel_mode": "serve"}})
+			if err != nil {
+				t.Fatalf("open B: %v", err)
+			}
+			leaseA, _ := resA.Outputs["lease"].(string)
+			leaseB, _ := resB.Outputs["lease"].(string)
+
+			first, second := leaseA, leaseB
+			if strings.HasPrefix(name, "close second") {
+				first, second = leaseB, leaseA
+			}
+
+			if _, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_close", Options: map[string]any{"lease": first}}); err != nil {
+				t.Fatalf("close first: %v", err)
+			}
+			calls, _ := os.ReadFile(filepath.Join(dir, "calls"))
+			if strings.Contains(string(calls), "off") {
+				t.Fatalf("closing one of two leases on a shared mapping tore it down early: %s", calls)
+			}
+
+			if _, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_close", Options: map[string]any{"lease": second}}); err != nil {
+				t.Fatalf("close second: %v", err)
+			}
+			calls, _ = os.ReadFile(filepath.Join(dir, "calls"))
+			if !strings.Contains(string(calls), "--https=443 off") {
+				t.Fatalf("closing the LAST lease on the mapping did not tear it down: %s", calls)
+			}
+			if p.leases.Len() != 0 {
+				t.Fatalf("leases after both closes = %d, want 0", p.leases.Len())
+			}
+		})
+	}
+}
+
 func TestFunnelStopReleasesOnlyThatInstance(t *testing.T) {
 	stubTool(t, "tailscale", `case "$1" in
   serve|funnel) echo "Available at https://box.tailnet.ts.net/" ;;

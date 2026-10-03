@@ -65,6 +65,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/NodeSpy/conductor-plugins/internal/exposurekit"
@@ -81,10 +82,47 @@ const apiPath = "/api/v2"
 type tailscalePlugin struct {
 	client *http.Client
 	leases *exposurekit.Leases
+
+	funnelMu  sync.Mutex
+	funnelMap map[string]*funnelMapping
+}
+
+// funnelMapping tracks one (binary, mode) pair's shared 443 mapping across
+// every lease this plugin instance has opened on it: `tailscale serve`/
+// `funnel --bg` is a single global toggle on the box, not one per lease, so
+// two concurrent funnel_open calls share the same underlying mapping and
+// must not tear it down until both have closed.
+type funnelMapping struct {
+	mu sync.Mutex
+	// refCount is how many currently-open leases this plugin holds on this
+	// mapping. preExisting, captured only when refCount transitions 0->1 (not
+	// on every open), records whether a serve/funnel config the OPERATOR set
+	// up — not this plugin — was already active before this plugin's first
+	// lease on it; a blanket `--https=443 off` must never clobber that.
+	refCount    int
+	preExisting bool
 }
 
 func newTailscalePlugin() *tailscalePlugin {
-	return &tailscalePlugin{client: &http.Client{Timeout: 30 * time.Second}, leases: exposurekit.NewLeases()}
+	return &tailscalePlugin{
+		client:    &http.Client{Timeout: 30 * time.Second},
+		leases:    exposurekit.NewLeases(),
+		funnelMap: map[string]*funnelMapping{},
+	}
+}
+
+// funnelMappingFor returns the shared mapping state for (binary, mode),
+// creating it on first use.
+func (p *tailscalePlugin) funnelMappingFor(binary, mode string) *funnelMapping {
+	key := binary + "\x00" + mode
+	p.funnelMu.Lock()
+	defer p.funnelMu.Unlock()
+	fm, ok := p.funnelMap[key]
+	if !ok {
+		fm = &funnelMapping{}
+		p.funnelMap[key] = fm
+	}
+	return fm
 }
 
 func (p *tailscalePlugin) Describe() plugin.Decl {
@@ -736,22 +774,48 @@ func (p *tailscalePlugin) funnelOpen(req plugin.InvokeRequest) (plugin.InvokeRes
 	const timeout = 30 * time.Second
 	ctx := context.Background()
 
-	// Snapshot whether a serve/funnel mapping already exists BEFORE adding
-	// ours: it belongs to the operator (another app on this box), and a
-	// blanket `--https=443 off` on close must not clobber it.
-	preExisting := tailscaleServeActive(ctx, binary, mode, timeout)
+	// The 443 mapping is global per (binary, mode), not per lease: two
+	// concurrent funnel_open calls share it. Snapshot whether it already
+	// existed — belonging to the operator, not this plugin — only on the
+	// FIRST lease to touch it (refCount 0->1); a later concurrent open must
+	// not reset that memory, and a blanket `--https=443 off` must never run
+	// while any lease on this mapping, let alone a pre-existing config, is
+	// still live.
+	fm := p.funnelMappingFor(binary, mode)
+	fm.mu.Lock()
+	if fm.refCount == 0 {
+		fm.preExisting = tailscaleServeActive(ctx, binary, mode, timeout)
+	}
+	fm.refCount++
+	fm.mu.Unlock()
+	releaseMapping := func() {
+		fm.mu.Lock()
+		fm.refCount--
+		fm.mu.Unlock()
+	}
+
 	out, err := exposurekit.RunOnce(ctx, []string{binary, mode, "--bg", port}, timeout)
 	if err != nil {
+		releaseMapping()
 		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeUpstream, fmt.Sprintf("tailscale %s: %v (%s)", mode, err, strings.TrimSpace(out)), nil)
 	}
 	url := tailscaleURLRe.FindString(out)
 	if url == "" {
 		url, err = tailscaleStatusURL(ctx, binary, timeout)
 		if err != nil {
+			releaseMapping()
 			return plugin.InvokeResult{}, plugin.Fail(plugin.CodeUpstream, fmt.Sprintf("tailscale: no URL from %s output or status: %v", mode, err), nil)
 		}
 	}
 	stop := func() {
+		fm.mu.Lock()
+		fm.refCount--
+		last := fm.refCount == 0
+		preExisting := fm.preExisting
+		fm.mu.Unlock()
+		if !last {
+			return // another lease on this (binary, mode) mapping is still open
+		}
 		if preExisting {
 			fmt.Fprintf(os.Stderr, "tailscale: %s: a serve mapping existed before this lease — leaving 443 up at close (run `tailscale %s --https=443 off` yourself to clear it)\n", mode, mode)
 			return
