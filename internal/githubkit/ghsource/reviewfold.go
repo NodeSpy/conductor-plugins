@@ -162,11 +162,12 @@ func (g *Source) reviewFacts(ctx context.Context, instID int64, repo string, pr 
 	if ri, ok := g.reviews.get(reviewID, time.Now()); ok {
 		return ri, true
 	}
-	if g.rest == nil {
+	rest := g.restClient()
+	if rest == nil {
 		return reviewInfo{}, false
 	}
 	owner, name := splitRepo(repo)
-	ri, err := g.rest.review(ctx, instID, owner, name, pr, reviewID)
+	ri, err := rest.review(ctx, instID, owner, name, pr, reviewID)
 	if err != nil || ri.State == "" {
 		log.Printf("github[%s]: %s#%d review %d: %v", g.name, repo, pr, reviewID, err)
 		return reviewInfo{}, false
@@ -178,11 +179,12 @@ func (g *Source) reviewFacts(ctx context.Context, instID int64, repo string, pr 
 // listReviewComments reads a review's inline comments (an error without a
 // REST client).
 func (g *Source) listReviewComments(ctx context.Context, instID int64, repo string, pr int, reviewID int64) ([]reviewComment, error) {
-	if g.rest == nil {
+	rest := g.restClient()
+	if rest == nil {
 		return nil, fmt.Errorf("no REST client")
 	}
 	owner, name := splitRepo(repo)
-	return g.rest.reviewComments(ctx, instID, owner, name, pr, reviewID)
+	return rest.reviewComments(ctx, instID, owner, name, pr, reviewID)
 }
 
 // changesRequestedKeep is changes_requested's per-variant keep-condition for a

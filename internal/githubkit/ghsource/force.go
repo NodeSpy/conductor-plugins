@@ -26,11 +26,12 @@ func (g *Source) Force(ctx context.Context, kind, repo string, number int, emit 
 	if owner == "" || name == "" {
 		return 0, fmt.Errorf("bad repo %q (want owner/name)", repo)
 	}
-	instID, err := g.app.repoInstallationID(ctx, owner, name)
+	app, rest := g.appAuth(), g.restClient() // ensureClients succeeded above, so neither is nil
+	instID, err := app.repoInstallationID(ctx, owner, name)
 	if err != nil {
 		return 0, fmt.Errorf("installation for %s: %w", repo, err)
 	}
-	info, err := g.rest.pull(ctx, instID, owner, name, number)
+	info, err := rest.pull(ctx, instID, owner, name, number)
 	if err != nil {
 		return 0, fmt.Errorf("fetch %s#%d: %w", repo, number, err)
 	}
@@ -46,7 +47,7 @@ func (g *Source) Force(ctx context.Context, kind, repo string, number int, emit 
 		// "{{.author}}" re-requests. The PR author is never it: GitHub 422s a
 		// review request to them. Resolve it the way the sweep does.
 		delete(extra, "author")
-		if threads, err := g.rest.unresolvedThreads(ctx, instID, owner, name, number); err == nil {
+		if threads, err := rest.unresolvedThreads(ctx, instID, owner, name, number); err == nil {
 			for k, v := range g.threadReviewerFacts(threads) {
 				extra[k] = v
 			}
@@ -58,7 +59,7 @@ func (g *Source) Force(ctx context.Context, kind, repo string, number int, emit 
 	if len(trs) == 0 {
 		return 0, fmt.Errorf("%q action for %s is disabled", kind, repo)
 	}
-	tok, _ := g.app.installationToken(ctx, instID)
+	tok, _ := app.installationToken(ctx, instID)
 	for i := range trs {
 		trs[i].Force = true
 		trs[i].Context["installation_id"] = instID

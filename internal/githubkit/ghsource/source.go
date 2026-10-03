@@ -198,8 +198,18 @@ type Match struct {
 type Source struct {
 	name string
 	cfg  Config
-	app  *appAuth
-	rest *restClient
+	// clientMu guards app/rest. They are built once, lazily, by ensureClients
+	// — historically safe only because Start() called it before sweep/webhook
+	// goroutines existed. Since webhook-only instances start without
+	// resolving credentials (lazy-start), sweep() and stuckPass() each call
+	// ensureClients from their own goroutine, so the build-once check-and-set
+	// and every other reader of app/rest (events.go, reviewfold.go, force.go,
+	// sweep.go, discoverSelf, AppToken) must go through clientMu — via
+	// appAuth()/restClient() for reads, never g.app/g.rest directly outside
+	// ensureClients itself.
+	clientMu sync.Mutex
+	app      *appAuth
+	rest     *restClient
 	// self = your GitHub login(s), used to ignore your own comments, detect your
 	// own PRs (self_review), and filter authored PRs during sweep. Built from
 	// `me:` if set anywhere, else falls back to reviewer/assignee logins.
@@ -342,8 +352,15 @@ func New(name string, cfg Config) (*Source, error) {
 // Name returns the instance name.
 func (g *Source) Name() string { return g.name }
 
-// ensureClients builds the App auth + REST client once (idempotent).
+// ensureClients builds the App auth + REST client once (idempotent). Safe to
+// call concurrently — sweep() and stuckPass() each call it from their own
+// goroutine since the webhook-only lazy-start change, so the check-and-set
+// is guarded by clientMu rather than left racing. A failure leaves g.app nil
+// under the lock, so the NEXT call (from either goroutine) retries the build
+// rather than latching a permanent failure.
 func (g *Source) ensureClients() error {
+	g.clientMu.Lock()
+	defer g.clientMu.Unlock()
 	if g.app != nil {
 		return nil
 	}
@@ -371,6 +388,24 @@ func (g *Source) ensureClients() error {
 	g.app = app
 	g.rest = newRESTClient(app)
 	return nil
+}
+
+// appAuth returns the current App auth client, or nil if ensureClients
+// hasn't built one yet. The only safe way to read g.app outside
+// ensureClients itself — see clientMu.
+func (g *Source) appAuth() *appAuth {
+	g.clientMu.Lock()
+	defer g.clientMu.Unlock()
+	return g.app
+}
+
+// restClient returns the current REST client, or nil if ensureClients hasn't
+// built one yet. The only safe way to read g.rest outside ensureClients
+// itself — see clientMu.
+func (g *Source) restClient() *restClient {
+	g.clientMu.Lock()
+	defer g.clientMu.Unlock()
+	return g.rest
 }
 
 // ghAuthToken shells out to `gh auth token` — the last link of the App-less
@@ -416,7 +451,8 @@ func (g *Source) discoverSelf(ctx context.Context) {
 		}
 		tok = t
 	}
-	login, err := githubWhoami(ctx, g.app.httpc, g.app.apiBase, tok)
+	app := g.appAuth() // ensureClients succeeded above, so this is never nil
+	login, err := githubWhoami(ctx, app.httpc, app.apiBase, tok)
 	if err != nil {
 		log.Printf("github[%s]: me: auto-discovery failed (%v) — set me.logins to identify your PRs/reviews", g.name, err)
 		return
@@ -451,7 +487,7 @@ func (g *Source) AppToken(ctx context.Context, instID int64) (string, error) {
 	if err := g.ensureClients(); err != nil {
 		return "", err
 	}
-	return g.app.installationToken(ctx, instID)
+	return g.appAuth().installationToken(ctx, instID)
 }
 
 // SweepSettings exposes the effective catch-up sweep config (for the

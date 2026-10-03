@@ -186,7 +186,8 @@ func (g *Source) sweep(ctx context.Context, emit EmitFunc) error {
 // repos), so sweeping all of them ingests nothing new — action stays gated by the
 // trigger filters. Returns an error in App-less mode (no installations concept).
 func (g *Source) sweepAllInstalled(ctx context.Context, fn func(instID int64, owner, name, repo string)) error {
-	instIDs, err := g.app.listInstallations(ctx)
+	app, rest := g.appAuth(), g.restClient() // caller (sweep) just called ensureClients
+	instIDs, err := app.listInstallations(ctx)
 	if err != nil {
 		return err
 	}
@@ -196,7 +197,7 @@ func (g *Source) sweepAllInstalled(ctx context.Context, fn func(instID int64, ow
 	}
 	log.Printf("github[%s]: sweep starting (all installed repos across %d installation%s)", g.name, len(instIDs), insts)
 	for _, instID := range instIDs {
-		repos, err := g.rest.listInstallationRepos(ctx, instID)
+		repos, err := rest.listInstallationRepos(ctx, instID)
 		if err != nil {
 			log.Printf("github[%s]: sweep: installation %d: %v", g.name, instID, err)
 			continue
@@ -213,6 +214,7 @@ func (g *Source) sweepAllInstalled(ctx context.Context, fn func(instID int64, ow
 // installation id. Shared by the full sweep (sweep.repos) and the stuck-check poller
 // (the repos of rules that configure stuck_checks).
 func (g *Source) eachRepo(ctx context.Context, tag string, entries []string, fn func(instID int64, owner, name, repo string)) {
+	app, rest := g.appAuth(), g.restClient() // caller (sweep/stuckPass) just called ensureClients
 	for _, entry := range entries {
 		owner, _ := splitRepo(entry)
 		if owner == "" {
@@ -229,12 +231,12 @@ func (g *Source) eachRepo(ctx context.Context, tag string, entries []string, fn 
 				log.Printf("github[%s]: %s %s: skipped — a wildcard owner can't be expanded; use an explicit owner like acme/*", g.name, tag, entry)
 				continue
 			}
-			instID, err := g.app.accountInstallationID(ctx, owner)
+			instID, err := app.accountInstallationID(ctx, owner)
 			if err != nil {
 				log.Printf("github[%s]: %s %s: %v", g.name, tag, entry, err)
 				continue
 			}
-			repos, err := g.rest.listInstallationRepos(ctx, instID)
+			repos, err := rest.listInstallationRepos(ctx, instID)
 			if err != nil {
 				log.Printf("github[%s]: %s %s: %v", g.name, tag, entry, err)
 				continue
@@ -250,7 +252,7 @@ func (g *Source) eachRepo(ctx context.Context, tag string, entries []string, fn 
 		if name == "" {
 			continue
 		}
-		instID, err := g.app.repoInstallationID(ctx, owner, name)
+		instID, err := app.repoInstallationID(ctx, owner, name)
 		if err != nil {
 			log.Printf("github[%s]: %s %s: %v", g.name, tag, entry, err)
 			continue
@@ -286,9 +288,10 @@ func (g *Source) stuckPass(ctx context.Context, emit EmitFunc) {
 		log.Printf("github[%s]: stuck: %v", g.name, err)
 		return
 	}
+	rest := g.restClient()
 	n := 0
 	g.eachRepo(ctx, "stuck", g.stuckRepos(), func(instID int64, owner, name, repo string) {
-		prs, err := g.rest.listOpenPRs(ctx, instID, owner, name)
+		prs, err := rest.listOpenPRs(ctx, instID, owner, name)
 		if err != nil {
 			log.Printf("github[%s]: stuck %s: %v", g.name, repo, err)
 			return
@@ -407,7 +410,8 @@ func plural(n int) string {
 // review is pending (recovers missed review-request webhooks), and conflict/behind
 // for PRs you authored.
 func (g *Source) sweepRepo(ctx context.Context, emit EmitFunc, instID int64, owner, name, repo string, st *sweepStats) {
-	prs, err := g.rest.listOpenPRs(ctx, instID, owner, name)
+	rest := g.restClient() // caller (sweep) just called ensureClients
+	prs, err := rest.listOpenPRs(ctx, instID, owner, name)
 	if err != nil {
 		log.Printf("github[%s]: sweep %s: %v", g.name, repo, err)
 		return
@@ -425,7 +429,7 @@ func (g *Source) sweepRepo(ctx context.Context, emit EmitFunc, instID int64, own
 		if !g.self[strings.ToLower(pr.User.Login)] {
 			continue // conflict/behind autopilot is for PRs you authored
 		}
-		info, err := g.rest.pull(ctx, instID, owner, name, pr.Number)
+		info, err := rest.pull(ctx, instID, owner, name, pr.Number)
 		if err != nil {
 			continue
 		}
@@ -489,7 +493,7 @@ func (g *Source) sweepUnresolvedComments(ctx context.Context, instID int64, owne
 	if !ok || !act.IsEnabled() {
 		return nil
 	}
-	all, err := g.rest.unresolvedThreads(ctx, instID, owner, name, t.Number)
+	all, err := g.restClient().unresolvedThreads(ctx, instID, owner, name, t.Number)
 	if err != nil {
 		return nil
 	}
@@ -592,7 +596,7 @@ func (g *Source) sweepMissedComments(ctx context.Context, instID int64, owner, n
 	if !ok || !act.IsEnabled() {
 		return nil
 	}
-	comments, err := g.rest.recentComments(ctx, instID, owner, name, t.Number)
+	comments, err := g.restClient().recentComments(ctx, instID, owner, name, t.Number)
 	if err != nil || len(comments) == 0 {
 		return nil
 	}
@@ -699,7 +703,7 @@ func (g *Source) sweepStuckChecks(ctx context.Context, instID int64, owner, name
 	if !ok || !act.IsEnabled() {
 		return nil
 	}
-	runs, err := g.rest.stuckRuns(ctx, instID, owner, name, headSHA, act.StuckAfterDur(), time.Now())
+	runs, err := g.restClient().stuckRuns(ctx, instID, owner, name, headSHA, act.StuckAfterDur(), time.Now())
 	if err != nil || len(runs) == 0 {
 		return nil
 	}

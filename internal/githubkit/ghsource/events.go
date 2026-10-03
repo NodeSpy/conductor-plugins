@@ -244,20 +244,25 @@ func (g *Source) triggersFor(ctx context.Context, eventType string, body []byte)
 
 	// App-less (static-token) mode: there is no installation, but the fixed
 	// token serves the same read role. Inject it so dispatch behaves the same.
-	if len(trs) > 0 && g.app != nil && g.app.static != "" {
+	// app/rest are read once each here (via the accessors — see clientMu)
+	// rather than through g.app/g.rest directly: ensureClients can build them
+	// from a concurrent sweep/stuckPass goroutine at any time.
+	app := g.appAuth()
+	if len(trs) > 0 && app != nil && app.static != "" {
 		for i := range trs {
 			if trs[i].Context == nil {
 				trs[i].Context = map[string]any{}
 			}
-			trs[i].Context["app_token"] = g.app.static
+			trs[i].Context["app_token"] = app.static
 		}
 	}
 
 	// Inject the App installation token so dispatch can use it for reads, plus the
 	// installation id so a persisted workflow can re-mint the (short-lived) token
 	// on resume.
-	if len(trs) > 0 && p.Installation.ID > 0 && g.app != nil {
-		tok, err := g.app.installationToken(ctx, p.Installation.ID)
+	if len(trs) > 0 && p.Installation.ID > 0 && app != nil {
+		rest := g.restClient()
+		tok, err := app.installationToken(ctx, p.Installation.ID)
 		var headRef string
 		var prLabels []string
 		fetched := false // resolve head_ref + labels once, lazily, if a feedback trigger needs it
@@ -277,10 +282,10 @@ func (g *Source) triggersFor(ctx context.Context, eventType string, body []byte)
 			// workspace already on it; labels let the engine honor control.pause_label
 			// (otherwise a `conductor:off` label can't park a PR's comment autopilot —
 			// it isn't in the payload).
-			if branchKind(trs[i].Kind) && g.rest != nil && trs[i].Target.Number > 0 {
+			if branchKind(trs[i].Kind) && rest != nil && trs[i].Target.Number > 0 {
 				if !fetched {
 					owner, name := splitRepo(repo)
-					if hr, lbls, herr := g.rest.pullHeadRefAndLabels(ctx, p.Installation.ID, owner, name, trs[i].Target.Number); herr == nil {
+					if hr, lbls, herr := rest.pullHeadRefAndLabels(ctx, p.Installation.ID, owner, name, trs[i].Target.Number); herr == nil {
 						headRef, prLabels, fetched = hr, lbls, true
 					}
 				}
@@ -339,10 +344,11 @@ func (g *Source) ownPR(login string) bool {
 // open (a check finishing after the merge has no branch left to fix). Fails closed:
 // if the author can't be determined, don't act.
 func (g *Source) checkOwnPR(ctx context.Context, p ghPayload, num int) bool {
-	if g.rest == nil || p.Installation.ID == 0 {
+	rest := g.restClient()
+	if rest == nil || p.Installation.ID == 0 {
 		return false
 	}
-	info, err := g.rest.pull(ctx, p.Installation.ID, p.Repository.Owner.Login, p.Repository.Name, num)
+	info, err := rest.pull(ctx, p.Installation.ID, p.Repository.Owner.Login, p.Repository.Name, num)
 	if err != nil {
 		return false
 	}
@@ -354,10 +360,11 @@ func (g *Source) checkOwnPR(ctx context.Context, p ghPayload, num int) bool {
 // no REST client / no installation / API error → not corroborated (the
 // outcome loop then records the claim without acting on it).
 func (g *Source) corroborateRevert(ctx context.Context, p ghPayload, num int) bool {
-	if g.rest == nil || p.Installation.ID == 0 {
+	rest := g.restClient()
+	if rest == nil || p.Installation.ID == 0 {
 		return false
 	}
-	msgs, err := g.rest.prCommitMessages(ctx, p.Installation.ID, p.Repository.Owner.Login, p.Repository.Name, num)
+	msgs, err := rest.prCommitMessages(ctx, p.Installation.ID, p.Repository.Owner.Login, p.Repository.Name, num)
 	if err != nil {
 		return false
 	}
@@ -556,16 +563,17 @@ func (g *Source) workflowRunID(ctx context.Context, p ghPayload, c *checkPayload
 			return id
 		}
 	}
-	if g.rest == nil || p.Installation.ID == 0 {
+	rest := g.restClient()
+	if rest == nil || p.Installation.ID == 0 {
 		return 0
 	}
 	owner, name := p.Repository.Owner.Login, p.Repository.Name
 	var id int64
 	var err error
 	if c == p.CheckRun {
-		id, err = g.rest.jobRunID(ctx, p.Installation.ID, owner, name, c.ID)
+		id, err = rest.jobRunID(ctx, p.Installation.ID, owner, name, c.ID)
 	} else {
-		id, err = g.rest.suiteRunID(ctx, p.Installation.ID, owner, name, c.ID)
+		id, err = rest.suiteRunID(ctx, p.Installation.ID, owner, name, c.ID)
 	}
 	if err != nil {
 		return 0
@@ -664,7 +672,8 @@ func (g *Source) selfReviewTriggers(repo string, pr *prPayload) []Trigger {
 // App creds) and fires `merge_ready` when everything's green and the PR opts in.
 // It short-circuits before any fetch when the action is absent/disabled.
 func (g *Source) mergeReadyTriggers(ctx context.Context, repo string, number int, p ghPayload) []Trigger {
-	if number == 0 || g.rest == nil || p.Installation.ID == 0 {
+	rest := g.restClient()
+	if number == 0 || rest == nil || p.Installation.ID == 0 {
 		return nil
 	}
 	set := g.actionsFor(repo, "merge_ready")
@@ -672,7 +681,7 @@ func (g *Source) mergeReadyTriggers(ctx context.Context, repo string, number int
 		return nil // not configured — no GraphQL cost
 	}
 	owner, name := splitRepo(repo)
-	gate, err := g.rest.prGate(ctx, p.Installation.ID, owner, name, number)
+	gate, err := rest.prGate(ctx, p.Installation.ID, owner, name, number)
 	if err != nil {
 		return nil
 	}
@@ -760,13 +769,14 @@ func threadPR(p ghPayload) int {
 // gate facts) so the same matcher used for `issues` events applies here too —
 // this is what lets an issue that becomes matching via a board move fire.
 func (g *Source) projectTriggers(ctx context.Context, p ghPayload) []Trigger {
-	if p.Action != "edited" || p.ProjectsV2Item == nil || p.Installation.ID == 0 || g.rest == nil {
+	rest := g.restClient()
+	if p.Action != "edited" || p.ProjectsV2Item == nil || p.Installation.ID == 0 || rest == nil {
 		return nil
 	}
 	if !strings.EqualFold(p.ProjectsV2Item.ContentType, "Issue") {
 		return nil
 	}
-	item, err := g.rest.projectItem(ctx, p.Installation.ID, p.ProjectsV2Item.NodeID, "Status")
+	item, err := rest.projectItem(ctx, p.Installation.ID, p.ProjectsV2Item.NodeID, "Status")
 	if err != nil {
 		return nil
 	}
@@ -775,7 +785,7 @@ func (g *Source) projectTriggers(ctx context.Context, p ghPayload) []Trigger {
 		return nil
 	}
 	owner, name := splitRepo(repo)
-	facts, err := g.rest.issueEnrich(ctx, p.Installation.ID, owner, name, item.Number)
+	facts, err := rest.issueEnrich(ctx, p.Installation.ID, owner, name, item.Number)
 	if err != nil {
 		return nil // fail closed — no issue state to match on
 	}
@@ -792,10 +802,11 @@ func (g *Source) projectTriggers(ctx context.Context, p ghPayload) []Trigger {
 
 // mergeStateTriggers enriches a PR via REST to detect conflict/behind state.
 func (g *Source) mergeStateTriggers(ctx context.Context, repo string, p ghPayload, pr *prPayload) []Trigger {
-	if g.rest == nil || p.Installation.ID == 0 {
+	rest := g.restClient()
+	if rest == nil || p.Installation.ID == 0 {
 		return nil
 	}
-	info, err := g.rest.pull(ctx, p.Installation.ID, p.Repository.Owner.Login, p.Repository.Name, pr.Number)
+	info, err := rest.pull(ctx, p.Installation.ID, p.Repository.Owner.Login, p.Repository.Name, pr.Number)
 	if err != nil {
 		return nil
 	}
@@ -963,10 +974,11 @@ func (g *Source) gatesPass(ctx context.Context, instID int64, owner, name string
 	if len(act.Gates) == 0 {
 		return true
 	}
-	if g.rest == nil || instID == 0 {
+	rest := g.restClient()
+	if rest == nil || instID == 0 {
 		return false
 	}
-	facts, err := g.rest.issueEnrich(ctx, instID, owner, name, num)
+	facts, err := rest.issueEnrich(ctx, instID, owner, name, num)
 	return err == nil && issueGatePasses(facts, act.Gates)
 }
 
@@ -1240,9 +1252,9 @@ func (g *Source) readyReviewTriggers(ctx context.Context, repo string, p ghPaylo
 	// PR was a draft. If none are present, fetch the authoritative pending set via
 	// REST so a draft→ready transition still kicks off your review now (not on the
 	// hourly sweep).
-	if len(logins) == 0 && len(slugs) == 0 && g.rest != nil && g.app != nil && p.Installation.ID > 0 {
+	if rest := g.restClient(); len(logins) == 0 && len(slugs) == 0 && rest != nil && g.appAuth() != nil && p.Installation.ID > 0 {
 		owner, name := splitRepo(repo)
-		if rr, tt, err := g.rest.requestedReviewers(ctx, p.Installation.ID, owner, name, pr.Number); err == nil {
+		if rr, tt, err := rest.requestedReviewers(ctx, p.Installation.ID, owner, name, pr.Number); err == nil {
 			logins, slugs = rr, tt
 		}
 	}
