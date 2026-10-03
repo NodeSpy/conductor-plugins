@@ -64,9 +64,11 @@ func TestSlackRateLimited(t *testing.T) {
 	}
 }
 
-// TestSlackChannelNotFoundIsTargetGone covers target_gone (-32011): the
-// channel a post/react addressed is gone.
-func TestSlackChannelNotFoundIsTargetGone(t *testing.T) {
+// TestSlackPostToChannelChannelNotFoundIsUpstream covers the adversarial-
+// review fix: a bare `post` (no thread_ts) addresses a DESTINATION channel
+// no event ever targeted, so channel_not_found must never silently stop the
+// run as target_gone — only upstream{retryable:false}.
+func TestSlackPostToChannelChannelNotFoundIsUpstream(t *testing.T) {
 	srv := cannedSlack(t, http.StatusOK, nil, `{"ok":false,"error":"channel_not_found"}`)
 	p := New()
 	_, err := p.Invoke(plugin.InvokeRequest{
@@ -75,12 +77,38 @@ func TestSlackChannelNotFoundIsTargetGone(t *testing.T) {
 		Options:    map[string]any{"channel": "C-gone", "text": "hi"},
 	})
 	pe := asSlackContractError(t, err)
-	if pe.Code != plugin.CodeTargetGone {
-		t.Fatalf("code = %d, want CodeTargetGone; msg=%s", pe.Code, pe.Message)
+	if pe.Code != plugin.CodeUpstream {
+		t.Fatalf("code = %d, want CodeUpstream (never target_gone — a bare post's channel is a destination); msg=%s", pe.Code, pe.Message)
+	}
+	if retryable, _ := pe.Data["retryable"].(bool); retryable {
+		t.Fatalf("retryable = true, want false")
 	}
 }
 
-// TestSlackMessageNotFoundIsTargetGone: reacting to a message that's gone.
+// TestSlackThreadReplyChannelNotFoundIsTargetGone covers target_gone
+// (-32011): a post WITH thread_ts set addresses the thread's root message —
+// the event's own target when it's a reply in that thread — so a gone
+// channel/thread here IS target_gone, keyed on the message's target.key.
+func TestSlackThreadReplyChannelNotFoundIsTargetGone(t *testing.T) {
+	srv := cannedSlack(t, http.StatusOK, nil, `{"ok":false,"error":"channel_not_found"}`)
+	p := New()
+	_, err := p.Invoke(plugin.InvokeRequest{
+		Instance: "x", Verb: "post",
+		Connection: map[string]any{"bot_token": "xoxb-1", "api_base": srv.URL},
+		Options:    map[string]any{"channel": "C-gone", "text": "hi", "thread_ts": "123.456"},
+	})
+	pe := asSlackContractError(t, err)
+	if pe.Code != plugin.CodeTargetGone {
+		t.Fatalf("code = %d, want CodeTargetGone; msg=%s", pe.Code, pe.Message)
+	}
+	if got, want := pe.Data["target"], "slack:C-gone:123.456"; got != want {
+		t.Fatalf("data.target = %#v, want %q", got, want)
+	}
+}
+
+// TestSlackMessageNotFoundIsTargetGone: reacting to a message that's gone —
+// react always addresses a specific message, so this is always target_gone,
+// keyed on that message's target.key.
 func TestSlackMessageNotFoundIsTargetGone(t *testing.T) {
 	srv := cannedSlack(t, http.StatusOK, nil, `{"ok":false,"error":"message_not_found"}`)
 	p := New()
@@ -92,6 +120,9 @@ func TestSlackMessageNotFoundIsTargetGone(t *testing.T) {
 	pe := asSlackContractError(t, err)
 	if pe.Code != plugin.CodeTargetGone {
 		t.Fatalf("code = %d, want CodeTargetGone; msg=%s", pe.Code, pe.Message)
+	}
+	if got, want := pe.Data["target"], "slack:C1:123.456"; got != want {
+		t.Fatalf("data.target = %#v, want %q", got, want)
 	}
 }
 

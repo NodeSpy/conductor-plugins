@@ -387,9 +387,15 @@ const (
 // contract's error codes (plugin-contract.md §1.11) where Discord's own
 // answer makes the code knowable: 429 is rate_limited, retry_after from the
 // body's own retry_after (Discord always sends this on a 429, in fractional
-// seconds) falling back to the Retry-After header; "Unknown Channel" and
-// "Unknown Message" are the addressed channel/message having gone away —
-// target_gone. Everything else is left as a plain error.
+// seconds) falling back to the Retry-After header. "Unknown Channel" and
+// "Unknown Message" mean the addressed channel/message is gone — but never
+// target_gone here: every call that can hit this (post's destination
+// channel/DM, ask's dm/thread channel) posts NEW content to a channel/DM no
+// event ever targeted — this connector has no verb that replies into an
+// existing message/thread the way slack's post(thread_ts) or react does — so
+// a gone channel is always a destination/configuration problem, never a
+// sign the run's own target closed. upstream{retryable:false} instead.
+// Everything else is left as a plain error.
 func discordAPIError(method, path string, resp *http.Response, raw []byte) error {
 	var eb discordErrBody
 	_ = json.Unmarshal(raw, &eb)
@@ -413,8 +419,12 @@ func discordAPIError(method, path string, resp *http.Response, raw []byte) error
 		return plugin.Fail(plugin.CodeRateLimited, fmt.Sprintf("%s %s: %s", method, path, msg), data)
 	}
 	switch eb.Code {
-	case discordErrUnknownChannel, discordErrUnknownMessage:
-		return plugin.Fail(plugin.CodeTargetGone, fmt.Sprintf("%s %s: %s", method, path, eb.Message), nil)
+	case discordErrUnknownChannel:
+		return plugin.Fail(plugin.CodeUpstream, fmt.Sprintf("%s %s: channel not found", method, path),
+			map[string]any{"status": resp.StatusCode, "retryable": false})
+	case discordErrUnknownMessage:
+		return plugin.Fail(plugin.CodeUpstream, fmt.Sprintf("%s %s: message not found", method, path),
+			map[string]any{"status": resp.StatusCode, "retryable": false})
 	}
 	if eb.Message != "" {
 		return fmt.Errorf("%s %s: %s (%d)", method, path, eb.Message, resp.StatusCode)

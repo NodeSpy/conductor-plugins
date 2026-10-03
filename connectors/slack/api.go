@@ -111,10 +111,18 @@ func (a *slackAPI) get(ctx context.Context, method string, params url.Values, ou
 // error codes (plugin-contract.md §1.11) where Slack's own answer makes the
 // code knowable: a 429 (or the "ratelimited" envelope error some methods use
 // without necessarily pairing it with one) is rate_limited, with retry_after
-// from Retry-After when Slack sent it; "channel_not_found" and
-// "message_not_found" are the addressed channel/message having gone away —
-// target_gone. Everything else is left as a plain error: Slack's error
-// strings are a large, evolving vocabulary (invalid_auth, missing_scope,
+// from Retry-After when Slack sent it. "channel_not_found" and
+// "message_not_found" mean the addressed channel/message is gone — but
+// that's target_gone ONLY when the call addressed an EVENT's own
+// message/thread (reacting to the triggering message, replying in its
+// thread): most calls that hit this (a destination `post`/`ask` to a
+// configured channel no event ever targeted) are not about any event target
+// at all, so this always answers upstream{status, retryable:false} here —
+// verbs.go's remapTargetGone promotes it to target_gone at the specific call
+// sites that DO address an event's own target, carrying slack_error so that
+// remap can tell the two Slack error strings apart without re-parsing the
+// message. Everything else is left as a plain error: Slack's error strings
+// are a large, evolving vocabulary (invalid_auth, missing_scope,
 // not_in_channel, …) and most of them aren't cleanly one contract bucket or
 // another.
 func slackAPIError(method string, resp *http.Response, envErr string) error {
@@ -131,8 +139,12 @@ func slackAPIError(method string, resp *http.Response, envErr string) error {
 			msg = "ratelimited"
 		}
 		return plugin.Fail(plugin.CodeRateLimited, fmt.Sprintf("slack %s: %s", method, msg), data)
-	case envErr == "channel_not_found", envErr == "message_not_found":
-		return plugin.Fail(plugin.CodeTargetGone, fmt.Sprintf("slack %s: %s", method, envErr), nil)
+	case envErr == "channel_not_found":
+		return plugin.Fail(plugin.CodeUpstream, fmt.Sprintf("slack %s: channel not found", method),
+			map[string]any{"status": resp.StatusCode, "retryable": false, "slack_error": envErr})
+	case envErr == "message_not_found":
+		return plugin.Fail(plugin.CodeUpstream, fmt.Sprintf("slack %s: message not found", method),
+			map[string]any{"status": resp.StatusCode, "retryable": false, "slack_error": envErr})
 	default:
 		return fmt.Errorf("slack %s: %s", method, envErr)
 	}

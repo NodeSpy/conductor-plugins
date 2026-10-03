@@ -13,8 +13,8 @@ import (
 )
 
 // wrapUpstream turns a slackAPI call's error into the verb's answer: a
-// contract code slackAPIError already classified (rate_limited, target_gone)
-// is passed through as-is — the engine's retry/stop behavior is keyed on it —
+// contract code slackAPIError already classified (rate_limited, upstream) is
+// passed through as-is — the engine's retry/stop behavior is keyed on it —
 // anything else falls back to the generic upstream error the call sites used
 // before classification existed.
 func wrapUpstream(prefix string, err error) error {
@@ -23,6 +23,29 @@ func wrapUpstream(prefix string, err error) error {
 		return pe
 	}
 	return plugin.Errorf(plugin.CodeUpstream, prefix+err.Error())
+}
+
+// remapTargetGone promotes a channel_not_found/message_not_found upstream
+// answer (slackAPIError tags it with Data["slack_error"]) into target_gone
+// keyed on key — the SAME string semantics.go's target.key template renders
+// for the message/thread this call addresses ("slack:{{.channel}}:{{.ts}}").
+//
+// Call it ONLY where the call addresses an event's OWN message/thread:
+// react's triggering message, or a post into the thread that message
+// started (thread_ts set). Never for a destination channel/user a post or
+// ask merely posts NEW content to — a channel no event ever targeted going
+// missing is a configuration problem, not a sign the run's target closed;
+// those stay the upstream{retryable:false} slackAPIError already built.
+func remapTargetGone(err error, key string) error {
+	var pe *plugin.Error
+	if !errors.As(err, &pe) || pe.Code != plugin.CodeUpstream {
+		return err
+	}
+	se, _ := pe.Data["slack_error"].(string)
+	if se != "channel_not_found" && se != "message_not_found" {
+		return err
+	}
+	return plugin.Fail(plugin.CodeTargetGone, pe.Message, map[string]any{"target": key})
 }
 
 func (p *Plugin) postVerb(ctx context.Context, api *slackAPI, botToken, webhookURL string, opts map[string]any) (plugin.InvokeResult, error) {
@@ -65,7 +88,15 @@ func (p *Plugin) postVerb(ctx context.Context, api *slackAPI, botToken, webhookU
 	threadTS, _ := opts["thread_ts"].(string)
 	ts, err := api.postMessage(ctx, channel, threadTS, text)
 	if err != nil {
-		return plugin.InvokeResult{}, wrapUpstream("slack.post: ", err)
+		wrapped := wrapUpstream("slack.post: ", err)
+		if threadTS != "" {
+			// This post addresses the thread's root message (the event's own
+			// target when it's a reply in that thread) — a gone channel or
+			// thread is target_gone; a bare post to a channel (threadTS=="")
+			// is a destination and stays upstream.
+			wrapped = remapTargetGone(wrapped, fmt.Sprintf("slack:%s:%s", channel, threadTS))
+		}
+		return plugin.InvokeResult{}, wrapped
 	}
 	return plugin.InvokeResult{Outputs: map[string]any{"ts": ts, "channel": channel}}, nil
 }
@@ -81,7 +112,10 @@ func (p *Plugin) reactVerb(ctx context.Context, api *slackAPI, botToken string, 
 		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, "slack.react: options.channel, ts, and emoji are required")
 	}
 	if err := api.react(ctx, channel, ts, strings.Trim(emoji, ":")); err != nil {
-		return plugin.InvokeResult{}, wrapUpstream("slack.react: ", err)
+		// react always addresses a specific message — the event's own
+		// triggering message, in every configured use of this verb — so a
+		// gone channel/message here is always target_gone.
+		return plugin.InvokeResult{}, remapTargetGone(wrapUpstream("slack.react: ", err), fmt.Sprintf("slack:%s:%s", channel, ts))
 	}
 	return plugin.InvokeResult{Outputs: map[string]any{"ok": true}}, nil
 }

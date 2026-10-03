@@ -76,9 +76,13 @@ func TestDiscordRateLimitedFallsBackToHeader(t *testing.T) {
 	}
 }
 
-// TestDiscordUnknownChannelIsTargetGone covers target_gone (-32011): the
-// channel a post/ask addressed is gone (Discord error code 10003).
-func TestDiscordUnknownChannelIsTargetGone(t *testing.T) {
+// TestDiscordUnknownChannelIsUpstreamNotTargetGone covers the adversarial-
+// review fix: a post's channel is a DESTINATION no event ever targeted (this
+// connector has no verb that replies into an existing message/thread), so
+// Discord's "Unknown Channel" (code 10003) must never silently stop the run
+// as target_gone — only upstream{retryable:false}, a loud, non-retried
+// failure the flow sees and can act on.
+func TestDiscordUnknownChannelIsUpstreamNotTargetGone(t *testing.T) {
 	srv := cannedDiscord(t, http.StatusNotFound, nil, `{"message":"Unknown Channel","code":10003}`)
 	_, err := discordPlugin{}.Invoke(plugin.InvokeRequest{
 		Verb:       "post",
@@ -86,8 +90,29 @@ func TestDiscordUnknownChannelIsTargetGone(t *testing.T) {
 		Options:    map[string]any{"channel": "C-gone", "text": "hi"},
 	})
 	pe := asDiscordContractError(t, err)
-	if pe.Code != plugin.CodeTargetGone {
-		t.Fatalf("code = %d, want CodeTargetGone; msg=%s", pe.Code, pe.Message)
+	if pe.Code != plugin.CodeUpstream {
+		t.Fatalf("code = %d, want CodeUpstream (never target_gone — a post's channel is a destination); msg=%s", pe.Code, pe.Message)
+	}
+	if retryable, _ := pe.Data["retryable"].(bool); retryable {
+		t.Fatalf("retryable = true, want false (a 404 is never retried)")
+	}
+	if status, _ := pe.Data["status"].(int); status != http.StatusNotFound {
+		t.Fatalf("status = %v, want %d", pe.Data["status"], http.StatusNotFound)
+	}
+}
+
+// TestDiscordUnknownMessageIsUpstreamNotTargetGone is the same fix for the
+// "Unknown Message" code (10008).
+func TestDiscordUnknownMessageIsUpstreamNotTargetGone(t *testing.T) {
+	srv := cannedDiscord(t, http.StatusNotFound, nil, `{"message":"Unknown Message","code":10008}`)
+	_, err := discordPlugin{}.Invoke(plugin.InvokeRequest{
+		Verb:       "post",
+		Connection: map[string]any{"bot_token": "tok", "api_base": srv.URL},
+		Options:    map[string]any{"channel": "C1", "text": "hi"},
+	})
+	pe := asDiscordContractError(t, err)
+	if pe.Code != plugin.CodeUpstream {
+		t.Fatalf("code = %d, want CodeUpstream; msg=%s", pe.Code, pe.Message)
 	}
 }
 
