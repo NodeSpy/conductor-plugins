@@ -421,3 +421,47 @@ func TestRunOnce(t *testing.T) {
 		t.Fatalf("RunOnce: %q %v", out, err)
 	}
 }
+
+// A process that prints its URL and exits at once must never lose the line:
+// Wait used to close a StdoutPipe's read end on exit, racing the scanner.
+// Run many at once so the race, if present, shows up.
+func TestRunAndScanNeverLosesTheURLOfAQuickExit(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not on PATH")
+	}
+	const n = 64
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			want := fmt.Sprintf("https://q%d.example", i)
+			url, stop, err := RunAndScan([]string{"sh", "-c", "echo " + want + "; exit 0"}, DefaultURL, 5*time.Second, nil)
+			if err == nil {
+				stop()
+			}
+			if err != nil || url != want {
+				errs <- fmt.Errorf("run %d: %q %v", i, url, err)
+				return
+			}
+			errs <- nil
+		}(i)
+	}
+	for i := 0; i < n; i++ {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// stop() kills the whole process group even when run many times at once:
+// killing the group after cancel() raced the reaper and left grandchildren.
+func TestRunAndScanKillsWholeProcessGroupUnderLoad(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("process groups are a POSIX concept")
+	}
+	for i := 0; i < 8; i++ {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			t.Parallel()
+			TestRunAndScanKillsWholeProcessGroup(t)
+		})
+	}
+}

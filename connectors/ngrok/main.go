@@ -178,11 +178,14 @@ func (p *ngrokPlugin) open(req plugin.InvokeRequest) (plugin.InvokeResult, error
 	var once sync.Once
 	stop := func() {
 		once.Do(func() {
-			cancel()
+			// Kill the group BEFORE cancel(): cancel makes CommandContext
+			// kill only the direct child, the reaper then sees it gone and
+			// KillIfRunning would skip the group, leaving grandchildren.
 			// Skip the signal if ngrok already exited on its own — see
 			// ProcessReaper: signaling a pid the reaper already observed as
 			// gone risks hitting a reused pid's unrelated process group.
 			reaper.KillIfRunning(func() { exposurekit.KillProcessGroup(cmd) })
+			cancel()
 			<-reaped
 		})
 	}

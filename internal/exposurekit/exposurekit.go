@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -301,6 +302,30 @@ func ExpandArgv(tmpl []string, port, addr string) []string {
 	return out
 }
 
+// OutputPipes wires cmd's stdout and stderr to pipes the caller owns, in
+// place of StdoutPipe/StderrPipe. Wait closes a StdoutPipe's read end as soon
+// as the process exits, which can discard a line the process wrote just
+// before exiting — a tunnel that prints its URL and then exits loses the URL.
+// Here the child gets plain *os.File write ends, so Wait waits only for the
+// process itself (never for a grandchild still holding a write end) and
+// never touches the read ends: the readers see EOF once every writer is
+// gone. Call closeWriters right after Start (the parent's copies must not
+// keep the pipes open), and close each reader when done with it.
+func OutputPipes(cmd *exec.Cmd) (stdout, stderr *os.File, closeWriters func(), err error) {
+	or, ow, err := os.Pipe()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	er, ew, err := os.Pipe()
+	if err != nil {
+		or.Close()
+		ow.Close()
+		return nil, nil, nil, err
+	}
+	cmd.Stdout, cmd.Stderr = ow, ew
+	return or, er, func() { ow.Close(); ew.Close() }, nil
+}
+
 // RunAndScan starts argv, scans its combined stdout+stderr line by line for
 // the first match of urlRe, and returns that match as the public URL
 // together with a stop func that kills the process (idempotent — safe to
@@ -323,20 +348,19 @@ func RunAndScan(argv []string, urlRe *regexp.Regexp, timeout time.Duration, onLi
 	procCtx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(procCtx, argv[0], argv[1:]...)
 	SetNewProcessGroup(cmd)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		cancel()
-		return "", nil, err
-	}
-	stderr, err := cmd.StderrPipe()
+	stdout, stderr, closeWriters, err := OutputPipes(cmd)
 	if err != nil {
 		cancel()
 		return "", nil, err
 	}
 	if err := cmd.Start(); err != nil {
+		closeWriters()
+		stdout.Close()
+		stderr.Close()
 		cancel()
 		return "", nil, fmt.Errorf("start %s: %w", argv[0], err)
 	}
+	closeWriters()
 
 	// Always reap in the background, not only when stop() is called: a
 	// tunnel binary that crashes or exits on its own is otherwise left a
@@ -351,12 +375,19 @@ func RunAndScan(argv []string, urlRe *regexp.Regexp, timeout time.Duration, onLi
 	var closeOnce sync.Once
 	stopFn := func() {
 		closeOnce.Do(func() {
-			cancel()
+			// Kill the group BEFORE cancel(): cancel makes CommandContext
+			// kill only the direct child, the reaper then sees it gone and
+			// KillIfRunning would skip the group, leaving grandchildren.
 			// Skip the signal if the process has already exited on its own —
 			// see ProcessReaper: signaling a pid the reaper already observed
 			// as gone risks hitting a reused pid's unrelated process group.
 			reaper.KillIfRunning(func() { KillProcessGroup(cmd) })
+			cancel()
 			<-reaped // the background goroutine above owns the one Wait call
+			// Unblock the scanners even if a grandchild outside the
+			// process group still holds a write end.
+			stdout.Close()
+			stderr.Close()
 		})
 	}
 
@@ -413,20 +444,19 @@ func RunAndScanPreferred(argv []string, preferred []*regexp.Regexp, fallback *re
 	procCtx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(procCtx, argv[0], argv[1:]...)
 	SetNewProcessGroup(cmd)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		cancel()
-		return "", nil, err
-	}
-	stderr, err := cmd.StderrPipe()
+	stdout, stderr, closeWriters, err := OutputPipes(cmd)
 	if err != nil {
 		cancel()
 		return "", nil, err
 	}
 	if err := cmd.Start(); err != nil {
+		closeWriters()
+		stdout.Close()
+		stderr.Close()
 		cancel()
 		return "", nil, fmt.Errorf("start %s: %w", argv[0], err)
 	}
+	closeWriters()
 
 	var reaper ProcessReaper
 	reaped := make(chan struct{})
@@ -437,12 +467,17 @@ func RunAndScanPreferred(argv []string, preferred []*regexp.Regexp, fallback *re
 	var closeOnce sync.Once
 	stopFn := func() {
 		closeOnce.Do(func() {
-			cancel()
+			// Kill the group BEFORE cancel(): cancel makes CommandContext
+			// kill only the direct child, the reaper then sees it gone and
+			// KillIfRunning would skip the group, leaving grandchildren.
 			// Skip the signal if the process has already exited on its own —
 			// see ProcessReaper: signaling a pid the reaper already observed
 			// as gone risks hitting a reused pid's unrelated process group.
 			reaper.KillIfRunning(func() { KillProcessGroup(cmd) })
+			cancel()
 			<-reaped
+			stdout.Close()
+			stderr.Close()
 		})
 	}
 
