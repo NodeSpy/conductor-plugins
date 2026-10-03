@@ -35,6 +35,14 @@ type connWire struct {
 		Path      string `json:"path"`
 		Secret    string `json:"secret"`
 		VerifySig *bool  `json:"verify_signature"`
+		// Expose names the exposure connector the engine opened `listen`
+		// through; the plugin itself never reads it (the engine does, to
+		// decide whether to open an exposure at all). Kept here only so a
+		// strict future decoder would not choke on a key the engine sets.
+		Expose string `json:"expose"`
+		// PublicURL is the exposure's URL, filled in by the engine (see
+		// ghsource.WebhookConfig.PublicURL).
+		PublicURL string `json:"public_url"`
 	} `json:"webhook"`
 	Sweep struct {
 		Enabled     *bool        `json:"enabled"`
@@ -81,6 +89,7 @@ func ParseConnection(m map[string]any) (Connection, error) {
 		Webhook: ghsource.WebhookConfig{
 			SmeeURL: w.Webhook.SmeeURL, Listen: w.Webhook.Listen, Path: w.Webhook.Path,
 			Secret: w.Webhook.Secret, VerifySig: w.Webhook.VerifySig,
+			PublicURL: w.Webhook.PublicURL,
 		},
 		Sweep: ghsource.SweepConfig{
 			Enabled: w.Sweep.Enabled, Interval: time.Duration(w.Sweep.Interval),

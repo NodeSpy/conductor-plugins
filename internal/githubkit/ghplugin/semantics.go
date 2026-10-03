@@ -121,6 +121,15 @@ func connSemantics() *plugin.ConnSemantics {
 		Poll:  &plugin.PollSemantics{VerbName: "sweep"},
 		Translate: &plugin.TranslateSemantics{Env: map[string]string{
 			"event_path": "GITHUB_EVENT_PATH", "event_name": "GITHUB_EVENT_NAME"}},
+		// The webhook listener (webhook.listen) can be given a public URL by
+		// naming an exposure connector in webhook.expose — a tunnel, or the
+		// smee relay plugin fronting it — instead of (or in addition to) the
+		// plugin's own webhook.smee_url shorthand. The engine opens the
+		// exposure at instance start and writes the URL into
+		// webhook.public_url before start_source; see Source.Start, which
+		// logs it (registering it with GitHub is not required — the
+		// operator points their webhook delivery at it themselves).
+		Listeners: []plugin.Listener{{Listen: "webhook.listen", Expose: "webhook.expose", URLTo: "webhook.public_url"}},
 	}
 }
 

@@ -100,7 +100,7 @@ func decl() plugin.Decl {
 		Connection: plugin.Schema{
 			"app":             {Type: "map", Desc: "GitHub App credentials: app_id, private_key_path"},
 			"token":           {Type: "string", Secret: true, Desc: "PAT used when no App is configured (chain: app → token → gh auth token)"},
-			"webhook":         {Type: "map", Desc: "event transport and delivery auth: smee_url and/or listen (+ path), secret, verify_signature"},
+			"webhook":         {Type: "map", Desc: "event transport and delivery auth: smee_url and/or listen (+ path), expose, public_url, secret, verify_signature"},
 			"sweep":           {Type: "map", Desc: "catch-up sweep: enabled, interval, min_interval, repos"},
 			"me":              {Type: "map", Desc: "your GitHub login(s): { logins: [...] } — defines \"you\""},
 			"repos":           {Type: "list", Desc: "default repo globs for triggers whose filter names no repo"},

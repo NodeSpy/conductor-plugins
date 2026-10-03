@@ -59,6 +59,13 @@ func (g *Source) serveHTTP(ctx context.Context, emit EmitFunc, seen *deliveryDed
 	}()
 
 	log.Printf("github[%s]: webhook listener on %s%s", g.name, g.cfg.Webhook.Listen, path)
+	if g.cfg.Webhook.PublicURL != "" {
+		// The engine opened webhook.expose for us (the `listeners`
+		// connection semantic, plugin-contract.md §2.4) and handed back
+		// this URL — point GitHub's webhook delivery at it yourself;
+		// registering it with GitHub is not this plugin's job.
+		log.Printf("github[%s]: webhook listener %s is reachable at %s", g.name, g.cfg.Webhook.Listen, g.cfg.Webhook.PublicURL)
+	}
 	err := srv.ListenAndServe()
 	if err == http.ErrServerClosed {
 		return ctx.Err()

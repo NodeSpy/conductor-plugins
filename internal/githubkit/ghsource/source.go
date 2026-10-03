@@ -136,6 +136,13 @@ type WebhookConfig struct {
 	// on: a webhook receiver that does not check its signatures accepts
 	// anything that reaches the port, so the default has to be the safe one.
 	VerifySig *bool `yaml:"verify_signature"`
+	// PublicURL is filled in by the HOST, never the operator: when `expose`
+	// names an exposure connector (the `listeners` connection semantic —
+	// plugin-contract.md §2.4), the engine opens it for Listen at instance
+	// start and writes the public URL here before Start runs. Empty when no
+	// `expose` is configured (a plain local listener), or while the
+	// exposure is still being retried — see Source.Start.
+	PublicURL string `yaml:"public_url"`
 }
 
 // Verify reports whether HMAC signature verification is on (default true).

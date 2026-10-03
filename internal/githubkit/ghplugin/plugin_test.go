@@ -187,3 +187,34 @@ func TestParseConnection(t *testing.T) {
 		t.Fatalf("retired key: %v", err)
 	}
 }
+
+// The engine fills in webhook.public_url (the `listeners` connection
+// semantic — plugin-contract.md §2.4) once it has opened webhook.expose;
+// ParseConnection threads it straight to the source, which is what Start
+// logs it from. webhook.expose itself is the engine's business, not read
+// back out here.
+func TestParseConnectionWebhookPublicURL(t *testing.T) {
+	c, err := ParseConnection(map[string]any{
+		"webhook": map[string]any{"listen": "127.0.0.1:0", "expose": "tun", "public_url": "https://hook.example/abc"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Source.Webhook.PublicURL != "https://hook.example/abc" {
+		t.Fatalf("webhook.public_url not threaded: %+v", c.Source.Webhook)
+	}
+}
+
+// The declaration names the webhook listener's listen/expose/url_to fields
+// as the `listeners` connection semantic, so the engine knows to open an
+// exposure for it when webhook.expose is configured.
+func TestDeclDeclaresListeners(t *testing.T) {
+	sem := Decl().Semantics
+	if sem == nil || len(sem.Listeners) != 1 {
+		t.Fatalf("semantics.listeners = %+v, want exactly one", sem)
+	}
+	l := sem.Listeners[0]
+	if l.Listen != "webhook.listen" || l.Expose != "webhook.expose" || l.URLTo != "webhook.public_url" {
+		t.Fatalf("listener = %+v", l)
+	}
+}
