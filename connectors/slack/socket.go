@@ -58,6 +58,14 @@ func (s *instanceSource) Start(ctx context.Context, emit emitFunc) error {
 	}
 }
 
+// wsConn is the slice of *websocket.Conn the read loop uses — narrowed to an
+// interface so pumpSocket is testable against a fake, deterministic
+// connection (a real websocket's Write can't be made to fail on command).
+type wsConn interface {
+	Read(ctx context.Context) (websocket.MessageType, []byte, error)
+	Write(ctx context.Context, typ websocket.MessageType, data []byte) error
+}
+
 // runOnce opens one Socket Mode session and pumps envelopes until it closes.
 func (s *instanceSource) runOnce(ctx context.Context, emit emitFunc) error {
 	wss, err := s.api.openSocket(ctx)
@@ -70,7 +78,13 @@ func (s *instanceSource) runOnce(ctx context.Context, emit emitFunc) error {
 	}
 	defer c.Close(websocket.StatusNormalClosure, "")
 	c.SetReadLimit(1 << 20)
+	return s.pumpSocket(ctx, c, emit)
+}
 
+// pumpSocket reads and dispatches envelopes over c until it errors (the
+// connection closing, including on an explicit "disconnect" frame) or ctx is
+// cancelled.
+func (s *instanceSource) pumpSocket(ctx context.Context, c wsConn, emit emitFunc) error {
 	for {
 		_, data, err := c.Read(ctx)
 		if err != nil {
@@ -82,11 +96,21 @@ func (s *instanceSource) runOnce(ctx context.Context, emit emitFunc) error {
 		}
 		// An interactive envelope is decided BEFORE its ACK: a modal
 		// submission's validation errors travel in the ACK payload, and the
-		// rest (views.open on a 3s trigger_id, emit) runs right after it.
+		// dedup checks for events_api/slash_commands happen inline too (see
+		// handleEvent/handleSlash) — both run synchronously, on this one read
+		// loop, so two near-simultaneous deliveries of the same envelope
+		// can't race past a dedup check that hasn't recorded it yet.
 		var ackPayload any
 		var after func()
 		if env.Type == "interactive" {
 			ackPayload, after = s.handleInteractive(ctx, emit, env.Payload)
+		}
+		var work func()
+		switch env.Type {
+		case "events_api":
+			work = s.handleEvent(ctx, emit, env.Payload)
+		case "slash_commands":
+			work = s.handleSlash(ctx, emit, env.Payload)
 		}
 		if env.EnvelopeID != "" {
 			frame := map[string]any{"envelope_id": env.EnvelopeID}
@@ -94,20 +118,27 @@ func (s *instanceSource) runOnce(ctx context.Context, emit emitFunc) error {
 				frame["payload"] = ackPayload
 			}
 			ack, _ := json.Marshal(frame)
-			_ = c.Write(ctx, websocket.MessageText, ack)
+			if err := c.Write(ctx, websocket.MessageText, ack); err != nil {
+				log.Printf("slack[%s]: ack envelope %s: %v", s.instance, env.EnvelopeID, err)
+			}
 		}
+		// Everything past this point can make a blocking Web API call
+		// (offerForms' postEphemeralBlocks, openForm's views.open, an
+		// emit). The ACK above is already written — what's left must run
+		// off this goroutine, or one slow call here delays reading (and so
+		// ACKing) every envelope behind it, including an interactive one
+		// racing Slack's 3s trigger_id window.
 		if after != nil {
-			after()
+			go after()
+		}
+		if work != nil {
+			go work()
 		}
 		switch env.Type {
 		case "hello":
 			// connected
 		case "disconnect":
 			return fmt.Errorf("disconnect: %s", env.Reason)
-		case "events_api":
-			s.handleEvent(ctx, emit, env.Payload)
-		case "slash_commands":
-			s.handleSlash(ctx, emit, env.Payload)
 		}
 	}
 }

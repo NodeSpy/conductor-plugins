@@ -97,10 +97,18 @@ func (ev evt) context(botToken string) map[string]any {
 	}
 }
 
-func (s *instanceSource) handleEvent(ctx context.Context, emit emitFunc, raw json.RawMessage) {
+// handleEvent decides, synchronously, whether an events_api envelope is new
+// work (parses the payload and records its dedup key) and returns the actual
+// dispatch — the part that can make a blocking Web API call (offerForms'
+// postEphemeralBlocks) — as a func for the caller to run off the socket
+// read loop. Returns nil for an unparseable or duplicate envelope: nothing to
+// run. Keeping the dedup check here, before the caller ever starts a
+// goroutine, is what keeps two near-simultaneous deliveries of the same
+// envelope (a Socket Mode retry) from both racing past it.
+func (s *instanceSource) handleEvent(ctx context.Context, emit emitFunc, raw json.RawMessage) func() {
 	var cb eventCallback
 	if json.Unmarshal(raw, &cb) != nil {
-		return
+		return nil
 	}
 	e := cb.Event
 	switch e.Type {
@@ -110,16 +118,18 @@ func (s *instanceSource) handleEvent(ctx context.Context, emit emitFunc, raw jso
 			via: "mention", files: e.Files, isBot: e.BotID != "",
 		}
 		if !s.dedup.Add("app_mention:" + ev.channel + ":" + ev.ts) {
-			return
+			return nil
 		}
-		s.fire(ctx, emit, "app_mention", ev, false)
-		s.offerForms(ctx, ev)
+		return func() {
+			s.fire(ctx, emit, "app_mention", ev, false)
+			s.offerForms(ctx, ev)
+		}
 	case "reaction_added":
 		ev := evt{reaction: e.Reaction, user: e.User, channel: e.Item.Channel, ts: e.Item.TS, threadTS: e.Item.TS}
 		if !s.dedup.Add("reaction_added:" + ev.channel + ":" + ev.ts + ":" + ev.reaction + ":" + ev.user) {
-			return
+			return nil
 		}
-		s.fire(ctx, emit, "reaction_added", ev, false)
+		return func() { s.fire(ctx, emit, "reaction_added", ev, false) }
 	case "message":
 		// A human reply inside a thread — or any message in a DM —
 		// may be answering a pending ask/hand-off, or be ordinary chatter a
@@ -129,26 +139,34 @@ func (s *instanceSource) handleEvent(ctx context.Context, emit emitFunc, raw jso
 		// Skip the bot's own posts (bot_id set) — a hand-off must never
 		// see itself as a reply.
 		if e.BotID != "" || e.User == "" || (e.ThreadTS == "" && e.ChannelType != "im") {
-			return
+			return nil
 		}
 		ev := evt{text: e.Text, user: e.User, channel: e.Channel, ts: e.TS, threadTS: e.ThreadTS}
 		if !s.dedup.Add("reply:" + ev.channel + ":" + ev.ts) {
-			return
+			return nil
 		}
-		s.fire(ctx, emit, "reply", ev, false)
+		return func() { s.fire(ctx, emit, "reply", ev, false) }
 	}
+	return nil
 }
 
-func (s *instanceSource) handleSlash(ctx context.Context, emit emitFunc, raw json.RawMessage) {
+// handleSlash is handleEvent's slash_commands counterpart: the dedup check
+// runs synchronously, and the actual fire (which can emit, a potentially
+// blocking call) is returned for the caller to run off the read loop.
+func (s *instanceSource) handleSlash(ctx context.Context, emit emitFunc, raw json.RawMessage) func() {
 	var p slashPayload
 	if json.Unmarshal(raw, &p) != nil {
-		return
+		return nil
 	}
 	ev := evt{text: p.Text, user: p.UserID, channel: p.ChannelID, command: p.Command, triggerID: p.TriggerID}
-	if !s.dedup.Add("slash_command:" + ev.channel + ":" + ev.user + ":" + ev.command + ":" + ev.text) {
-		return
+	// trigger_id makes this key unique per invocation (Slack mints a fresh
+	// one every time), so the SAME command+text typed twice in a row is two
+	// distinct keys, not a collision — while a Socket Mode retry of the SAME
+	// delivery carries the SAME trigger_id and still collapses as intended.
+	if !s.dedup.Add("slash_command:" + ev.channel + ":" + ev.user + ":" + ev.command + ":" + ev.text + ":" + ev.triggerID) {
+		return nil
 	}
-	s.fire(ctx, emit, "slash_command", ev, false)
+	return func() { s.fire(ctx, emit, "slash_command", ev, false) }
 }
 
 // fire emits one routed plugin.SourceEvent per enabled trigger ON `on` whose

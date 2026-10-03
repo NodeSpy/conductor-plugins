@@ -72,8 +72,8 @@ func TestMentionFormOffersButton(t *testing.T) {
 		testTrigger(t, "t1", "app_mention", map[string]any{"users": []any{"U1"}}, mentionForm()),
 	})
 	emit, got := collect()
-	s.handleEvent(context.Background(), emit, json.RawMessage(
-		`{"event":{"type":"app_mention","text":"deploy it","user":"U1","channel":"C1","ts":"1.1"}}`))
+	fireSync(s.handleEvent(context.Background(), emit, json.RawMessage(
+		`{"event":{"type":"app_mention","text":"deploy it","user":"U1","channel":"C1","ts":"1.1"}}`)))
 	// The bare mention still fires (app_mention has no "direct" rule here
 	// since its only trigger carries a form, so nothing not-form matches);
 	// only the button should post.
@@ -97,8 +97,8 @@ func TestMentionFormRequiresUsers(t *testing.T) {
 		testTrigger(t, "t1", "app_mention", nil, mentionForm()),
 	})
 	emit, _ := collect()
-	s.handleEvent(context.Background(), emit, json.RawMessage(
-		`{"event":{"type":"app_mention","text":"deploy it","user":"U1","channel":"C1","ts":"1.1"}}`))
+	fireSync(s.handleEvent(context.Background(), emit, json.RawMessage(
+		`{"event":{"type":"app_mention","text":"deploy it","user":"U1","channel":"C1","ts":"1.1"}}`)))
 	if len(rec.all()) != 0 {
 		t.Fatalf("a form trigger with no users:/any_user must not fire, got %+v", rec.all())
 	}
@@ -111,8 +111,8 @@ func TestMentionFormAnyUserOptsOut(t *testing.T) {
 	opts["any_user"] = true
 	s, rec := sourceWithFake(t, []plugin.SourceTrigger{testTrigger(t, "t1", "app_mention", nil, opts)})
 	emit, _ := collect()
-	s.handleEvent(context.Background(), emit, json.RawMessage(
-		`{"event":{"type":"app_mention","text":"deploy it","user":"U9","channel":"C1","ts":"1.1"}}`))
+	fireSync(s.handleEvent(context.Background(), emit, json.RawMessage(
+		`{"event":{"type":"app_mention","text":"deploy it","user":"U9","channel":"C1","ts":"1.1"}}`)))
 	if len(rec.all()) != 1 {
 		t.Fatalf("any_user should let anyone open the form, got %+v", rec.all())
 	}
@@ -125,8 +125,8 @@ func TestButtonClickOpensForm(t *testing.T) {
 		testTrigger(t, "t1", "app_mention", map[string]any{"users": []any{"U1"}}, mentionForm()),
 	})
 	emit, _ := collect()
-	s.handleEvent(context.Background(), emit, json.RawMessage(
-		`{"event":{"type":"app_mention","text":"deploy it","user":"U1","channel":"C1","ts":"1.1"}}`))
+	fireSync(s.handleEvent(context.Background(), emit, json.RawMessage(
+		`{"event":{"type":"app_mention","text":"deploy it","user":"U1","channel":"C1","ts":"1.1"}}`)))
 	calls := rec.all()
 	blocks := calls[0].body["blocks"].([]any)
 	actions := blocks[1].(map[string]any)["elements"].([]any)[0].(map[string]any)

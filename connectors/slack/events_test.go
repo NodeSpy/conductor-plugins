@@ -43,11 +43,22 @@ func collect() (emitFunc, *[]plugin.SourceEvent) {
 	return func(se plugin.SourceEvent) error { got = append(got, se); return nil }, &got
 }
 
+// fireSync runs, synchronously, the work handleEvent/handleSlash/
+// handleInteractive's helpers defer until after their dedup check and (for
+// interactive envelopes) the ACK — production runs it on a goroutine (see
+// socket.go's runOnce); tests that assert on emitted events right after the
+// call want it to have already happened.
+func fireSync(work func()) {
+	if work != nil {
+		work()
+	}
+}
+
 func TestAppMentionEmits(t *testing.T) {
 	s := newSource(t, []plugin.SourceTrigger{testTrigger(t, "t1", "app_mention", nil, nil)})
 	emit, got := collect()
 	raw := json.RawMessage(`{"event":{"type":"app_mention","text":"hey fix Widget","user":"U1","channel":"C1","ts":"1.1"}}`)
-	s.handleEvent(context.Background(), emit, raw)
+	fireSync(s.handleEvent(context.Background(), emit, raw))
 	if len(*got) != 1 {
 		t.Fatalf("want 1 event, got %d", len(*got))
 	}
@@ -73,13 +84,13 @@ func TestAppMentionEmits(t *testing.T) {
 func TestReactionFilter(t *testing.T) {
 	s := newSource(t, []plugin.SourceTrigger{testTrigger(t, "t1", "reaction_added", map[string]any{"reaction": "eyes"}, nil)})
 	emit, got := collect()
-	s.handleEvent(context.Background(), emit, json.RawMessage(
-		`{"event":{"type":"reaction_added","reaction":"tada","user":"U1","item":{"channel":"C1","ts":"2.2"}}}`))
+	fireSync(s.handleEvent(context.Background(), emit, json.RawMessage(
+		`{"event":{"type":"reaction_added","reaction":"tada","user":"U1","item":{"channel":"C1","ts":"2.2"}}}`)))
 	if len(*got) != 0 {
 		t.Fatalf("non-matching reaction should not fire, got %d", len(*got))
 	}
-	s.handleEvent(context.Background(), emit, json.RawMessage(
-		`{"event":{"type":"reaction_added","reaction":"eyes","user":"U1","item":{"channel":"C1","ts":"3.3"}}}`))
+	fireSync(s.handleEvent(context.Background(), emit, json.RawMessage(
+		`{"event":{"type":"reaction_added","reaction":"eyes","user":"U1","item":{"channel":"C1","ts":"3.3"}}}`)))
 	if len(*got) != 1 || (*got)[0].Event != "reaction_added" {
 		t.Fatalf("matching reaction should fire once, got %+v", *got)
 	}
@@ -88,13 +99,13 @@ func TestReactionFilter(t *testing.T) {
 func TestSlashCommandFilter(t *testing.T) {
 	s := newSource(t, []plugin.SourceTrigger{testTrigger(t, "t1", "slash_command", map[string]any{"command": "/conductor"}, nil)})
 	emit, got := collect()
-	s.handleSlash(context.Background(), emit, json.RawMessage(
-		`{"command":"/other","text":"x","channel_id":"C1","user_id":"U1","trigger_id":"T1"}`))
+	fireSync(s.handleSlash(context.Background(), emit, json.RawMessage(
+		`{"command":"/other","text":"x","channel_id":"C1","user_id":"U1","trigger_id":"T1"}`)))
 	if len(*got) != 0 {
 		t.Fatalf("non-matching command should not fire, got %d", len(*got))
 	}
-	s.handleSlash(context.Background(), emit, json.RawMessage(
-		`{"command":"/conductor","text":"deploy please","channel_id":"C1","user_id":"U1","trigger_id":"T2"}`))
+	fireSync(s.handleSlash(context.Background(), emit, json.RawMessage(
+		`{"command":"/conductor","text":"deploy please","channel_id":"C1","user_id":"U1","trigger_id":"T2"}`)))
 	if len(*got) != 1 || (*got)[0].Event != "slash_command" {
 		t.Fatalf("matching command should fire, got %+v", *got)
 	}
@@ -107,10 +118,10 @@ func TestSlashCommandFilter(t *testing.T) {
 func TestSlashCommandTargetsAreDistinctPerInvocation(t *testing.T) {
 	s := newSource(t, []plugin.SourceTrigger{testTrigger(t, "t1", "slash_command", nil, nil)})
 	emit, got := collect()
-	s.handleSlash(context.Background(), emit, json.RawMessage(
-		`{"command":"/deploy","text":"staging","channel_id":"C1","user_id":"U1","trigger_id":"111.111"}`))
-	s.handleSlash(context.Background(), emit, json.RawMessage(
-		`{"command":"/deploy","text":"production","channel_id":"C1","user_id":"U1","trigger_id":"222.222"}`))
+	fireSync(s.handleSlash(context.Background(), emit, json.RawMessage(
+		`{"command":"/deploy","text":"staging","channel_id":"C1","user_id":"U1","trigger_id":"111.111"}`)))
+	fireSync(s.handleSlash(context.Background(), emit, json.RawMessage(
+		`{"command":"/deploy","text":"production","channel_id":"C1","user_id":"U1","trigger_id":"222.222"}`)))
 	if len(*got) != 2 {
 		t.Fatalf("want 2 events, got %d: %+v", len(*got), *got)
 	}
@@ -130,13 +141,13 @@ func TestSlashCommandTargetsAreDistinctPerInvocation(t *testing.T) {
 func TestUsersFilter(t *testing.T) {
 	s := newSource(t, []plugin.SourceTrigger{testTrigger(t, "t1", "app_mention", map[string]any{"users": []any{"U1"}}, nil)})
 	emit, got := collect()
-	s.handleEvent(context.Background(), emit, json.RawMessage(
-		`{"event":{"type":"app_mention","text":"hi","user":"U2","channel":"C1","ts":"1.1"}}`))
+	fireSync(s.handleEvent(context.Background(), emit, json.RawMessage(
+		`{"event":{"type":"app_mention","text":"hi","user":"U2","channel":"C1","ts":"1.1"}}`)))
 	if len(*got) != 0 {
 		t.Fatalf("non-listed user should not fire, got %d", len(*got))
 	}
-	s.handleEvent(context.Background(), emit, json.RawMessage(
-		`{"event":{"type":"app_mention","text":"hi","user":"U1","channel":"C1","ts":"1.2"}}`))
+	fireSync(s.handleEvent(context.Background(), emit, json.RawMessage(
+		`{"event":{"type":"app_mention","text":"hi","user":"U1","channel":"C1","ts":"1.2"}}`)))
 	if len(*got) != 1 {
 		t.Fatalf("listed user should fire, got %d", len(*got))
 	}
@@ -146,10 +157,38 @@ func TestDedupRedelivery(t *testing.T) {
 	s := newSource(t, []plugin.SourceTrigger{testTrigger(t, "t1", "app_mention", nil, nil)})
 	emit, got := collect()
 	raw := json.RawMessage(`{"event":{"type":"app_mention","text":"hi","user":"U1","channel":"C1","ts":"9.9"}}`)
-	s.handleEvent(context.Background(), emit, raw)
-	s.handleEvent(context.Background(), emit, raw) // redelivery of the same ts
+	fireSync(s.handleEvent(context.Background(), emit, raw))
+	fireSync(s.handleEvent(context.Background(), emit, raw)) // redelivery of the same ts
 	if len(*got) != 1 {
 		t.Fatalf("redelivered event should emit once, got %d", len(*got))
+	}
+}
+
+// TestSlashCommandDedupKeyIncludesTriggerID is the regression test for
+// finding #10: the SAME command+text typed twice by a user (two distinct
+// invocations, each with its own Slack-minted trigger_id) must both fire —
+// the old dedup key (channel+user+command+text, with no trigger_id) silently
+// dropped the second one as if it were a retry. A genuine Socket Mode retry
+// of the SAME delivery, which reuses the SAME trigger_id, must still
+// collapse to one.
+func TestSlashCommandDedupKeyIncludesTriggerID(t *testing.T) {
+	s := newSource(t, []plugin.SourceTrigger{testTrigger(t, "t1", "slash_command", nil, nil)})
+	emit, got := collect()
+
+	fireSync(s.handleSlash(context.Background(), emit, json.RawMessage(
+		`{"command":"/deploy","text":"staging","channel_id":"C1","user_id":"U1","trigger_id":"T1"}`)))
+	fireSync(s.handleSlash(context.Background(), emit, json.RawMessage(
+		`{"command":"/deploy","text":"staging","channel_id":"C1","user_id":"U1","trigger_id":"T2"}`)))
+	if len(*got) != 2 {
+		t.Fatalf("the same command+text with two different trigger_ids are two invocations, want 2 events, got %d: %+v", len(*got), *got)
+	}
+
+	*got = nil
+	retry := json.RawMessage(`{"command":"/deploy","text":"staging","channel_id":"C1","user_id":"U1","trigger_id":"T3"}`)
+	fireSync(s.handleSlash(context.Background(), emit, retry))
+	fireSync(s.handleSlash(context.Background(), emit, retry)) // a Socket Mode retry: same trigger_id
+	if len(*got) != 1 {
+		t.Fatalf("a retry (same trigger_id) must still collapse to one event, got %d", len(*got))
 	}
 }
 
@@ -163,8 +202,8 @@ func TestMultipleTriggersRoutedIndependently(t *testing.T) {
 		testTrigger(t, "b", "app_mention", nil, nil),
 	})
 	emit, got := collect()
-	s.handleEvent(context.Background(), emit, json.RawMessage(
-		`{"event":{"type":"app_mention","text":"hi","user":"U1","channel":"C1","ts":"1.1"}}`))
+	fireSync(s.handleEvent(context.Background(), emit, json.RawMessage(
+		`{"event":{"type":"app_mention","text":"hi","user":"U1","channel":"C1","ts":"1.1"}}`)))
 	if len(*got) != 2 {
 		t.Fatalf("want 2 routed events, got %d", len(*got))
 	}
@@ -182,8 +221,8 @@ func TestReplyEvent(t *testing.T) {
 	emit, got := collect()
 
 	// A human thread reply.
-	s.handleEvent(context.Background(), emit, json.RawMessage(
-		`{"event":{"type":"message","channel":"C1","user":"U1","text":"approve","thread_ts":"T1"}}`))
+	fireSync(s.handleEvent(context.Background(), emit, json.RawMessage(
+		`{"event":{"type":"message","channel":"C1","user":"U1","text":"approve","thread_ts":"T1"}}`)))
 	if len(*got) != 1 || (*got)[0].Event != "reply" {
 		t.Fatalf("thread reply should emit a reply event, got %+v", *got)
 	}
@@ -197,22 +236,22 @@ func TestReplyEvent(t *testing.T) {
 
 	// The bot's own post is skipped.
 	*got = nil
-	s.handleEvent(context.Background(), emit, json.RawMessage(
-		`{"event":{"type":"message","channel":"C1","user":"U1","text":"x","thread_ts":"T1","bot_id":"B1"}}`))
+	fireSync(s.handleEvent(context.Background(), emit, json.RawMessage(
+		`{"event":{"type":"message","channel":"C1","user":"U1","text":"x","thread_ts":"T1","bot_id":"B1"}}`)))
 	if len(*got) != 0 {
 		t.Fatalf("bot posts must not emit a reply event, got %+v", *got)
 	}
 
 	// A top-level (non-threaded) channel message is skipped too.
-	s.handleEvent(context.Background(), emit, json.RawMessage(
-		`{"event":{"type":"message","channel":"C1","user":"U1","text":"hi"}}`))
+	fireSync(s.handleEvent(context.Background(), emit, json.RawMessage(
+		`{"event":{"type":"message","channel":"C1","user":"U1","text":"hi"}}`)))
 	if len(*got) != 0 {
 		t.Fatalf("non-threaded channel messages must not emit a reply event, got %+v", *got)
 	}
 
 	// A DM message (channel_type im, no thread_ts) IS a reply.
-	s.handleEvent(context.Background(), emit, json.RawMessage(
-		`{"event":{"type":"message","channel":"D1","user":"U1","text":"approve","channel_type":"im"}}`))
+	fireSync(s.handleEvent(context.Background(), emit, json.RawMessage(
+		`{"event":{"type":"message","channel":"D1","user":"U1","text":"approve","channel_type":"im"}}`)))
 	if len(*got) != 1 || (*got)[0].Event != "reply" {
 		t.Fatalf("a DM message should emit a reply event, got %+v", *got)
 	}
@@ -225,8 +264,8 @@ func TestConversationReplyIDMatchesAsk(t *testing.T) {
 	// never match a reply back to its ask.
 	s := newSource(t, nil)
 	emit, got := collect()
-	s.handleEvent(context.Background(), emit, json.RawMessage(
-		`{"event":{"type":"message","channel":"C1","user":"U1","text":"approve","thread_ts":"1700000000.000100"}}`))
+	fireSync(s.handleEvent(context.Background(), emit, json.RawMessage(
+		`{"event":{"type":"message","channel":"C1","user":"U1","text":"approve","thread_ts":"1700000000.000100"}}`)))
 	sctx := (*got)[0].Context["slack"].(map[string]any)
 	gotID := sctx["channel"].(string) + ":" + sctx["thread_ts"].(string)
 	if gotID != "C1:1700000000.000100" {
@@ -234,8 +273,8 @@ func TestConversationReplyIDMatchesAsk(t *testing.T) {
 	}
 
 	*got = nil
-	s.handleEvent(context.Background(), emit, json.RawMessage(
-		`{"event":{"type":"message","channel":"D1","user":"U1","text":"approve","channel_type":"im"}}`))
+	fireSync(s.handleEvent(context.Background(), emit, json.RawMessage(
+		`{"event":{"type":"message","channel":"D1","user":"U1","text":"approve","channel_type":"im"}}`)))
 	sctx = (*got)[0].Context["slack"].(map[string]any)
 	gotDMID := sctx["channel"].(string) + ":" + sctx["thread_ts"].(string)
 	if gotDMID != "D1:" {
