@@ -42,12 +42,13 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 	}
 	base := c.base()
 	// key is the target key every target-gone remap tags data.target with —
-	// the SAME template ghplugin/semantics.go's prTarget declares for the
-	// event this verb's call responds to ("{{.repo}}#{{.number}}"), so the
-	// host can require an exact match before honoring target_gone. Computed
-	// unconditionally; verbs that never address a PR/issue number (repo- or
-	// gist-scoped ones) simply never use it.
-	key := fmt.Sprintf("%s#%d", repo, number)
+	// the SAME string ghplugin/semantics.go declares for the event this
+	// verb's call responds to (targetKey mirrors prTarget's
+	// "{{.repo}}#{{.number}}" and the repo-level default's bare "{{.repo}}"
+	// exactly), so the host can require an exact match before honoring
+	// target_gone. Computed unconditionally; verbs that never address a
+	// PR/issue number (repo- or gist-scoped ones) simply never use it.
+	key := targetKey(repo, number)
 	switch verb {
 	case "comment":
 		if number == 0 {
