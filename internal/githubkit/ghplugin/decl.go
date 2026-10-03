@@ -91,8 +91,12 @@ func decl() plugin.Decl {
 		// Cloud with data residency, and the smee relay. A GHES host on its
 		// own domain, or a test double, is outside it — an INSTALLED plugin
 		// is confined to this list; a local development build is not.
-		Capabilities: plugin.Capabilities{Egress: []string{"api.github.com:443", "*.ghe.com:443", "smee.io:443"}, Commands: []string{"gh"}}, // gh: the write chain's `gh auth token` (Q8)
-		Desc:         "GitHub: PR/issue/check/release events in; comments, reviews, and review requests out.",
+		// gh: the write chain's `gh auth token` (Q8); its token variables, for a
+		// box that authenticates gh through the environment rather than its
+		// config file.
+		Capabilities: plugin.Capabilities{Egress: []string{"api.github.com:443", "*.ghe.com:443", "smee.io:443"}, Commands: []string{"gh"},
+			Env: []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_HOST", "GH_CONFIG_DIR"}},
+		Desc: "GitHub: PR/issue/check/release events in; comments, reviews, and review requests out.",
 		Connection: plugin.Schema{
 			"app":             {Type: "map", Desc: "GitHub App credentials: app_id, private_key_path"},
 			"token":           {Type: "string", Secret: true, Desc: "PAT used when no App is configured (chain: app → token → gh auth token)"},
