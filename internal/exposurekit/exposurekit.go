@@ -47,6 +47,54 @@ import (
 // number of tunnel subprocesses.
 const DefaultMaxLeasesPerInstance = 16
 
+// fallbackGrace is how long RunAndScanPreferred waits, once a fallback-only
+// match has been seen, for a preferred-pattern match to still arrive before
+// giving up on it and returning the fallback. Short enough that a provider
+// with no preferred match configured (or none ever printed) doesn't make
+// every call eat the full timeout waiting on a pattern that was never going
+// to show up.
+const fallbackGrace = 500 * time.Millisecond
+
+// ProcessReaper synchronizes a spawned process's background reap (the
+// goroutine every long-running spawn here starts, so a process that exits on
+// its own doesn't sit as a zombie until something happens to call stop) with
+// that stop path's kill signal. Once Wait has observed the process already
+// exited, KillIfRunning must not send a signal: the OS is free to reuse that
+// pid (as a new, unrelated process's own process-group leader) the instant
+// it is reaped, and a kill-by-pgid landing after that point can hit that
+// unrelated process instead. The zero value is ready to use.
+type ProcessReaper struct {
+	mu     sync.Mutex
+	exited bool
+}
+
+// Wait runs waitFn — expected to block on the spawned process's Wait, e.g.
+// `func() { _ = cmd.Wait() }` — and then marks the process reaped. Call this
+// from the background goroutine every spawn here already starts to avoid
+// zombies.
+func (r *ProcessReaper) Wait(waitFn func()) {
+	waitFn()
+	r.mu.Lock()
+	r.exited = true
+	r.mu.Unlock()
+}
+
+// KillIfRunning calls kill — expected to signal the process/group, e.g.
+// `func() { KillProcessGroup(cmd) }` — unless Wait has already observed the
+// process exit. The check and the call share Wait's lock, so the two methods
+// can never interleave wrongly: either this call completes before Wait can
+// record the exit, or Wait has already recorded it and the signal is skipped
+// entirely — there is no window where a signal is sent after the exit was
+// observed.
+func (r *ProcessReaper) KillIfRunning(kill func()) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.exited {
+		return
+	}
+	kill()
+}
+
 // Exposes is the verb-semantics value every exposure plugin's "open" verb
 // declares: {local: "local_addr", url: "public_url", lease: "lease",
 // release: <release>} — the same field names the tunnel builtin uses, so a
@@ -293,9 +341,10 @@ func RunAndScan(argv []string, urlRe *regexp.Regexp, timeout time.Duration, onLi
 	// Always reap in the background, not only when stop() is called: a
 	// tunnel binary that crashes or exits on its own is otherwise left a
 	// zombie until (if ever) close/plugin.stop runs cmd.Wait() for it.
+	var reaper ProcessReaper
 	reaped := make(chan struct{})
 	go func() {
-		_ = cmd.Wait()
+		reaper.Wait(func() { _ = cmd.Wait() })
 		close(reaped)
 	}()
 
@@ -303,7 +352,10 @@ func RunAndScan(argv []string, urlRe *regexp.Regexp, timeout time.Duration, onLi
 	stopFn := func() {
 		closeOnce.Do(func() {
 			cancel()
-			KillProcessGroup(cmd)
+			// Skip the signal if the process has already exited on its own —
+			// see ProcessReaper: signaling a pid the reaper already observed
+			// as gone risks hitting a reused pid's unrelated process group.
+			reaper.KillIfRunning(func() { KillProcessGroup(cmd) })
 			<-reaped // the background goroutine above owns the one Wait call
 		})
 	}
@@ -376,21 +428,27 @@ func RunAndScanPreferred(argv []string, preferred []*regexp.Regexp, fallback *re
 		return "", nil, fmt.Errorf("start %s: %w", argv[0], err)
 	}
 
+	var reaper ProcessReaper
 	reaped := make(chan struct{})
 	go func() {
-		_ = cmd.Wait()
+		reaper.Wait(func() { _ = cmd.Wait() })
 		close(reaped)
 	}()
 	var closeOnce sync.Once
 	stopFn := func() {
 		closeOnce.Do(func() {
 			cancel()
-			KillProcessGroup(cmd)
+			// Skip the signal if the process has already exited on its own —
+			// see ProcessReaper: signaling a pid the reaper already observed
+			// as gone risks hitting a reused pid's unrelated process group.
+			reaper.KillIfRunning(func() { KillProcessGroup(cmd) })
 			<-reaped
 		})
 	}
 
 	preferredFound := make(chan string, 1)
+	fallbackSeen := make(chan struct{})
+	var fallbackSeenOnce sync.Once
 	var mu sync.Mutex
 	var lastFallback string
 	scan := func(r io.Reader) {
@@ -418,6 +476,7 @@ func RunAndScanPreferred(argv []string, preferred []*regexp.Regexp, fallback *re
 					mu.Lock()
 					lastFallback = m
 					mu.Unlock()
+					fallbackSeenOnce.Do(func() { close(fallbackSeen) })
 				}
 			}
 		}
@@ -430,6 +489,27 @@ func RunAndScanPreferred(argv []string, preferred []*regexp.Regexp, fallback *re
 	select {
 	case url := <-preferredFound:
 		return url, stopFn, nil
+	case <-fallbackSeen:
+		// A fallback match showed up. Rather than keep waiting for the FULL
+		// timeout on a preferred pattern that may never arrive (or was never
+		// configured to begin with), give it one short grace window to still
+		// show up, then settle for the fallback.
+		grace := time.NewTimer(fallbackGrace)
+		defer grace.Stop()
+		select {
+		case url := <-preferredFound:
+			return url, stopFn, nil
+		case <-grace.C:
+			mu.Lock()
+			url := lastFallback
+			mu.Unlock()
+			return url, stopFn, nil
+		case <-timer.C:
+			mu.Lock()
+			url := lastFallback
+			mu.Unlock()
+			return url, stopFn, nil
+		}
 	case <-timer.C:
 		mu.Lock()
 		url := lastFallback

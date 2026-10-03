@@ -327,6 +327,34 @@ func TestRunAndScanReapsSelfExitedProcess(t *testing.T) {
 	}
 }
 
+// TestProcessReaperSkipsKillAfterSelfExit is the regression test for round-2
+// finding #3: once Wait has observed the process already exited on its own
+// (a self-exit that races the reaper ahead of any stop() call), KillIfRunning
+// must not signal — the pid may already have been reused by an unrelated
+// process as its own process-group leader. The kill func is injected rather
+// than exercising a real KillProcessGroup against a live process, so the
+// assertion doesn't depend on process/pid timing.
+func TestProcessReaperSkipsKillAfterSelfExit(t *testing.T) {
+	var r ProcessReaper
+	r.Wait(func() {}) // simulates cmd.Wait() returning because the process already exited
+	killed := false
+	r.KillIfRunning(func() { killed = true })
+	if killed {
+		t.Fatal("KillIfRunning signaled after Wait had already observed the exit")
+	}
+}
+
+// TestProcessReaperKillsBeforeWaitObservesExit proves the normal case still
+// works: when Wait has not yet observed an exit, KillIfRunning must signal.
+func TestProcessReaperKillsBeforeWaitObservesExit(t *testing.T) {
+	var r ProcessReaper
+	killed := false
+	r.KillIfRunning(func() { killed = true })
+	if !killed {
+		t.Fatal("KillIfRunning must signal when Wait has not yet observed an exit")
+	}
+}
+
 // TestRunAndScanPreferredPrefersKnownPatternOverFirstMatch and
 // TestRunAndScanPreferredFallsBackToLastMatch are kit-level unit tests for
 // RunAndScanPreferred, backing sshtunnel's finding #7 fix.
@@ -356,6 +384,32 @@ func TestRunAndScanPreferredFallsBackToLastMatch(t *testing.T) {
 		t.Fatalf("RunAndScanPreferred fallback: %q %v, want the LAST generic match", url, err)
 	}
 	stop()
+}
+
+// TestRunAndScanPreferredReturnsFallbackAfterGraceNotFullTimeout is the
+// regression test for round-2 finding #4: once a fallback-only match has
+// been seen, RunAndScanPreferred must wait only a short grace window for a
+// preferred match before settling for the fallback, not the full timeout.
+// The overall timeout here is generous (5s) specifically so the assertion
+// distinguishes "returned after a short grace window" from "returned
+// because the whole timeout elapsed anyway".
+func TestRunAndScanPreferredReturnsFallbackAfterGraceNotFullTimeout(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not on PATH")
+	}
+	known := regexp.MustCompile(`https://\S+\.known\.example`)
+	start := time.Now()
+	url, stop, err := RunAndScanPreferred(
+		[]string{"sh", "-c", "echo https://banner.example/only; sleep 5"},
+		[]*regexp.Regexp{known}, DefaultURL, 5*time.Second, nil)
+	elapsed := time.Since(start)
+	if err != nil || url != "https://banner.example/only" {
+		t.Fatalf("RunAndScanPreferred: %q %v", url, err)
+	}
+	stop()
+	if elapsed > 2*time.Second {
+		t.Fatalf("RunAndScanPreferred took %s to return a fallback match — it should settle after a short grace window, not wait out the full 5s timeout", elapsed)
+	}
 }
 
 func TestRunOnce(t *testing.T) {

@@ -169,16 +169,20 @@ func (p *ngrokPlugin) open(req plugin.InvokeRequest) (plugin.InvokeResult, error
 	// exiting on its own (crash, killed by something else) would otherwise
 	// leave a zombie until close/plugin.stop happens to run cmd.Wait() —
 	// which, for a tunnel nobody explicitly closes, may be never.
+	var reaper exposurekit.ProcessReaper
 	reaped := make(chan struct{})
 	go func() {
-		_ = cmd.Wait()
+		reaper.Wait(func() { _ = cmd.Wait() })
 		close(reaped)
 	}()
 	var once sync.Once
 	stop := func() {
 		once.Do(func() {
 			cancel()
-			exposurekit.KillProcessGroup(cmd)
+			// Skip the signal if ngrok already exited on its own — see
+			// ProcessReaper: signaling a pid the reaper already observed as
+			// gone risks hitting a reused pid's unrelated process group.
+			reaper.KillIfRunning(func() { exposurekit.KillProcessGroup(cmd) })
 			<-reaped
 		})
 	}
