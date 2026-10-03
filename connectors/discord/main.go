@@ -107,7 +107,7 @@ func (discordPlugin) Describe() plugin.Decl {
 					"timeout":   {Type: "duration", Desc: "how long the host waits for an answer (default 1h)"},
 				},
 				Outputs: plugin.Schema{
-					"ref":    {Type: "string", Desc: "the Discord channel (or DM channel) id the question was posted to — equal to the conversation_reply event's `channel` fact that resolves this ask"},
+					"ref":    {Type: "string", Desc: "channel:message_id of the question — equal to what the conversation_reply event's `channel`+`replied_to` facts render to when the human replies to THIS message (Discord's own reply-to feature). A plain message with no reply-to resolves no ask, so two pending asks in the same channel never collide."},
 					"action": {Type: "string", Enum: []string{"approve", "revise", "discard"}, Desc: "the human's decision (filled in once a reply resolves this ask)"},
 					"text":   {Type: "string", Desc: "their reply text (a revision), or the draft on approve (filled in once a reply resolves this ask)"},
 				},
@@ -126,13 +126,23 @@ func (discordPlugin) Describe() plugin.Decl {
 					"author_bot": {Type: "boolean", Desc: "true if the author is a bot account"},
 					"text":       {Type: "string", Desc: "the message content"},
 					"message_id": {Type: "string"},
+					"replied_to": {Type: "string", Desc: "the message id this one replies to (Discord's native reply-to feature), empty for a plain message"},
 				},
 				Filters: plugin.Schema{
 					"channel": {Type: "string"},
 					"author":  {Type: "string"},
 				},
 				Semantics: &plugin.EventSemantics{
-					ConversationReply: &plugin.ConversationReply{ID: "channel", Author: "author", Text: "text"},
+					// A bare "channel" (no template braces) rendered as the
+					// literal string "channel" for every reply, colliding
+					// every channel/ask into one slot. The id now also
+					// requires Discord's own reply-to (replied_to) to match
+					// the ask's own message id, so two pending asks in the
+					// same channel resolve independently — a plain message
+					// with no reply-to (replied_to empty) matches no ask's
+					// ref (which always has a real message id suffix) and
+					// is left as an ordinary, unconsumed reply event.
+					ConversationReply: &plugin.ConversationReply{ID: "{{.channel}}:{{.replied_to}}", Author: "author", Text: "text"},
 					Author:            &plugin.AuthorSemantics{Login: "author", Automated: "author_bot"},
 				},
 			},
@@ -264,10 +274,17 @@ func invokeAsk(conn discordConn, o map[string]any) (plugin.InvokeResult, error) 
 		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, fmt.Sprintf("ask: options.to must be dm|thread, got %q", to))
 	}
 
-	if _, err := postMessage(conn, channel, renderAsk(title, body)); err != nil {
+	msgID, err := postMessage(conn, channel, renderAsk(title, body))
+	if err != nil {
 		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, "ask: "+err.Error())
 	}
-	return plugin.InvokeResult{Outputs: map[string]any{"ref": channel}}, nil
+	// channel alone collides two concurrent asks in the same channel (and,
+	// worse, the same thread/DM reused for a later ask) onto one
+	// conversation id; the posted question's own message id disambiguates
+	// them, matched by the human using Discord's reply-to feature (see the
+	// "reply" event's replied_to fact).
+	ref := channel + ":" + msgID
+	return plugin.InvokeResult{Outputs: map[string]any{"ref": ref}}, nil
 }
 
 // renderAsk formats the question/draft the way the old bundled connector's
@@ -400,8 +417,9 @@ const (
 	gwOpDispatch       = 0  // server->client: an event (t names it, d carries it)
 	gwOpHeartbeat      = 1  // client->server: keep the connection alive
 	gwOpIdentify       = 2  // client->server: authenticate + declare intents
-	gwOpReconnect      = 7  // server->client: reconnect (a fresh session, here)
-	gwOpInvalidSession = 9  // server->client: session invalid; reconnect
+	gwOpResume         = 6  // client->server: resume a prior session (token, session_id, seq)
+	gwOpReconnect      = 7  // server->client: reconnect, then RESUME if possible
+	gwOpInvalidSession = 9  // server->client: d:true resumable, d:false must re-identify
 	gwOpHello          = 10 // server->client: first frame; carries heartbeat_interval
 	gwOpHeartbeatACK   = 11 // server->client: heartbeat acknowledged
 )
@@ -414,14 +432,22 @@ type gatewayFrame struct {
 	T  string          `json:"t,omitempty"`
 }
 
-// gatewayState tracks the mutable state one gateway connection accumulates
-// across frames: the last dispatch sequence number (required on every
-// heartbeat) and the bot's own user id (captured from READY, so its own
-// posts are never mistaken for a reply). Fresh per connection attempt.
+// gatewayState tracks the mutable state one gateway SESSION accumulates —
+// the last dispatch sequence number (required on every heartbeat and on
+// RESUME), the bot's own user id (captured from READY, so its own posts are
+// never mistaken for a reply), and the session id RESUME needs. Unlike a
+// connection attempt, a session survives a reconnect: it is created once per
+// StartSource and handed to every runGatewayOnce call, so a dropped
+// connection can RESUME instead of losing events to a brand-new session.
+// selfID and sessionID are only ever touched by the single read-loop
+// goroutine that owns a gatewayState (handleFrame's caller), so — like
+// selfID already was — they need no lock; seq alone is also read by the
+// separate heartbeat goroutine and keeps its own.
 type gatewayState struct {
-	mu     sync.Mutex
-	seq    *int
-	selfID string
+	mu        sync.Mutex
+	seq       *int
+	selfID    string
+	sessionID string
 }
 
 func (gs *gatewayState) setSeq(s int) {
@@ -439,6 +465,16 @@ func (gs *gatewayState) seqValue() (int, bool) {
 	return *gs.seq, true
 }
 
+// resetSession discards the session (sessionID and seq): the next HELLO must
+// IDENTIFY fresh rather than attempt to RESUME it. Called when the gateway
+// tells us the session is gone for good (INVALID_SESSION with d:false).
+func (gs *gatewayState) resetSession() {
+	gs.mu.Lock()
+	gs.seq = nil
+	gs.mu.Unlock()
+	gs.sessionID = ""
+}
+
 // gatewayAction tells the connection loop what to do after one frame.
 // Parsing+deciding (handleFrame) is pure; only the loop performs I/O, which
 // is what makes gateway behavior testable without a live socket.
@@ -447,6 +483,7 @@ type gatewayAction int
 const (
 	actionNone gatewayAction = iota
 	actionIdentify
+	actionResume
 	actionReconnect
 )
 
@@ -455,10 +492,12 @@ type helloPayload struct {
 	HeartbeatInterval int `json:"heartbeat_interval"`
 }
 
-// readyPayload is READY's (op 0, t="READY") `d` — only the field this
-// gateway needs.
+// readyPayload is READY's (op 0, t="READY") `d` — only the fields this
+// gateway needs. SessionID is what a later RESUME (op 6) identifies the
+// session by.
 type readyPayload struct {
-	User struct {
+	SessionID string `json:"session_id"`
+	User      struct {
 		ID string `json:"id"`
 	} `json:"user"`
 }
@@ -472,6 +511,14 @@ type messageCreatePayload struct {
 		ID  string `json:"id"`
 		Bot bool   `json:"bot"`
 	} `json:"author"`
+	// MessageReference is set when the human used Discord's own reply-to
+	// feature — the only way a reply in a busy channel can be tied to a
+	// SPECIFIC prior message (the ask's own) rather than just "any message
+	// in this channel", which is what lets two concurrent asks in one
+	// channel resolve independently.
+	MessageReference *struct {
+		MessageID string `json:"message_id"`
+	} `json:"message_reference"`
 }
 
 // handleFrame parses one raw gateway frame, updates gs (the sequence number
@@ -503,8 +550,29 @@ func handleFrame(gs *gatewayState, raw []byte, emit func(any) error, log func(st
 			log("discord gateway: malformed HELLO: %v", err)
 			return actionNone, 0
 		}
+		// A session carried over from a prior connection (set on READY, kept
+		// across reconnects by StartSource reusing the same gatewayState)
+		// means RESUME instead of a fresh IDENTIFY — Discord replays
+		// whatever dispatches were missed during the gap instead of this
+		// plugin silently losing them (a MESSAGE_CREATE it never saw is a
+		// reply the ask it was answering can never resolve).
+		if gs.sessionID != "" {
+			return actionResume, h.HeartbeatInterval
+		}
 		return actionIdentify, h.HeartbeatInterval
-	case gwOpReconnect, gwOpInvalidSession:
+	case gwOpReconnect:
+		// Discord's own docs: on op 7, close and reconnect, then RESUME —
+		// the session is still good. Nothing to invalidate here.
+		return actionReconnect, 0
+	case gwOpInvalidSession:
+		// d is `true` if the session MAY be resumed, `false` if a fresh
+		// IDENTIFY is required. A malformed/absent d decodes to the zero
+		// value false — the safe side (re-identify) if we can't tell.
+		var resumable bool
+		_ = json.Unmarshal(f.D, &resumable)
+		if !resumable {
+			gs.resetSession()
+		}
 		return actionReconnect, 0
 	case gwOpDispatch:
 		switch f.T {
@@ -515,6 +583,7 @@ func handleFrame(gs *gatewayState, raw []byte, emit func(any) error, log func(st
 				return actionNone, 0
 			}
 			gs.selfID = r.User.ID
+			gs.sessionID = r.SessionID
 		case "MESSAGE_CREATE":
 			var m messageCreatePayload
 			if err := json.Unmarshal(f.D, &m); err != nil {
@@ -523,6 +592,10 @@ func handleFrame(gs *gatewayState, raw []byte, emit func(any) error, log func(st
 			}
 			if m.Author.Bot || (gs.selfID != "" && m.Author.ID == gs.selfID) {
 				return actionNone, 0
+			}
+			repliedTo := ""
+			if m.MessageReference != nil {
+				repliedTo = m.MessageReference.MessageID
 			}
 			_ = emit(map[string]any{
 				"event": "reply",
@@ -534,6 +607,7 @@ func handleFrame(gs *gatewayState, raw []byte, emit func(any) error, log func(st
 					"author_bot": m.Author.Bot,
 					"text":       m.Content,
 					"message_id": m.ID,
+					"replied_to": repliedTo,
 				},
 			})
 		}
@@ -555,8 +629,12 @@ func (discordPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequ
 	fmt.Fprintf(os.Stderr, "discord[%s]: gateway connecting\n", req.Instance)
 	backoff := time.Second
 	const maxBackoff = 30 * time.Second
+	// One gatewayState for the whole instance, not one per connection
+	// attempt: its session id and sequence number must survive a reconnect
+	// for RESUME to have anything to resume.
+	gs := &gatewayState{}
 	for ctx.Err() == nil {
-		err := runGatewayOnce(ctx, conn, emit)
+		err := runGatewayOnce(ctx, conn, gs, emit)
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -608,7 +686,7 @@ func gatewayDialURL(conn discordConn) (string, error) {
 
 // runGatewayOnce opens one gateway session and pumps frames (via handleFrame)
 // until it closes or the gateway asks for a reconnect.
-func runGatewayOnce(ctx context.Context, conn discordConn, emit func(any) error) error {
+func runGatewayOnce(ctx context.Context, conn discordConn, gs *gatewayState, emit func(any) error) error {
 	wss, err := gatewayDialURL(conn)
 	if err != nil {
 		return fmt.Errorf("gateway url: %w", err)
@@ -623,7 +701,6 @@ func runGatewayOnce(ctx context.Context, conn discordConn, emit func(any) error)
 	hbCtx, stopHeartbeat := context.WithCancel(ctx)
 	defer stopHeartbeat()
 
-	gs := &gatewayState{}
 	var startHeartbeat sync.Once
 	for {
 		_, data, err := c.ReadMessage()
@@ -635,6 +712,13 @@ func runGatewayOnce(ctx context.Context, conn discordConn, emit func(any) error)
 		case actionIdentify:
 			if err := sendIdentify(c, conn.BotToken); err != nil {
 				return fmt.Errorf("identify: %w", err)
+			}
+			startHeartbeat.Do(func() {
+				go heartbeatLoop(hbCtx, c, gs, time.Duration(heartbeatMS)*time.Millisecond)
+			})
+		case actionResume:
+			if err := sendResume(c, gs, conn.BotToken); err != nil {
+				return fmt.Errorf("resume: %w", err)
 			}
 			startHeartbeat.Do(func() {
 				go heartbeatLoop(hbCtx, c, gs, time.Duration(heartbeatMS)*time.Millisecond)
@@ -677,6 +761,22 @@ func sendHeartbeat(c *websocket.Conn, gs *gatewayState) error {
 		f.D = b
 	}
 	return c.WriteJSON(f)
+}
+
+// sendResume sends op 6 (Resume): the session id and last-seen sequence
+// number from a PRIOR connection, carried over in gs — the whole point of a
+// gatewayState outliving a single runGatewayOnce call.
+func sendResume(c *websocket.Conn, gs *gatewayState, botToken string) error {
+	seq, _ := gs.seqValue()
+	d, err := json.Marshal(map[string]any{
+		"token":      botToken,
+		"session_id": gs.sessionID,
+		"seq":        seq,
+	})
+	if err != nil {
+		return err
+	}
+	return c.WriteJSON(gatewayFrame{Op: gwOpResume, D: d})
 }
 
 func sendIdentify(c *websocket.Conn, botToken string) error {

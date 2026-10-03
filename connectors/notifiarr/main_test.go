@@ -295,6 +295,9 @@ func TestInvokeAgainstFakeNotifiarr(t *testing.T) {
 		if _, ok := result["code"]; !ok {
 			t.Errorf("result.code missing: %#v", result)
 		}
+		if bad := undeclaredOutputs(notifiarrPlugin{}.Describe(), "passthrough", res.Outputs); len(bad) > 0 {
+			t.Fatalf("passthrough returned undeclared outputs %v (conductor rejects the result)", bad)
+		}
 	})
 
 	t.Run("non-2xx becomes a plugin error", func(t *testing.T) {
@@ -336,6 +339,9 @@ func TestInvokeAgainstFakeNotifiarr(t *testing.T) {
 		result, ok := res.Outputs["result"].(map[string]any)
 		if !ok || result["ok"] != true {
 			t.Fatalf("result: %#v", res.Outputs["result"])
+		}
+		if bad := undeclaredOutputs(notifiarrPlugin{}.Describe(), "api", res.Outputs); len(bad) > 0 {
+			t.Fatalf("api returned undeclared outputs %v (conductor rejects the result)", bad)
 		}
 	})
 

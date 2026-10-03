@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -62,7 +63,13 @@ func TestDescribe(t *testing.T) {
 	if ev.Semantics == nil || ev.Semantics.ConversationReply == nil {
 		t.Fatalf("reply event should declare conversation_reply: %#v", ev.Semantics)
 	}
-	if ev.Semantics.ConversationReply.ID != "channel" || ev.Semantics.ConversationReply.Author != "author" || ev.Semantics.ConversationReply.Text != "text" {
+	// The id must be a TEMPLATE over the event's facts ("{{.channel}}", not
+	// the bare word "channel" — which would render as that literal string
+	// for every reply, colliding every channel onto one conversation slot).
+	// It also folds in replied_to (Discord's native reply-to feature) so two
+	// concurrent asks in the same channel resolve independently; see
+	// TestConversationReplyIDMatchesAsk.
+	if ev.Semantics.ConversationReply.ID != "{{.channel}}:{{.replied_to}}" || ev.Semantics.ConversationReply.Author != "author" || ev.Semantics.ConversationReply.Text != "text" {
 		t.Errorf("conversation_reply fact names: %#v", ev.Semantics.ConversationReply)
 	}
 	if ev.Semantics.Author == nil || ev.Semantics.Author.Login != "author" || ev.Semantics.Author.Automated != "author_bot" {
@@ -226,7 +233,7 @@ func TestInvokeAskThread(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Invoke: %v", err)
 	}
-	if res.Outputs["ref"] != "C1" {
+	if res.Outputs["ref"] != "C1:1" {
 		t.Fatalf("out = %v", res.Outputs)
 	}
 	if gotPath != "/channels/C1/messages" {
@@ -234,6 +241,93 @@ func TestInvokeAskThread(t *testing.T) {
 	}
 	if !strings.Contains(gotBody, "ok?") {
 		t.Fatalf("body should carry the prompt: %q", gotBody)
+	}
+}
+
+// TestTwoConcurrentAsksInOneChannelGetDistinctRefs is the regression test for
+// the adversarial-pass finding: two pending asks posted to the SAME channel
+// used to get the IDENTICAL conversation id (ref was just the channel), so
+// the second ask's registration would clobber the first's in the engine's
+// (instance, id)-keyed inbox — the first ask would never resolve. ref now
+// includes the posted question's own message id, so each ask gets a unique
+// conversation id even in the same channel.
+func TestTwoConcurrentAsksInOneChannelGetDistinctRefs(t *testing.T) {
+	var nextID = 100
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextID++
+		fmt.Fprintf(w, `{"id":"%d"}`, nextID)
+	}))
+	defer srv.Close()
+	conn := map[string]any{"bot_token": "tok", "api_base": srv.URL}
+
+	res1, err := discordPlugin{}.Invoke(plugin.InvokeRequest{
+		Verb: "ask", Connection: conn,
+		Options: map[string]any{"to": "thread", "channel": "C1", "prompt": "deploy staging?"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res2, err := discordPlugin{}.Invoke(plugin.InvokeRequest{
+		Verb: "ask", Connection: conn,
+		Options: map[string]any{"to": "thread", "channel": "C1", "prompt": "deploy prod?"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref1, ref2 := res1.Outputs["ref"], res2.Outputs["ref"]
+	if ref1 == ref2 {
+		t.Fatalf("two concurrent asks in the same channel must not share a conversation id, both got %v", ref1)
+	}
+	if !strings.HasPrefix(ref1.(string), "C1:") || !strings.HasPrefix(ref2.(string), "C1:") {
+		t.Fatalf("both refs should still be scoped to channel C1: %v, %v", ref1, ref2)
+	}
+}
+
+// TestConversationReplyIDMatchesAsk proves the id a "reply" event's
+// conversation_reply template produces, for a message that replies (Discord's
+// native reply-to) to the ask's own posted message, equals exactly what
+// invokeAsk returned as ref — the two sides of the match the engine performs.
+// A plain message with no reply-to must NOT match (replied_to is empty, and
+// ref always carries a real message id).
+func TestConversationReplyIDMatchesAsk(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id":"999"}`))
+	}))
+	defer srv.Close()
+	askRes, err := discordPlugin{}.Invoke(plugin.InvokeRequest{
+		Verb:       "ask",
+		Connection: map[string]any{"bot_token": "tok", "api_base": srv.URL},
+		Options:    map[string]any{"to": "thread", "channel": "C1", "prompt": "ok?"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := askRes.Outputs["ref"].(string)
+
+	gs := &gatewayState{}
+	var got map[string]any
+	emit := func(payload any) error {
+		b, _ := json.Marshal(payload)
+		return json.Unmarshal(b, &got)
+	}
+	// A reply using Discord's own reply-to feature, referencing the ask's
+	// own posted message (id "999").
+	raw := []byte(`{"op":0,"t":"MESSAGE_CREATE","d":{"id":"r1","channel_id":"C1","content":"approve","author":{"id":"U1","bot":false},"message_reference":{"message_id":"999"}}}`)
+	handleFrame(gs, raw, emit, noopLog)
+	ctxm := got["context"].(map[string]any)
+	gotID := ctxm["channel"].(string) + ":" + ctxm["replied_to"].(string)
+	if gotID != ref {
+		t.Fatalf("conversation_reply id %q does not match the ask's ref %q", gotID, ref)
+	}
+
+	// A plain message, no reply-to: must not resolve to the same ask.
+	got = nil
+	raw = []byte(`{"op":0,"t":"MESSAGE_CREATE","d":{"id":"r2","channel_id":"C1","content":"unrelated chatter","author":{"id":"U1","bot":false}}}`)
+	handleFrame(gs, raw, emit, noopLog)
+	ctxm = got["context"].(map[string]any)
+	gotID = ctxm["channel"].(string) + ":" + ctxm["replied_to"].(string)
+	if gotID == ref {
+		t.Fatalf("a plain message with no reply-to must not match the ask's ref %q", ref)
 	}
 }
 
@@ -255,7 +349,7 @@ func TestInvokeAskDM(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Invoke: %v", err)
 	}
-	if res.Outputs["ref"] != "D1" {
+	if res.Outputs["ref"] != "D1:1" {
 		t.Fatalf("out = %v", res.Outputs)
 	}
 }
@@ -408,6 +502,68 @@ func TestHandleFrameReconnectOps(t *testing.T) {
 	}
 }
 
+// TestHandleFrameResumesWhenSessionCarriesOver is the regression test for
+// the gateway reconnect/resume gap: a HELLO arriving with a session already
+// established (sessionID set from a prior READY, surviving the reconnect in
+// the SAME gatewayState — see StartSource) must trigger actionResume, not a
+// fresh actionIdentify. A full re-IDENTIFY starts a brand-new session, so
+// Discord has nothing to replay and any event during the reconnect gap is
+// lost — for this plugin, a lost MESSAGE_CREATE is a reply nobody ever sees.
+func TestHandleFrameResumesWhenSessionCarriesOver(t *testing.T) {
+	gs := &gatewayState{}
+	action, _ := handleFrame(gs, []byte(`{"op":10,"d":{"heartbeat_interval":41250}}`), func(any) error { return nil }, noopLog)
+	if action != actionIdentify {
+		t.Fatalf("first HELLO (no session yet) should identify, got %v", action)
+	}
+	handleFrame(gs, []byte(`{"op":0,"t":"READY","d":{"user":{"id":"SELF1"},"session_id":"sess-abc"}}`), func(any) error { return nil }, noopLog)
+	if gs.sessionID != "sess-abc" {
+		t.Fatalf("READY should capture session_id, got %q", gs.sessionID)
+	}
+
+	// The connection drops and StartSource redials, reusing the SAME gs.
+	action, _ = handleFrame(gs, []byte(`{"op":10,"d":{"heartbeat_interval":41250}}`), func(any) error { return nil }, noopLog)
+	if action != actionResume {
+		t.Fatalf("HELLO after a reconnect with a carried-over session should resume, got %v", action)
+	}
+}
+
+// TestHandleFrameInvalidSessionResumability proves d:true keeps the session
+// (a later HELLO still resumes) while d:false clears it (a later HELLO must
+// re-identify) — conflating the two would either waste a resume attempt
+// Discord will reject, or throw away a perfectly resumable session.
+func TestHandleFrameInvalidSessionResumability(t *testing.T) {
+	t.Run("resumable (d:true) keeps the session", func(t *testing.T) {
+		gs := &gatewayState{sessionID: "sess-abc"}
+		gs.setSeq(5)
+		action, _ := handleFrame(gs, []byte(`{"op":9,"d":true}`), func(any) error { return nil }, noopLog)
+		if action != actionReconnect {
+			t.Fatalf("INVALID_SESSION should trigger actionReconnect, got %v", action)
+		}
+		if gs.sessionID != "sess-abc" {
+			t.Fatalf("a resumable INVALID_SESSION must not clear the session, got %q", gs.sessionID)
+		}
+		next, _ := handleFrame(gs, []byte(`{"op":10,"d":{"heartbeat_interval":1000}}`), func(any) error { return nil }, noopLog)
+		if next != actionResume {
+			t.Fatalf("the next HELLO should resume, got %v", next)
+		}
+	})
+	t.Run("not resumable (d:false) clears the session", func(t *testing.T) {
+		gs := &gatewayState{sessionID: "sess-abc"}
+		gs.setSeq(5)
+		handleFrame(gs, []byte(`{"op":9,"d":false}`), func(any) error { return nil }, noopLog)
+		if gs.sessionID != "" {
+			t.Fatalf("a non-resumable INVALID_SESSION must clear the session, got %q", gs.sessionID)
+		}
+		if seq, ok := gs.seqValue(); ok {
+			t.Fatalf("a non-resumable INVALID_SESSION must also clear the stale sequence, got %d", seq)
+		}
+		next, _ := handleFrame(gs, []byte(`{"op":10,"d":{"heartbeat_interval":1000}}`), func(any) error { return nil }, noopLog)
+		if next != actionIdentify {
+			t.Fatalf("the next HELLO should re-identify, got %v", next)
+		}
+	})
+}
+
 func TestHandleFrameMalformedIsIgnored(t *testing.T) {
 	gs := &gatewayState{}
 	action, _ := handleFrame(gs, []byte(`not json`), func(any) error { return nil }, noopLog)
@@ -426,6 +582,61 @@ func TestHandleFrameTracksSequence(t *testing.T) {
 	if gs.seq == nil || *gs.seq != 6 {
 		t.Fatalf("expected sequence to advance to 6, got %v", gs.seq)
 	}
+}
+
+// TestRunGatewayOnceResumesWithCarriedOverSession proves runGatewayOnce
+// sends RESUME (op 6), not IDENTIFY, when handed a gatewayState that already
+// carries a session — the shape StartSource reuses across a reconnect.
+func TestRunGatewayOnceResumesWithCarriedOverSession(t *testing.T) {
+	type received struct {
+		op      int
+		payload map[string]any
+	}
+	got := make(chan received, 1)
+	srv := newFakeGateway(t, func(c *websocket.Conn) {
+		if err := c.WriteJSON(gatewayFrame{Op: gwOpHello, D: json.RawMessage(`{"heartbeat_interval":30000}`)}); err != nil {
+			return
+		}
+		_, data, err := c.ReadMessage()
+		if err != nil {
+			return
+		}
+		var f gatewayFrame
+		var payload map[string]any
+		if json.Unmarshal(data, &f) == nil {
+			_ = json.Unmarshal(f.D, &payload)
+		}
+		got <- received{op: f.Op, payload: payload}
+		time.Sleep(100 * time.Millisecond)
+	})
+	defer srv.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
+	conn := discordConn{BotToken: "tok-secret", GatewayURL: wsURL}
+	gs := &gatewayState{sessionID: "sess-xyz"}
+	gs.setSeq(42)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	done := make(chan struct{})
+	go func() { _ = runGatewayOnce(ctx, conn, gs, func(any) error { return nil }); close(done) }()
+
+	var r received
+	select {
+	case r = <-got:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the fake gateway never received a frame after HELLO")
+	}
+	if r.op != gwOpResume {
+		t.Fatalf("expected op %d (resume), got %d", gwOpResume, r.op)
+	}
+	if r.payload["token"] != "tok-secret" || r.payload["session_id"] != "sess-xyz" {
+		t.Fatalf("resume payload: %#v", r.payload)
+	}
+	if seq, ok := r.payload["seq"].(float64); !ok || int(seq) != 42 {
+		t.Fatalf("resume payload seq: %#v", r.payload["seq"])
+	}
+	<-done
 }
 
 // --- gateway: URL resolution ---
@@ -551,7 +762,7 @@ func TestRunGatewayOnceEndToEnd(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	_ = runGatewayOnce(ctx, conn, emit) // ends when the fake server closes the conn
+	_ = runGatewayOnce(ctx, conn, &gatewayState{}, emit) // ends when the fake server closes the conn
 
 	if !identifyReceived.Load() {
 		t.Fatal("expected IDENTIFY to be sent after HELLO")

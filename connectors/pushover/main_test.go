@@ -460,6 +460,46 @@ func TestInvokeNotifyRequiresMessage(t *testing.T) {
 	}
 }
 
+// TestEveryVerbReturnsOnlyDeclaredOutputs is the adversarial-pass check that
+// every pushover verb's actual returned keys are a subset of what its own
+// Describe() Outputs names — not just notify (which the one prior test here
+// covered). conductor rejects a verb result carrying any undeclared key.
+func TestEveryVerbReturnsOnlyDeclaredOutputs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":1,"request":"abc123"}`))
+	}))
+	defer srv.Close()
+	conn := map[string]any{"token": "tok", "user": "usr", "api_base": srv.URL}
+
+	cases := []struct {
+		verb    string
+		options map[string]any
+	}{
+		{"notify", map[string]any{"message": "hi"}},
+		{"send", map[string]any{"message": "hi"}},
+		{"validate_user", map[string]any{"user": "usr"}},
+		{"get_receipt", map[string]any{"receipt": "r-xyz"}},
+		{"cancel_receipt", map[string]any{"receipt": "r-xyz"}},
+		{"sounds", nil},
+		{"glances", map[string]any{"title": "t"}},
+		{"api", map[string]any{"method": "GET", "path": "x"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.verb, func(t *testing.T) {
+			res, err := pushoverPlugin{}.Invoke(plugin.InvokeRequest{
+				Verb: tc.verb, Connection: conn, Options: tc.options,
+			})
+			if err != nil {
+				t.Fatalf("Invoke(%s): %v", tc.verb, err)
+			}
+			if bad := undeclaredOutputs(pushoverPlugin{}.Describe(), tc.verb, res.Outputs); len(bad) > 0 {
+				t.Fatalf("%s returned undeclared outputs %v (conductor rejects the result)", tc.verb, bad)
+			}
+		})
+	}
+}
+
 func contains(s []string, want string) bool {
 	for _, v := range s {
 		if v == want {

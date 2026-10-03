@@ -142,6 +142,28 @@ func TestPublish(t *testing.T) {
 	if !ok || result["topic"] != "alerts" {
 		t.Fatalf("result: got %#v", res.Outputs["result"])
 	}
+	if bad := undeclaredOutputs(p.Describe(), "publish", res.Outputs); len(bad) > 0 {
+		t.Fatalf("publish returned undeclared outputs %v (conductor rejects the result)", bad)
+	}
+}
+
+// undeclaredOutputs lists the output keys verb returned that its declaration
+// does not name: conductor rejects a verb result carrying any (adversarial
+// pass: ntfy has one verb, but nothing enforced this for it before).
+func undeclaredOutputs(d plugin.Decl, verb string, out map[string]any) []string {
+	for _, v := range d.Verbs {
+		if v.Name != verb {
+			continue
+		}
+		var bad []string
+		for k := range out {
+			if _, ok := v.Outputs[k]; !ok {
+				bad = append(bad, k)
+			}
+		}
+		return bad
+	}
+	return nil
 }
 
 // TestPublishUsesConnectionDefaultTopic proves a call that omits its own
