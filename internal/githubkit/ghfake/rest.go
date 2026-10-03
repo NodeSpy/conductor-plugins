@@ -421,6 +421,10 @@ func routes() []route {
 		{"GET", "/users/{username}/installation", "app", hAccountInstallation},
 		{"GET", "/installation/repositories", "any", hInstallationRepos},
 		{"GET", "/user", "user", hWhoami},
+		// --- repo visibility (githubkit's remapGoneIfMissing: a 404 on a
+		// PR/issue number is ambiguous between "gone" and "token can't see
+		// the repo at all" — this is the probe that tells them apart) ---
+		{"GET", "/repos/{owner}/{repo}", "repo", hGetRepo},
 		// --- pulls ---
 		{"GET", "/repos/{owner}/{repo}/pulls", "repo", hListPulls},
 		{"POST", "/repos/{owner}/{repo}/pulls", "repo", hCreatePull},
@@ -620,6 +624,14 @@ func hCreatePull(c *call) (int, any) {
 	draft, _ := c.body["draft"].(bool)
 	p := c.f.openPull(c.repo, c.actor(), PROpts{Title: title, Body: str(c.body, "body"), Head: head, Base: base, Draft: draft})
 	return 201, c.f.pullJSON(c.repo, p, false)
+}
+
+// hGetRepo answers GET /repos/{owner}/{repo}. authorize already resolved
+// c.repo (404 before this handler ever runs when the repo doesn't exist, or
+// an installation token can't see it), so reaching here always means
+// visible.
+func hGetRepo(c *call) (int, any) {
+	return 200, c.f.repoJSON(c.repo)
 }
 
 func hGetPull(c *call) (int, any) {

@@ -68,14 +68,11 @@ func (c *Client) send(ctx context.Context, method, token, url string, body, out 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
 	c.noteRateLimit(resp)
 	if resp.StatusCode/100 != 2 {
-		if isRateLimited(resp) {
-			return c.rateLimitError(resp)
-		}
-		return ghHTTPError(method, url, resp)
+		return c.httpFailure(method, url, resp)
 	}
+	defer resp.Body.Close()
 	c.invalidateCache() // a write may have changed what a cached read returns
 	if out != nil {
 		return json.NewDecoder(resp.Body).Decode(out)
@@ -117,15 +114,35 @@ func (c *Client) graphql(ctx context.Context, token, query string, variables map
 		// retried); anything else is the request itself being malformed
 		// (invalid) — our own hand-written queries, so in practice a bug, but
 		// never worth retrying either way.
+		//
+		// Only a few "type" values are documented
+		// (https://docs.github.com/en/graphql/overview/handling-errors):
+		// NOT_FOUND is classified the same as a REST 404 (status 404, not
+		// target_gone directly) so it flows through the exact same
+		// target-keyed remap every other verb's 404 does
+		// (remapTargetGone/remapGoneIfMissing, including the no-access-vs-
+		// gone repo check) — a call site that doesn't address an event's own
+		// target (reactReview's review id, say) never remaps it either, same
+		// as a REST sub-resource 404. FORBIDDEN is a permission answer
+		// (upstream, never retried). RATE_LIMITED is rate_limited.
+		// UNPROCESSABLE is GitHub's own "this input can't be processed" —
+		// the one type that names OUR hand-written query/mutation as the
+		// problem, never worth retrying. Any other type, or none at all (a
+		// transient INTERNAL/SERVICE_UNAVAILABLE, or a type GitHub adds
+		// later), is left retryable rather than guessed invalid: an
+		// unrecognized type is far more likely to be transient than a bug in
+		// a query that otherwise runs fine.
 		switch e.Type {
 		case "NOT_FOUND":
-			return plugin.Fail(plugin.CodeTargetGone, msg, nil)
+			return plugin.Fail(plugin.CodeUpstream, msg, map[string]any{"status": http.StatusNotFound, "retryable": false})
 		case "FORBIDDEN":
 			return plugin.Fail(plugin.CodeUpstream, msg, map[string]any{"status": http.StatusForbidden, "retryable": false})
 		case "RATE_LIMITED":
-			return plugin.Fail(plugin.CodeRateLimited, msg, nil)
-		default:
+			return plugin.Fail(plugin.CodeRateLimited, msg, map[string]any{"retry_after": defaultRateLimitWait.String()})
+		case "UNPROCESSABLE":
 			return plugin.Fail(plugin.CodeInvalid, msg, nil)
+		default:
+			return plugin.Fail(plugin.CodeUpstream, msg, map[string]any{"retryable": true})
 		}
 	}
 	if out != nil && len(resp.Data) > 0 {
@@ -152,14 +169,11 @@ func (c *Client) postRaw(ctx context.Context, token, url, contentType string, bo
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
 	c.noteRateLimit(resp)
 	if resp.StatusCode/100 != 2 {
-		if isRateLimited(resp) {
-			return c.rateLimitError(resp)
-		}
-		return ghHTTPError("POST", url, resp)
+		return c.httpFailure("POST", url, resp)
 	}
+	defer resp.Body.Close()
 	c.invalidateCache()
 	if out != nil {
 		return json.NewDecoder(resp.Body).Decode(out)
@@ -187,14 +201,11 @@ func (c *Client) getFresh(ctx context.Context, token, url string, out any) error
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
 	c.noteRateLimit(resp)
 	if resp.StatusCode/100 != 2 {
-		if isRateLimited(resp) {
-			return c.rateLimitError(resp)
-		}
-		return ghHTTPError("GET", url, resp)
+		return c.httpFailure("GET", url, resp)
 	}
+	defer resp.Body.Close()
 	return json.NewDecoder(io.LimitReader(resp.Body, maxReadBytes)).Decode(out)
 }
 
@@ -262,30 +273,29 @@ func (c *Client) cachedGet(ctx context.Context, token, url, accept string) ([]by
 			c.storeCache(key, newEtag, b)
 			return b, nil
 
-		case isRateLimited(resp):
-			wait := retryAfter(resp)
-			resp.Body.Close()
-			if attempt == 0 && wait > 0 && wait <= maxRateWait {
-				if err := sleepCtx(ctx, wait); err != nil {
-					return nil, err
-				}
-				continue // one retry after the window
-			}
-			// Prefer stale data over failing the caller — a review shouldn't
-			// die because the limit blipped when we already hold the diff.
-			c.mu.Lock()
-			if e := c.getCache[key]; e != nil {
-				body := e.body
-				c.mu.Unlock()
-				return body, nil
-			}
-			c.mu.Unlock()
-			return nil, c.rateLimitError(resp)
-
 		default:
-			err := ghHTTPError("GET", url, resp)
-			resp.Body.Close()
-			return nil, err
+			msg := readBody(resp)
+			if isRateLimited(resp, msg) {
+				wait := retryAfter(resp)
+				if attempt == 0 && wait > 0 && wait <= maxRateWait {
+					if err := sleepCtx(ctx, wait); err != nil {
+						return nil, err
+					}
+					continue // one retry after the window
+				}
+				// Prefer stale data over failing the caller — a review
+				// shouldn't die because the limit blipped when we already
+				// hold the diff.
+				c.mu.Lock()
+				if e := c.getCache[key]; e != nil {
+					body := e.body
+					c.mu.Unlock()
+					return body, nil
+				}
+				c.mu.Unlock()
+				return nil, c.rateLimitError(resp)
+			}
+			return nil, ghHTTPError("GET", url, resp.StatusCode, msg)
 		}
 	}
 }
@@ -337,11 +347,19 @@ func (c *Client) noteRateLimit(resp *http.Response) {
 	c.mu.Unlock()
 }
 
+// defaultRateLimitWait is the retry_after reported when a rate-limited
+// answer gives no duration to compute one from — chiefly GitHub's secondary
+// rate limit / abuse-detection refusal, which (unlike the primary limit)
+// sends neither Retry-After nor X-RateLimit-Remaining:0, so there is no
+// header to read at all; also used for the GraphQL RATE_LIMITED error type,
+// which (answering 200) carries no headers of any kind.
+const defaultRateLimitWait = 60 * time.Second
+
 // rateLimitError builds the contract's rate_limited answer (§1.11):
 // data.retry_after is a Go duration string, taken from resp's own
 // Retry-After or X-RateLimit-Reset (retryAfter — covers both the secondary
-// and primary limit signals), falling back to the client's last-noted reset
-// when resp carries neither.
+// and primary limit signals), falling back to the client's last-noted reset,
+// then to defaultRateLimitWait, when resp carries neither.
 func (c *Client) rateLimitError(resp *http.Response) error {
 	wait := retryAfter(resp)
 	if wait <= 0 {
@@ -356,44 +374,70 @@ func (c *Client) rateLimitError(resp *http.Response) error {
 }
 
 // rateLimitErrorForWait builds the contract's rate_limited answer (§1.11)
-// from an already-resolved wait, for a caller with no client-level
+// from an already-resolved wait — defaultRateLimitWait when it is zero or
+// negative (no header gave one) — for a caller with no client-level
 // rate-limit cache to fall back on (the App-auth token endpoints, which
 // share no state with a Client's GET cache).
 func rateLimitErrorForWait(wait time.Duration) error {
-	msg := "github: rate limit reached"
-	data := map[string]any{}
-	if wait > 0 {
-		wait = wait.Round(time.Second)
-		msg = fmt.Sprintf("github: rate limit reached; resets in %s", wait)
-		data["retry_after"] = wait.String()
+	if wait <= 0 {
+		wait = defaultRateLimitWait
 	}
-	return plugin.Fail(plugin.CodeRateLimited, msg, data)
+	wait = wait.Round(time.Second)
+	msg := fmt.Sprintf("github: rate limit reached; resets in %s", wait)
+	return plugin.Fail(plugin.CodeRateLimited, msg, map[string]any{"retry_after": wait.String()})
+}
+
+// looksLikeSecondaryRateLimit reports whether an error message is GitHub's
+// secondary rate limit / abuse-detection refusal — a 403 (sometimes 429)
+// that carries neither Retry-After nor X-RateLimit-Remaining:0, so the
+// message is the only signal: "You have exceeded a secondary rate limit..."
+// or "...abuse detection mechanism...".
+func looksLikeSecondaryRateLimit(msg string) bool {
+	lower := strings.ToLower(msg)
+	return strings.Contains(lower, "secondary rate limit") || strings.Contains(lower, "abuse")
 }
 
 // IsRateLimited reports whether a response is a GitHub rate-limit refusal —
 // primary (403 with X-RateLimit-Remaining: 0) or secondary (403/429 with a
-// Retry-After).
-func IsRateLimited(resp *http.Response) bool { return isRateLimited(resp) }
+// Retry-After). A caller with only the *http.Response (its body already
+// consumed or never read) can't see the message-only secondary-limit case;
+// isRateLimited (internal, used on the read path while the body is still
+// available) covers that one too.
+func IsRateLimited(resp *http.Response) bool { return isRateLimited(resp, "") }
 
-func isRateLimited(resp *http.Response) bool {
+// isRateLimited is IsRateLimited plus the message-only secondary rate limit
+// / abuse-detection case (msg is the body's own "message" field, read once
+// by readBody — see looksLikeSecondaryRateLimit).
+func isRateLimited(resp *http.Response, msg string) bool {
 	if resp.StatusCode != http.StatusForbidden && resp.StatusCode != http.StatusTooManyRequests {
 		return false
 	}
 	if resp.Header.Get("Retry-After") != "" {
 		return true
 	}
-	return resp.Header.Get("X-RateLimit-Remaining") == "0"
+	if resp.Header.Get("X-RateLimit-Remaining") == "0" {
+		return true
+	}
+	return looksLikeSecondaryRateLimit(msg)
 }
 
 // RetryAfter is how long to wait before retrying a rate-limited response,
-// from Retry-After (seconds) or the X-RateLimit-Reset epoch, clamped to a
-// sane bound.
+// from Retry-After (seconds, or an HTTP-date) or the X-RateLimit-Reset
+// epoch, clamped to a sane bound.
 func RetryAfter(resp *http.Response) time.Duration { return retryAfter(resp) }
 
 func retryAfter(resp *http.Response) time.Duration {
-	if ra := resp.Header.Get("Retry-After"); ra != "" {
-		if n, err := strconv.Atoi(strings.TrimSpace(ra)); err == nil && n >= 0 {
+	if ra := strings.TrimSpace(resp.Header.Get("Retry-After")); ra != "" {
+		if n, err := strconv.Atoi(ra); err == nil && n >= 0 {
 			return time.Duration(n) * time.Second
+		}
+		// Retry-After may also be an HTTP-date (RFC 7231 §7.1.3) rather than
+		// a number of seconds.
+		if t, err := http.ParseTime(ra); err == nil {
+			if d := time.Until(t); d > 0 {
+				return d
+			}
+			return 0
 		}
 	}
 	if rs := resp.Header.Get("X-RateLimit-Reset"); rs != "" {
@@ -426,20 +470,45 @@ func cacheKey(token, accept, url string) string {
 	return strconv.FormatUint(h.Sum64(), 36) + "\x00" + accept + "\x00" + url
 }
 
-// ghHTTPError renders a non-2xx, non-rate-limited GitHub response into the
-// plugin contract's error (§1.11), surfacing the API's own message when
-// present. isRateLimited(resp) must already have been checked false by the
-// caller — a rate limit answers rate_limited (rateLimitError), never this.
-func ghHTTPError(method, url string, resp *http.Response) error {
-	var msg struct {
+// readBody reads and closes resp.Body (capped at maxReadBytes) and extracts
+// the API's own "message" field, when the body is the usual
+// {"message": "..."} error envelope. Reading the body ONCE, before deciding
+// whether a non-2xx response is rate_limited, is what lets the secondary
+// rate limit / abuse-detection case be recognized at all — it carries no
+// header, only this message.
+func readBody(resp *http.Response) string {
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxReadBytes))
+	resp.Body.Close()
+	var m struct {
 		Message string `json:"message"`
 	}
-	_ = json.NewDecoder(resp.Body).Decode(&msg)
-	text := fmt.Sprintf("%s %s: HTTP %d", method, url, resp.StatusCode)
-	if msg.Message != "" {
-		text += ": " + msg.Message
+	_ = json.Unmarshal(raw, &m)
+	return m.Message
+}
+
+// httpFailure classifies a non-2xx response into the plugin contract's
+// error codes (§1.11), reading the body once so both the rate-limit check
+// (isRateLimited's secondary-limit detection is message-only) and the
+// generic classifier (ghHTTPError) see GitHub's own message. Closes
+// resp.Body; the caller must not also close or read it.
+func (c *Client) httpFailure(method, url string, resp *http.Response) error {
+	msg := readBody(resp)
+	if isRateLimited(resp, msg) {
+		return c.rateLimitError(resp)
 	}
-	return contractHTTPError(resp.StatusCode, text)
+	return ghHTTPError(method, url, resp.StatusCode, msg)
+}
+
+// ghHTTPError renders a non-2xx, non-rate-limited GitHub response (status,
+// and its own "message" field when present) into the plugin contract's
+// error (§1.11). isRateLimited must already have been checked false by the
+// caller — a rate limit answers rate_limited (rateLimitError), never this.
+func ghHTTPError(method, url string, status int, msg string) error {
+	text := fmt.Sprintf("%s %s: HTTP %d", method, url, status)
+	if msg != "" {
+		text += ": " + msg
+	}
+	return contractHTTPError(status, text)
 }
 
 // contractHTTPError classifies a non-2xx, non-rate-limited status into the

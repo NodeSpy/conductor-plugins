@@ -145,13 +145,14 @@ func (a *AppAuth) installationIDByURL(ctx context.Context, url string) (int64, e
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
-		if isRateLimited(resp) {
+		msg := readBody(resp)
+		if isRateLimited(resp, msg) {
 			return 0, rateLimitErrorForWait(retryAfter(resp))
 		}
-		return 0, ghHTTPError("GET", url, resp)
+		return 0, ghHTTPError("GET", url, resp.StatusCode, msg)
 	}
+	defer resp.Body.Close()
 	var out struct {
 		ID int64 `json:"id"`
 	}
@@ -189,13 +190,14 @@ func (a *AppAuth) InstallationToken(ctx context.Context, instID int64) (string, 
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
-		if isRateLimited(resp) {
+		msg := readBody(resp)
+		if isRateLimited(resp, msg) {
 			return "", rateLimitErrorForWait(retryAfter(resp))
 		}
-		return "", ghHTTPError("POST", url, resp)
+		return "", ghHTTPError("POST", url, resp.StatusCode, msg)
 	}
+	defer resp.Body.Close()
 	var out struct {
 		Token     string    `json:"token"`
 		ExpiresAt time.Time `json:"expires_at"`

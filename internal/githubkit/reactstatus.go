@@ -245,7 +245,8 @@ func (c *Client) setStatus(ctx context.Context, tok, base, repo string, number i
 			} `json:"head"`
 		}
 		if err := c.getFresh(ctx, tok, fmt.Sprintf("%s/repos/%s/pulls/%d", base, repo, number), &pr); err != nil {
-			return nil, fmt.Errorf("github.set_status: read PR head: %w", remapTargetGone(err))
+			key := fmt.Sprintf("%s#%d", repo, number)
+			return nil, fmt.Errorf("github.set_status: read PR head: %w", c.remapTargetGone(ctx, tok, repo, key, err))
 		}
 		sha = pr.Head.SHA
 	}
@@ -330,7 +331,8 @@ func (c *Client) PRHead(ctx context.Context, as, repo string, number int) (sha, 
 		} `json:"head"`
 	}
 	if err := c.getFresh(ctx, tok, fmt.Sprintf("%s/repos/%s/pulls/%d", c.base(), repo, number), &pr); err != nil {
-		return "", "", remapTargetGone(err)
+		key := fmt.Sprintf("%s#%d", repo, number)
+		return "", "", c.remapTargetGone(ctx, tok, repo, key, err)
 	}
 	if pr.Merged {
 		return pr.Head.SHA, "merged", nil
