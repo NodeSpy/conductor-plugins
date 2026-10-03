@@ -153,6 +153,12 @@ func resetTimer(t *time.Timer, d time.Duration) {
 // (conflict/behind) and outstanding review-comment threads (changes_requested) —
 // recovering feedback that no live webhook picked up.
 func (g *Source) sweep(ctx context.Context, emit EmitFunc) error {
+	// Credentials resolve lazily (Start no longer does it up front, so a
+	// webhook-only instance with no app:/token: can still start) — a sweep
+	// is the first thing that actually needs them.
+	if err := g.ensureClients(); err != nil {
+		return err
+	}
 	st := &sweepStats{}
 	cb := func(instID int64, owner, name, repo string) {
 		g.sweepRepo(ctx, emit, instID, owner, name, repo, st)
@@ -275,6 +281,11 @@ func (g *Source) stuckLoop(ctx context.Context, emit EmitFunc) {
 // stuck_checks. Uses the PR list payload directly (head SHA is there) — no extra
 // per-PR fetch beyond the stuck-run lookup.
 func (g *Source) stuckPass(ctx context.Context, emit EmitFunc) {
+	// Credentials resolve lazily (see sweep's identical guard).
+	if err := g.ensureClients(); err != nil {
+		log.Printf("github[%s]: stuck: %v", g.name, err)
+		return
+	}
 	n := 0
 	g.eachRepo(ctx, "stuck", g.stuckRepos(), func(instID int64, owner, name, repo string) {
 		prs, err := g.rest.listOpenPRs(ctx, instID, owner, name)

@@ -34,15 +34,37 @@ func newStreamClient() *http.Client {
 	return &http.Client{Transport: tr}
 }
 
-// Start builds the App auth + REST client and runs the configured webhook
-// transports (smee channel and/or a direct HTTP listener), plus the optional
-// sweep, until ctx is cancelled. Both transports share one delivery-dedup set.
+// Start builds the App auth + REST client (when it can) and runs the
+// configured webhook transports (smee channel and/or a direct HTTP
+// listener), plus the optional sweep, until ctx is cancelled. Both
+// transports share one delivery-dedup set.
+//
+// ensureClients' failure is fatal here ONLY when there is no webhook
+// transport configured either — then the sweep is the sole possible event
+// source and a credential is mandatory, exactly as before. An instance
+// configured with only a webhook listener/smee channel and no app:/token: at
+// all (so ensureClients has nothing to resolve, not even a `gh auth token`
+// fallback) must still be able to start and receive deliveries: enrichment
+// facts that need a live read are already optional (events.go's g.rest
+// nil-checks), so a credential-less webhook receiver is a supported
+// configuration. Credentials then resolve lazily the first time something
+// actually needs the API: discoverSelf (best-effort, below), and
+// g.sweep/stuckPass in their own loops — each retries ensureClients itself
+// and logs rather than blocking on failure.
 func (g *Source) Start(ctx context.Context, emit EmitFunc) error {
 	if err := g.ensureClients(); err != nil {
-		return err
+		if !g.cfg.Webhook.Configured() {
+			// No webhook either: the sweep (if enabled) is the ONLY possible
+			// event source, so a credential is mandatory now, not optional.
+			return err
+		}
+		log.Printf("github[%s]: no credentials yet (%v) — continuing webhook-only; "+
+			"resolves lazily once one is available", g.name, err)
 	}
-	// Auto-discover me: from the write identity when it wasn't set (best-effort;
-	// runs before the sweep so `self` is populated for its first pass).
+	// Auto-discover me: from the write identity when it wasn't set
+	// (best-effort; runs before the sweep so `self` is populated for its
+	// first pass). A no-op log, not an error, if ensureClients just failed
+	// above and credentials still aren't available (see discoverSelf).
 	g.discoverSelf(ctx)
 	if g.cfg.Webhook.Verify() && g.cfg.Webhook.SmeeURL != "" {
 		log.Printf("github[%s]: signature verification ON — note the smee re-serialization caveat; "+

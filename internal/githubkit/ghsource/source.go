@@ -396,7 +396,15 @@ func ghAuthToken() (string, error) {
 // never an error. Set `me.logins` to override — multiple accounts, or a write
 // credential that isn't the human whose PRs/reviews you want tracked.
 func (g *Source) discoverSelf(ctx context.Context) {
-	if len(g.self) > 0 || g.app == nil {
+	if len(g.self) > 0 {
+		return
+	}
+	if err := g.ensureClients(); err != nil {
+		// No credentials yet (a webhook-only instance with no app:/token:
+		// configured, say) — not an error, just nothing to discover from
+		// until one resolves some other way (a later sweep, once
+		// configured).
+		log.Printf("github[%s]: me: not set and no credentials yet (%v) — set me.logins to identify your PRs/reviews", g.name, err)
 		return
 	}
 	tok := g.cfg.Identity.WriteToken
