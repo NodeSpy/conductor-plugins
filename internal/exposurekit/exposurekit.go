@@ -222,6 +222,27 @@ func PortOf(addr string) (string, error) {
 	return port, nil
 }
 
+// SafeHostPort validates a caller-supplied "host:port" address meant to be
+// spliced into a vendor CLI's argv as its own token — not concatenated into
+// another flag's value — and returns it reconstructed via net.JoinHostPort
+// rather than the original string verbatim, so an input net.SplitHostPort
+// happened to accept but that doesn't round-trip identically can't smuggle
+// anything through. The port must be numeric 1-65535; the host (when
+// present) must not start with '-' — a leading dash is how an address
+// masquerades as a flag to a CLI's own argument parser. An empty host
+// defaults to 127.0.0.1.
+func SafeHostPort(addr string) (string, error) {
+	port, err := PortOf(addr)
+	if err != nil {
+		return "", err
+	}
+	host, _, _ := net.SplitHostPort(addr) // already validated by PortOf above
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	return net.JoinHostPort(host, port), nil
+}
+
 // ExpandArgv substitutes {{.port}} and {{.addr}} in every argument of tmpl.
 func ExpandArgv(tmpl []string, port, addr string) []string {
 	r := strings.NewReplacer("{{.port}}", port, "{{.addr}}", addr)

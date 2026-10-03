@@ -152,6 +152,42 @@ func TestBadLocalAddrErrors(t *testing.T) {
 	}
 }
 
+// TestLocalAddrCannotInjectAnArgvFlag is the regression test for finding #3:
+// local_addr is a per-call option, appended as ngrok's trailing positional
+// argument. A crafted value shaped like "host:--flag=value" must be rejected
+// outright, BEFORE ngrok is ever spawned — not merely fail eventually (e.g.
+// by timing out polling the API), which would mean the injected argv was
+// already live on a real process. The stub records whether it ran at all;
+// the assertion is on that, not just on Invoke returning an error (an
+// un-rejected but doomed-to-fail open also returns an error, which would
+// mask the argv already having been injected into a spawned process).
+func TestLocalAddrCannotInjectAnArgvFlag(t *testing.T) {
+	for _, bad := range []string{
+		"--authtoken=X:9999",   // host "--authtoken=X" looks like a flag
+		"127.0.0.1:--web-addr", // a non-numeric, flag-shaped port
+	} {
+		t.Run(bad, func(t *testing.T) {
+			dir := stubTool(t, "ngrok", `echo "args: $@" > "$(dirname "$0")/argv"
+sleep 30`)
+			p := newNgrokPlugin()
+			_, err := p.Invoke(plugin.InvokeRequest{
+				Verb: "open", Options: map[string]any{"local_addr": bad},
+				Connection: map[string]any{"start_timeout": "1s"},
+			})
+			if err == nil {
+				t.Fatalf("local_addr %q: expected an error", bad)
+			}
+			if p.leases.Len() != 0 {
+				t.Fatalf("local_addr %q: left a lease open", bad)
+			}
+			time.Sleep(100 * time.Millisecond) // a wrongly-spawned stub needs a moment to write argv
+			if b, statErr := os.ReadFile(filepath.Join(dir, "argv")); statErr == nil {
+				t.Fatalf("local_addr %q: ngrok was spawned with the crafted address (argv: %s)", bad, b)
+			}
+		})
+	}
+}
+
 func TestMissingBinaryErrorsClearly(t *testing.T) {
 	p := newNgrokPlugin()
 	_, err := p.Invoke(plugin.InvokeRequest{Verb: "open", Options: map[string]any{"local_addr": "127.0.0.1:8099"}, Connection: map[string]any{"binary": "no-such-ngrok-xyz"}})

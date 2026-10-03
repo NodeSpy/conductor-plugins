@@ -96,7 +96,11 @@ func (p *ngrokPlugin) Stop(_ context.Context, req plugin.StopRequest) error {
 
 func (p *ngrokPlugin) open(req plugin.InvokeRequest) (plugin.InvokeResult, error) {
 	localAddr, _ := req.Options["local_addr"].(string)
-	if _, err := exposurekit.PortOf(localAddr); err != nil {
+	// local_addr is a per-call option, not an admin-set connection field —
+	// reconstruct it rather than trust the raw string verbatim, and reject
+	// anything shaped to look like a flag once it lands in argv below.
+	safeAddr, err := exposurekit.SafeHostPort(localAddr)
+	if err != nil {
 		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeInvalid, "ngrok: "+err.Error(), nil)
 	}
 	binary := strOr(str(req.Connection["binary"]), "ngrok")
@@ -111,7 +115,9 @@ func (p *ngrokPlugin) open(req plugin.InvokeRequest) (plugin.InvokeResult, error
 		argv = append(argv, "--domain", dom)
 	}
 	argv = append(argv, strList(req.Connection["extra_args"])...)
-	argv = append(argv, localAddr)
+	// "--" ends flag parsing, so even a safeAddr that somehow still looked
+	// flag-shaped would be read as the positional target, not a flag.
+	argv = append(argv, "--", safeAddr)
 
 	if _, err := exec.LookPath(argv[0]); err != nil {
 		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeUpstream, fmt.Sprintf("ngrok: %s not found on PATH (install it): %v", argv[0], err), nil)
