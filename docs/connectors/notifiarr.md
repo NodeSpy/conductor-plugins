@@ -43,8 +43,29 @@ connectors:
 |-----|------|---------|
 | `api_key` | string | **required.** Notifiarr API key |
 | `api_base` | string | override the API base URL (default `https://notifiarr.com/api/v1`; tests or a private gateway) |
+| `channel_id` | string | default Discord channel id override (used by `notify` when its own `channel_id` option is omitted) |
 
 ## Verbs
+
+### `notify`
+
+The former bundled `notifiarr` connector's verb name and option/output
+surface exactly — a config written for it works unchanged here. Sends the
+same minimal Passthrough payload (`{"text":{"description":…}}`, with
+`ids.channel` only when a channel is set) as the legacy sink.
+
+| option | type | required |
+|--------|------|----------|
+| `text` | string | yes |
+| `channel_id` | string, scope `channel` | no — falls back to the connection's `channel_id` |
+
+Outputs: `ok` (boolean).
+
+```yaml
+steps:
+  - uses: notifiarr.notify
+    options: { text: "nightly backup finished", channel_id: "1234567890" }
+```
 
 ### `passthrough`
 

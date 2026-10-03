@@ -5,6 +5,17 @@
 // first-class verb does not cover. Built ONLY against the public SDK
 // (pkg/plugin) — no other dependency.
 //
+// EXPOSURE — this connector also declares an `exposes` verb
+// (conductor docs/design/plugin-contract.md §2.3): funnel_open/funnel_close
+// bring a local address up on `tailscale serve` (tailnet-private, the
+// default) or `tailscale funnel` (public internet) by shelling out to the
+// LOCAL tailscale CLI (which must already be logged into this machine's
+// tailnet — a separate concern from the API credentials above). It lives on
+// this connector rather than a second "tailscale-funnel" plugin because it
+// is the same vendor, the same `tailnet` concept, and an operator who
+// already configured `tailscale:` for the API should not need a second,
+// confusingly-named connector just to expose a port on the same tailnet.
+//
 // AUTH SHOWCASE — this connector supports BOTH of conductor's credential
 // paths at once, and prefers the managed one:
 //
@@ -27,9 +38,11 @@
 //
 // Connection:
 //
-//	tailnet:  "example.com"    # required; the tailnet name, or "-" for the default tailnet
-//	api_key:  "tskey-api-..."  # optional; fallback bearer credential when no managed auth: is configured
-//	api_base: "https://..."    # optional; overrides https://api.tailscale.com (tests)
+//	tailnet:      "example.com"    # required; the tailnet name, or "-" for the default tailnet
+//	api_key:      "tskey-api-..."  # optional; fallback bearer credential when no managed auth: is configured
+//	api_base:     "https://..."    # optional; overrides https://api.tailscale.com (tests)
+//	funnel_mode:  "funnel"         # optional; serve (tailnet-only) or funnel (public) — default funnel
+//	binary:       "tailscale"      # optional; override the local tailscale CLI path, for funnel_open/funnel_close
 //
 // Every request sends `Authorization: Bearer <token>` where <token> is the
 // managed OAuth2 token if present, else api_key. A non-2xx response becomes a
@@ -42,15 +55,20 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/NodeSpy/conductor-plugins/internal/exposurekit"
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
 )
 
@@ -63,10 +81,55 @@ const apiPath = "/api/v2"
 
 type tailscalePlugin struct {
 	client *http.Client
+	leases *exposurekit.Leases
+
+	funnelMu  sync.Mutex
+	funnelMap map[string]*funnelMapping
+}
+
+// funnelMapping tracks one (binary, mode) pair's shared 443 mapping across
+// every lease this plugin instance has opened on it: `tailscale serve`/
+// `funnel --bg` is a single global toggle on the box, not one per lease, so
+// two concurrent funnel_open calls on the SAME port share the same
+// underlying mapping and must not tear it down until both have closed. A
+// concurrent open for a DIFFERENT port is refused outright (see
+// funnelOpen) rather than silently retargeting the one mapping out from
+// under the lease(s) already relying on it.
+type funnelMapping struct {
+	mu sync.Mutex
+	// refCount is how many currently-open leases this plugin holds on this
+	// mapping. preExisting, captured only when refCount transitions 0->1 (not
+	// on every open), records whether a serve/funnel config the OPERATOR set
+	// up — not this plugin — was already active before this plugin's first
+	// lease on it; a blanket `--https=443 off` must never clobber that. port
+	// is the local port the mapping currently targets, likewise captured only
+	// on 0->1; it is compared against every subsequent open while refCount >
+	// 0 so a different port is refused instead of silently retargeting.
+	refCount    int
+	preExisting bool
+	port        string
 }
 
 func newTailscalePlugin() *tailscalePlugin {
-	return &tailscalePlugin{client: &http.Client{Timeout: 30 * time.Second}}
+	return &tailscalePlugin{
+		client:    &http.Client{Timeout: 30 * time.Second},
+		leases:    exposurekit.NewLeases(),
+		funnelMap: map[string]*funnelMapping{},
+	}
+}
+
+// funnelMappingFor returns the shared mapping state for (binary, mode),
+// creating it on first use.
+func (p *tailscalePlugin) funnelMappingFor(binary, mode string) *funnelMapping {
+	key := binary + "\x00" + mode
+	p.funnelMu.Lock()
+	defer p.funnelMu.Unlock()
+	fm, ok := p.funnelMap[key]
+	if !ok {
+		fm = &funnelMapping{}
+		p.funnelMap[key] = fm
+	}
+	return fm
 }
 
 func (p *tailscalePlugin) Describe() plugin.Decl {
@@ -75,9 +138,11 @@ func (p *tailscalePlugin) Describe() plugin.Decl {
 		Type: "tailscale",
 		Desc: "Tailscale: devices, auth keys, tailnet ACL, and DNS settings over the Tailscale API, plus a raw `api` escape hatch. Authenticates via conductor's managed OAuth2 (client_credentials) — run `conductor connector auth tailscale` after configuring an `auth:` block — or, as a fallback, a plain api_key connection field.",
 		Connection: plugin.Schema{
-			"tailnet":  {Type: "string", Required: true, Desc: "tailnet name, e.g. example.com, or \"-\" for the default tailnet", Scope: "tailnet"},
-			"api_key":  {Type: "string", Desc: "Tailscale API key, used as a bearer credential fallback when no managed auth: token is configured"},
-			"api_base": {Type: "string", Desc: "override https://api.tailscale.com (tests only)"},
+			"tailnet":     {Type: "string", Required: true, Desc: "tailnet name, e.g. example.com, or \"-\" for the default tailnet", Scope: "tailnet"},
+			"api_key":     {Type: "string", Desc: "Tailscale API key, used as a bearer credential fallback when no managed auth: token is configured"},
+			"api_base":    {Type: "string", Desc: "override https://api.tailscale.com (tests only)"},
+			"funnel_mode": {Type: "string", Enum: []string{"serve", "funnel"}, Desc: "tailscale serve (tailnet-only) or funnel (public) for funnel_open (default funnel)"},
+			"binary":      {Type: "string", Desc: "override the local tailscale CLI path, for funnel_open/funnel_close (default tailscale)"},
 		},
 		Verbs: []plugin.Verb{
 			{
@@ -216,11 +281,22 @@ func (p *tailscalePlugin) Describe() plugin.Decl {
 				},
 				Outputs: plugin.Schema{"result": {Type: "any"}, "items": {Type: "list"}, "status_code": {Type: "integer"}},
 			},
+			{
+				Name: "funnel_open", Desc: "bring a local address up on tailscale serve/funnel", Semantics: exposurekit.Exposes("funnel_close"),
+				Usage:   "exposes: shells out to the local tailscale CLI (serve or funnel, per funnel_mode)",
+				Options: plugin.Schema{"local_addr": {Type: "string", Required: true, Desc: "host:port to expose, e.g. 127.0.0.1:8099"}},
+				Outputs: plugin.Schema{"public_url": {Type: "string", Required: true}, "lease": {Type: "string", Required: true}},
+			},
+			{
+				Name: "funnel_close", Desc: "end an exposure opened by funnel_open", Semantics: &plugin.VerbSemantics{HostOnly: true},
+				Options: plugin.Schema{"lease": {Type: "string", Required: true}},
+			},
 		},
 		// Conductor performs the OAuth2 client_credentials exchange with
 		// api.tailscale.com's token endpoint on this plugin's behalf; the
-		// plugin itself only ever calls the Tailscale API host.
-		Capabilities: plugin.Capabilities{Egress: []string{"api.tailscale.com:443"}},
+		// plugin itself only ever calls the Tailscale API host. funnel_open/
+		// funnel_close additionally shell out to the LOCAL tailscale CLI.
+		Capabilities: plugin.Capabilities{Egress: []string{"api.tailscale.com:443"}, Commands: []string{"tailscale"}, Spawns: true},
 		Auth: &plugin.AuthSpec{
 			Grants:   []string{"client_credentials"},
 			TokenURL: "https://api.tailscale.com/api/v2/oauth/token",
@@ -230,6 +306,21 @@ func (p *tailscalePlugin) Describe() plugin.Decl {
 }
 
 func (p *tailscalePlugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeResult, error) {
+	// funnel_open/funnel_close drive the LOCAL tailscale CLI (already logged
+	// into this machine's tailnet) — they need none of the Tailscale API
+	// credentials parseConn requires below.
+	switch req.Verb {
+	case "funnel_open":
+		return p.funnelOpen(req)
+	case "funnel_close":
+		id, _ := req.Options["lease"].(string)
+		if id == "" {
+			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, "lease is required")
+		}
+		p.leases.Release(id)
+		return plugin.InvokeResult{}, nil
+	}
+
 	conn, token, err := parseConn(req.Connection)
 	if err != nil {
 		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, err.Error())
@@ -666,8 +757,168 @@ func hoist(v any, key string) []any {
 	return []any{}
 }
 
+// --- funnel/serve exposure (the local tailscale CLI, not the API) ---
+
+// tailscaleURLRe matches the URL `tailscale serve|funnel --bg` prints on
+// success. Ported verbatim from conductor's pre-contract-cutover
+// internal/handoff/tunnel.go:tailscaleURLRe.
+var tailscaleURLRe = regexp.MustCompile(`https://\S+`)
+
+func (p *tailscalePlugin) funnelOpen(req plugin.InvokeRequest) (plugin.InvokeResult, error) {
+	localAddr, _ := req.Options["local_addr"].(string)
+	port, err := exposurekit.PortOf(localAddr)
+	if err != nil {
+		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeInvalid, "tailscale: "+err.Error(), nil)
+	}
+	mode := strOr(str(req.Connection["funnel_mode"]), "funnel")
+	if mode != "serve" && mode != "funnel" {
+		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeInvalid, fmt.Sprintf("tailscale: funnel_mode must be serve or funnel, got %q", mode), nil)
+	}
+	binary := strOr(str(req.Connection["binary"]), "tailscale")
+	if _, err := exec.LookPath(binary); err != nil {
+		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeUpstream, fmt.Sprintf("tailscale: %s not found on PATH (install it): %v", binary, err), nil)
+	}
+	const timeout = 30 * time.Second
+	ctx := context.Background()
+
+	// The 443 mapping is global per (binary, mode), not per lease: two
+	// concurrent funnel_open calls on the SAME port share it. Snapshot
+	// whether it already existed — belonging to the operator, not this
+	// plugin — and which port it targets only on the FIRST lease to touch it
+	// (refCount 0->1); a later concurrent open must not reset that memory,
+	// and a blanket `--https=443 off` must never run while any lease on this
+	// mapping, let alone a pre-existing config, is still live. A concurrent
+	// open for a DIFFERENT port while a lease is outstanding is refused
+	// outright — sharing it would silently retarget the mapping out from
+	// under whoever already holds a lease on it.
+	fm := p.funnelMappingFor(binary, mode)
+	fm.mu.Lock()
+	if fm.refCount == 0 {
+		fm.preExisting = tailscaleServeActive(ctx, binary, mode, timeout)
+		fm.port = port
+	} else if fm.port != port {
+		existingPort := fm.port
+		fm.mu.Unlock()
+		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeInvalid,
+			fmt.Sprintf("tailscale: %s already has an open lease on port %s; close it before opening a different port (%s)", mode, existingPort, port), nil)
+	}
+	fm.refCount++
+	fm.mu.Unlock()
+	// stop releases this lease's hold on the shared mapping and, when this
+	// was the LAST lease on it (refCount 0) and nothing pre-existing is at
+	// risk, tears the real mapping down on the box. It is also the correct
+	// cleanup for every failure path below that ran the `--bg` command
+	// successfully: a successful `--bg` really did bring the mapping up (or
+	// confirm it), so any failure after that point must release through the
+	// same last-lease/pre-existing accounting as a normal close — never just
+	// decrement the refcount and walk away, or the mapping this plugin
+	// brought up is left dangling with no lease ever able to tear it down
+	// again (the next open would then see it as pre-existing).
+	stop := func() {
+		fm.mu.Lock()
+		fm.refCount--
+		last := fm.refCount == 0
+		preExisting := fm.preExisting
+		fm.mu.Unlock()
+		if !last {
+			return // another lease on this (binary, mode) mapping is still open
+		}
+		if preExisting {
+			fmt.Fprintf(os.Stderr, "tailscale: %s: a serve mapping existed before this lease — leaving 443 up at close (run `tailscale %s --https=443 off` yourself to clear it)\n", mode, mode)
+			return
+		}
+		_, _ = exposurekit.RunOnce(context.Background(), []string{binary, mode, "--https=443", "off"}, 10*time.Second)
+	}
+	// releaseMapping, unlike stop, never runs the CLI teardown: it is only
+	// for the path below where the `--bg` command itself failed, meaning
+	// nothing was actually brought up on the box for this lease to own.
+	releaseMapping := func() {
+		fm.mu.Lock()
+		fm.refCount--
+		fm.mu.Unlock()
+	}
+
+	out, err := exposurekit.RunOnce(ctx, []string{binary, mode, "--bg", port}, timeout)
+	if err != nil {
+		releaseMapping()
+		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeUpstream, fmt.Sprintf("tailscale %s: %v (%s)", mode, err, strings.TrimSpace(out)), nil)
+	}
+	url := tailscaleURLRe.FindString(out)
+	if url == "" {
+		url, err = tailscaleStatusURL(ctx, binary, timeout)
+		if err != nil {
+			// The `--bg` command above succeeded — it DID bring the mapping
+			// up (or confirm it was already up) — so simply releasing our
+			// refcount here would leave a mapping with no lease ever able to
+			// tear it down. Run the same last-lease/pre-existing-aware
+			// teardown a normal close would.
+			stop()
+			return plugin.InvokeResult{}, plugin.Fail(plugin.CodeUpstream, fmt.Sprintf("tailscale: no URL from %s output or status: %v", mode, err), nil)
+		}
+	}
+	lease, err := p.leases.AddCapped(req.Instance, stop, exposurekit.DefaultMaxLeasesPerInstance)
+	if err != nil {
+		stop()
+		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeInvalid, "tailscale: "+err.Error(), nil)
+	}
+	return plugin.InvokeResult{Outputs: map[string]any{"public_url": url, "lease": lease}}, nil
+}
+
+// Stop releases every funnel/serve lease the instance holds (plugin.stop).
+func (p *tailscalePlugin) Stop(_ context.Context, req plugin.StopRequest) error {
+	p.leases.StopInstance(req.Instance)
+	return nil
+}
+
+// tailscaleServeActive reports whether a serve/funnel mapping is already
+// configured: `tailscale serve status` prints the active config, or a "No
+// serve config"/"Funnel off" marker when there is none. Ported from
+// conductor's pre-contract-cutover internal/handoff/tunnel.go.
+func tailscaleServeActive(ctx context.Context, binary, mode string, timeout time.Duration) bool {
+	out, err := exposurekit.RunOnce(ctx, []string{binary, mode, "status"}, timeout)
+	if err != nil {
+		return false
+	}
+	s := strings.ToLower(strings.TrimSpace(out))
+	return s != "" && !strings.Contains(s, "no serve config") && !strings.Contains(s, "funnel off")
+}
+
+// tailscaleStatusURL falls back to `tailscale status --json` (Self.DNSName,
+// stable and resolvable on the tailnet/funnel) when serve/funnel --bg's own
+// output carried no URL. Ported from conductor's pre-contract-cutover
+// internal/handoff/tunnel.go.
+func tailscaleStatusURL(ctx context.Context, binary string, timeout time.Duration) (string, error) {
+	out, err := exposurekit.RunOnce(ctx, []string{binary, "status", "--json"}, timeout)
+	if err != nil {
+		return "", err
+	}
+	return parseTailscaleDNSName([]byte(out))
+}
+
+// parseTailscaleDNSName extracts https://<Self.DNSName> from `tailscale
+// status --json` output. Ported verbatim from conductor's
+// pre-contract-cutover internal/handoff/tunnel.go.
+func parseTailscaleDNSName(body []byte) (string, error) {
+	var st struct {
+		Self struct {
+			DNSName string `json:"DNSName"`
+		} `json:"Self"`
+	}
+	if err := json.Unmarshal(body, &st); err != nil {
+		return "", fmt.Errorf("decode tailscale status: %w", err)
+	}
+	name := strings.TrimSuffix(st.Self.DNSName, ".")
+	if name == "" {
+		return "", fmt.Errorf("no Self.DNSName in tailscale status")
+	}
+	return "https://" + name, nil
+}
+
 func main() {
-	if err := plugin.Serve(newTailscalePlugin()); err != nil {
+	p := newTailscalePlugin()
+	err := plugin.Serve(p)
+	p.leases.ReleaseAll()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "conductor-tailscale:", err)
 		os.Exit(1)
 	}

@@ -4,10 +4,16 @@ Tailscale as a connector: devices, auth keys, the tailnet ACL, and DNS
 settings over the Tailscale API (`https://api.tailscale.com/api/v2`), plus a
 raw `api` escape hatch. Built on the standard library's `net/http` only.
 
+It also declares an **exposure connector** verb pair (conductor
+docs/design/plugin-contract.md §2.3, the `exposes` semantic):
+`funnel_open`/`funnel_close` bring a local address up on `tailscale serve`
+(tailnet-private) or `tailscale funnel` (public internet) by shelling out to
+the LOCAL tailscale CLI. See **Funnel/serve exposure** below.
+
 - **Kind:** connector (verbs only — no source)
 - **Source:** [`connectors/tailscale/main.go`](../../connectors/tailscale/main.go)
 - **Provides:** `tailscale`
-- **Capabilities:** egress `["api.tailscale.com:443"]`
+- **Capabilities:** egress `["api.tailscale.com:443"]`; spawns `tailscale` (for `funnel_open`/`funnel_close` only)
 
 ## Setup
 
@@ -117,6 +123,13 @@ unauthenticated request.
 | `tailnet` | string | Required. The tailnet name, e.g. `example.com`, or `-` for the default tailnet. |
 | `api_key` | string | Optional. Fallback bearer credential when no managed `auth:` token is configured. |
 | `api_base` | string | Overrides `https://api.tailscale.com` (tests only). |
+| `funnel_mode` | string | `serve` (tailnet-only) or `funnel` (public) for `funnel_open` (default `funnel`). |
+| `binary` | string | Override the local `tailscale` CLI path, for `funnel_open`/`funnel_close` (default `tailscale`). |
+
+`tailnet` is required by the connection schema even if you only use
+`funnel_open`/`funnel_close` and never touch the API verbs — it's one
+instance, one schema. You already know your tailnet name if you're using
+Tailscale at all, so this is a one-line cost, not a real blocker.
 
 The `auth:` block (grant, OAuth client credentials, token vault) is
 daemon-managed configuration, not a connection field this plugin ever sees —
@@ -169,10 +182,61 @@ Required options are marked `*`.
 
 - **`api`** — raw escape hatch: any Tailscale API endpoint (enables writes). `method` (HTTP method, default `GET`), `path`* (path under `/api/v2`, e.g. `/tailnet/example.com/devices`), `query` (map of query string parameters), `body` (any, JSON request body). → `result` (object response) or `items` (array response).
 
+## Funnel/serve exposure
+
+Unlike every verb above, `funnel_open`/`funnel_close` talk to the **local**
+`tailscale` CLI (already logged into this machine's tailnet), not the
+Tailscale API — a separate credential concern from `tailnet`/`api_key`/
+`auth:` above. This lives on the `tailscale` connector rather than a second
+`tailscale-funnel` plugin because it's the same vendor and the same tailnet
+concept: an operator who already configured `tailscale:` for the API
+shouldn't need a second, confusingly-named connector just to expose a port
+on the same tailnet.
+
+**Prerequisites:** the `tailscale` CLI installed and logged in on the host
+running conductor (`tailscale up`) — `tailscale funnel` additionally
+requires [Funnel enabled for your tailnet](https://tailscale.com/kb/1223/funnel)
+in the admin console (HTTPS + MagicDNS on by default for most plans; Funnel
+itself may need an explicit ACL grant).
+
+```yaml
+connectors:
+  tun: { use: tailscale, tailnet: example.com, funnel_mode: funnel }
+  web: { use: web, expose: tun }
+```
+
+Use `funnel_mode: serve` instead for tailnet-private reachability (anyone on
+your tailnet, not the public internet) — still useful as an `expose:`
+target when "reachable from outside this machine" is all you need, not
+"reachable from the internet".
+
+### `funnel_open` — bring a local address up (`exposes`)
+
+| option | type | |
+|--------|------|---|
+| `local_addr` * | string | `host:port` to expose |
+
+Outputs `public_url`, `lease`. Reads the URL off `tailscale serve|funnel
+--bg`'s own output; falls back to `tailscale status --json`'s
+`Self.DNSName` when the command's own output carries none.
+
+### `funnel_close` — end an exposure
+
+`lease` * (the value `funnel_open` returned).
+
+**Pre-existing mappings are never clobbered.** If a serve/funnel mapping on
+port 443 already existed before `funnel_open` (someone else's, or a previous
+manual `tailscale serve`), `funnel_close` leaves it alone and logs that fact
+to stderr instead of running `tailscale serve --https=443 off` — it only
+tears down a mapping it created itself. Tailscale supports one serve/funnel
+mapping per port, so concurrent leases across instances contend at the OS
+level, not this plugin's.
+
 ## Capabilities & security
 
-Declares egress `api.tailscale.com:443` only — the daemon, not this plugin,
-talks to Tailscale's OAuth token endpoint for the managed `client_credentials`
-exchange. Scope the OAuth client (or the API key) to the least privilege the
-workflow needs; Tailscale OAuth clients can be scoped read-only (`all:read`)
-or to specific resource types.
+Declares egress `api.tailscale.com:443` for the API verbs — the daemon, not
+this plugin, talks to Tailscale's OAuth token endpoint for the managed
+`client_credentials` exchange. Scope the OAuth client (or the API key) to the
+least privilege the workflow needs; Tailscale OAuth clients can be scoped
+read-only (`all:read`) or to specific resource types. Also declares `Commands:
+["tailscale"]` and `Spawns: true`, used only by `funnel_open`/`funnel_close`.

@@ -16,7 +16,13 @@ go 1.26.3
 // for the host.kv/host.sql/host.memory callbacks. The decision-runtime
 // surface runtimes/jev is built on — Decl.Protocols, ProtocolSystemOneV1,
 // VerbDecide/VerbModels — arrived with conductor v0.54.0's decide: steps.
-require github.com/NodeSpy/conductor v0.60.0
+//
+// PRE-RELEASE PIN: the github connector is built on conductor's source
+// extension (plugin.ConnectorABI) and the public github source/plugin kits
+// (pkg/githubkit/ghsource, ghplugin), which are not in a conductor release yet.
+// This pseudo-version is the head of the conductor change that adds them; it
+// MUST be bumped to that change's release tag before this merges.
+require github.com/NodeSpy/conductor v0.60.1-0.20261003191013-ce6a6f911435
 
 // The interpreters the four step engines embed. These are the SAME versions
 // conductor pinned while the engines lived in its binary, so the port is a
@@ -31,8 +37,11 @@ require (
 
 require (
 	cel.dev/cel-go v0.32.0
+	github.com/coder/websocket v1.8.15
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/fsnotify/fsnotify v1.10.1
+	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/gorilla/websocket v1.5.3
 	github.com/itchyny/gojq v0.12.19
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/mikefarah/yq/v4 v4.53.6
@@ -40,6 +49,7 @@ require (
 	github.com/tetratelabs/wazero v1.9.0
 	go.starlark.net v0.0.0-20260908191801-89a6a09411d5
 	go.yaml.in/yaml/v3 v3.0.4
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -57,9 +67,7 @@ require (
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/goccy/go-json v0.10.6 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
-	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/hcl/v2 v2.24.0 // indirect
 	github.com/itchyny/timefmt-go v0.1.8 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect

@@ -33,7 +33,7 @@ Each plugin has a full reference page under [`docs/`](docs/README.md).
 ## Connectors
 
 ### Source control & project tracking
-- **[github](docs/connectors/github.md)** — pull requests, reviews, issues, checks, releases, gists + webhook events. Token or GitHub-App auth.
+- **[github](docs/connectors/github.md)** — pull requests, reviews, issues, checks, releases, gists + every webhook event and the catch-up sweep: the same implementation as conductor's bundled github connector, out of process. Token or GitHub-App auth.
 - **[gitlab](docs/connectors/gitlab.md)** — merge requests, issues, labels, branches, pipelines + push/MR/pipeline webhooks.
 - **[gitea](docs/connectors/gitea.md)** — Gitea/Forgejo issues, PRs, releases, files + webhooks.
 - **[git](docs/connectors/git.md)** — the `git` CLI with managed credentials: clone, commit, push, branch, tag, merge…
@@ -54,6 +54,15 @@ Each plugin has a full reference page under [`docs/`](docs/README.md).
 - **[redis](docs/connectors/redis.md)** — Redis / Valkey: get/set/del/incr/expire, publish, raw `command`, and a live pub/sub source (SUBSCRIBE / PSUBSCRIBE).
 - **[aws-sqs](docs/connectors/aws-sqs.md)** — Amazon SQS: long-poll a queue as an event source + send/receive/delete/attributes verbs. SDK-free & CLI-free (hand-rolled SigV4).
 
+### Exposure (tunnels & relays)
+Named-vendor counterparts to conductor's own vendor-neutral `lan`/`tunnel` exposure builtins — each declares an `exposes` verb, so any connector that names one in `expose:` (the web hand-off, or a webhook source declaring `listeners`) gets a public URL for a local address with no vendor code of its own.
+- **[cloudflared](docs/connectors/cloudflared.md)** — Cloudflare Tunnel: a free ephemeral `*.trycloudflare.com` quick tunnel, or a persistent named tunnel.
+- **[ngrok](docs/connectors/ngrok.md)** — ngrok: reads the public URL off ngrok's own local API, not its TUI output.
+- **[localxpose](docs/connectors/localxpose.md)** — LocalXpose (`loclx`): a `*.loclx.io` public URL.
+- **[sshtunnel](docs/connectors/sshtunnel.md)** — an ssh reverse tunnel to localhost.run, serveo.net, pinggy, or any host offering the same convention.
+- **[smee](docs/connectors/smee.md)** — a smee.io-style relay channel: receives deliveries over an outbound SSE connection and replays them locally, for reaching a listener with no inbound port to forward to.
+- Tailscale Funnel/Serve exposure lives on the **[tailscale](docs/connectors/tailscale.md)** connector itself (`funnel_open`/`funnel_close`), alongside its API verbs.
+
 ### Homelab — media
 - **[sonarr](docs/connectors/sonarr.md)** · **[radarr](docs/connectors/radarr.md)** · **[lidarr](docs/connectors/lidarr.md)** — Servarr for TV / movies / music: library CRUD, queue, calendar + Grab/Download webhooks.
 - **[prowlarr](docs/connectors/prowlarr.md)** — Servarr indexer manager: indexers, apps, release search + health webhooks.
@@ -70,7 +79,7 @@ Each plugin has a full reference page under [`docs/`](docs/README.md).
 - **[unifi](docs/connectors/unifi.md)** — UniFi Network: devices, clients (block/reconnect), WLANs, firewall, health, alarms.
 - **[unifi-protect](docs/connectors/unifi-protect.md)** — UniFi Protect cameras: snapshots, PTZ, NVR, sensors.
 - **[opnsense](docs/connectors/opnsense.md)** · **[pfsense](docs/connectors/pfsense.md)** — firewalls: rules, aliases, services, interfaces, DHCP, DNS.
-- **[tailscale](docs/connectors/tailscale.md)** — Tailscale mesh VPN: devices, auth keys, ACLs, DNS.
+- **[tailscale](docs/connectors/tailscale.md)** — Tailscale mesh VPN: devices, auth keys, ACLs, DNS, plus a `funnel`/`serve` exposure verb pair.
 - **[pihole](docs/connectors/pihole.md)** · **[adguard](docs/connectors/adguard.md)** — DNS ad-blocking: stats, blocking toggle, allow/deny lists.
 - **[nginx-proxy-manager](docs/connectors/nginx-proxy-manager.md)** — reverse proxy: proxy hosts, redirects, streams, certs.
 - **[portainer](docs/connectors/portainer.md)** — container management: environments, stacks, containers, images.
@@ -90,7 +99,8 @@ Each plugin has a full reference page under [`docs/`](docs/README.md).
 - **[wiz](docs/connectors/wiz.md)** — Wiz cloud security: issues & findings + a new-issue source.
 
 ### Notifications, chat & email
-- **[telegram](docs/connectors/telegram.md)** · **[matrix](docs/connectors/matrix.md)** — messaging: send + inbound message source.
+- **[slack](docs/connectors/slack.md)** — Socket Mode events (mentions, reactions, slash commands, message shortcuts, modal forms), hand-off asks/approvals, thread reads + file downloads: the same implementation as conductor's bundled slack connector, out of process.
+- **[telegram](docs/connectors/telegram.md)** · **[matrix](docs/connectors/matrix.md)** · **[discord](docs/connectors/discord.md)** — messaging: send + inbound message source; discord adds hand-off `ask` questions over a bot gateway.
 - **[ntfy](docs/connectors/ntfy.md)** · **[pushover](docs/connectors/pushover.md)** · **[notifiarr](docs/connectors/notifiarr.md)** — push notifications.
 - **[twilio](docs/connectors/twilio.md)** — SMS / WhatsApp / voice + an inbound source.
 - **[email](docs/connectors/email.md)** — SMTP send + IMAP inbox source.

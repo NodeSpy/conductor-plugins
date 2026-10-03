@@ -46,7 +46,7 @@ func (pushoverPlugin) Describe() plugin.Decl {
 		Type: "pushover",
 		Desc: "Pushover: send push notifications (including emergency priority), validate users/groups, check delivery receipts, post glances, and a generic API escape hatch.",
 		Connection: plugin.Schema{
-			"token":    {Type: "string", Required: true, Desc: "Pushover application API token"},
+			"token":    {Type: "string", Required: true, Secret: true, Desc: "Pushover application API token"},
 			"user":     {Type: "string", Required: true, Desc: "Pushover user or group key"},
 			"api_base": {Type: "string", Desc: "override the Pushover API base URL (tests, or a private gateway)"},
 		},
@@ -60,6 +60,18 @@ func (pushoverPlugin) Describe() plugin.Decl {
 func pushoverVerbs() []plugin.Verb {
 	resultStatus := plugin.Schema{"result": {Type: "any"}, "status_code": {Type: "integer"}}
 	return []plugin.Verb{
+		{
+			// notify is the former bundled connector's verb name and option/
+			// output surface (message, title -> ok), kept alongside send's
+			// richer surface for parity: a config written for the bundled
+			// connector's `pushover.notify` works unchanged here.
+			Name: "notify", Desc: "send a push notification (the simple surface: message + title)",
+			Options: plugin.Schema{
+				"message": {Type: "string", Required: true},
+				"title":   {Type: "string"},
+			},
+			Outputs: plugin.Schema{"ok": {Type: "boolean"}, "result": {Type: "any"}, "status_code": {Type: "integer"}},
+		},
 		{
 			Name: "send", Desc: "send a push notification",
 			Usage: "priority 2 (emergency) requires retry and expire; the response's `result` includes a receipt for priority 2",
@@ -165,6 +177,12 @@ func (pushoverPlugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeResult, err
 	if err != nil {
 		return plugin.InvokeResult{}, err
 	}
+	if req.Verb == "notify" {
+		// do() only returns without error on a 2xx response, so a successful
+		// call here is always "ok" — the bundled connector's exact output
+		// shape, plus result/status_code for anyone who wants them.
+		outputs["ok"] = true
+	}
 	return plugin.InvokeResult{Outputs: outputs}, nil
 }
 
@@ -186,6 +204,12 @@ type apiCall struct {
 // testable — no request is sent here.
 func verbCall(verb string, o map[string]any) (apiCall, error) {
 	switch verb {
+	case "notify":
+		// notify is send's simple surface (message, title only); sendCall
+		// reads exactly the keys present in o, so handing it a map with just
+		// those two keys naturally skips every send-only validation path
+		// (priority, retry/expire) that notify doesn't expose.
+		return sendCall(o)
 	case "send":
 		return sendCall(o)
 	case "validate_user":

@@ -23,9 +23,9 @@
 //
 // Uptime Kuma's webhook notification is UNSIGNED: there is no HMAC to verify,
 // only whatever the operator pastes into the notification's custom body /
-// URL. So, like the datadog connector, sourcekit.Listener.Secret is left
+// URL. So, like the datadog connector, relay.Listener.Secret is left
 // EMPTY here (its HMAC check does not apply) and the shared token is checked
-// by hand inside the handler below. The shared sourcekit.Listener.ServeReq
+// by hand inside the handler below. The shared relay.Listener.ServeReq
 // hands the callback the full request (headers, query, body), so the ?token=
 // query case is checked directly — and the same Listener transparently
 // accepts deliveries relayed over smee for endpoints with no public URL. See
@@ -39,6 +39,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"github.com/NodeSpy/conductor-plugins/internal/relay"
 	"os"
 	"strconv"
 	"strings"
@@ -93,7 +94,7 @@ func (uptimekuma) StartSource(ctx context.Context, req plugin.StartSourceRequest
 	cfg := req.Config
 	secret := str(cfg["secret"])
 	smeeURL := str(cfg["smee"])
-	ln := sourcekit.Listener{
+	ln := relay.Listener{
 		Addr:  str(cfg["listen"]),
 		Path:  strOr(cfg["path"], "/uptimekuma"),
 		Relay: smeeURL,
@@ -348,7 +349,7 @@ func boolVal(v any) bool {
 // Uptime Kuma cannot sign its webhook notifications, so this shared-token
 // check is the only authentication available; requireWebhookSecret ensures a
 // token is always configured unless the operator explicitly opts out with
-// allow_unsigned. The shared sourcekit.Listener.ServeReq hands the callback
+// allow_unsigned. The shared relay.Listener.ServeReq hands the callback
 // the full request (headers, query, body), so the ?token= query fallback
 // documented alongside this connector is checked directly.
 func verifyToken(secret string, rq *sourcekit.Request) bool {

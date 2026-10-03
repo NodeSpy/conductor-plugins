@@ -1,2 +1,25 @@
 dist/
 *.exe
+
+# A bare `go build ./connectors/<name>/...` (or similar) run from the repo
+# root drops a binary named after the plugin directly at top level — exactly
+# how aws-sqs, discord and github ended up committed here. Ignore everything
+# at the root by default and explicitly allow back in only the tracked
+# source directories and files, so any future stray plugin binary at root
+# (whatever it's named) is ignored instead of git-add-able by accident.
+#
+# ADDING A NEW TOP-LEVEL DIRECTORY? Add a matching `!/<dir>/` line below, or
+# git will silently ignore it (e2e/repo_hygiene_test.go checks the list).
+/*
+!/.github/
+!/connectors/
+!/docs/
+!/e2e/
+!/engines/
+!/internal/
+!/runtimes/
+!/scripts/
+!/.gitignore
+!/README.md
+!/go.mod
+!/go.sum

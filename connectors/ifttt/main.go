@@ -6,7 +6,7 @@
 // IFTTT applet's "Make a web request" action and streams a normalized `event`
 // event per delivery, guarded by a shared token (not an HMAC — Maker Webhooks
 // has no signing story) checked against the `X-Conductor-Token` header or a
-// `?token=` query parameter. The shared sourcekit.Listener.ServeReq hands the
+// `?token=` query parameter. The shared relay.Listener.ServeReq hands the
 // callback the full request (headers, query, body), so the ?token= query case
 // is checked directly — and the same Listener transparently accepts
 // deliveries over a smee.io-style relay (webhook.smee) for endpoints with no
@@ -38,6 +38,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"github.com/NodeSpy/conductor-plugins/internal/relay"
 	"io"
 	"net/http"
 	"net/url"
@@ -217,7 +218,7 @@ func (iftttPlugin) StartSource(ctx context.Context, req plugin.StartSourceReques
 		fmt.Fprintf(os.Stderr, "ifttt[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
 	}
 
-	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smeeURL}
+	ln := relay.Listener{Addr: addr, Path: path, Relay: smeeURL}
 	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
 		if !checkToken(rq, secret, allowUnsigned) {
 			return

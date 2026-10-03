@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -375,7 +376,7 @@ func TestDescribe(t *testing.T) {
 	if len(d.Events) != 0 {
 		t.Fatalf("pushover is verb-only, no events: %#v", d.Events)
 	}
-	wantVerbs := []string{"send", "validate_user", "get_receipt", "cancel_receipt", "sounds", "glances", "api"}
+	wantVerbs := []string{"notify", "send", "validate_user", "get_receipt", "cancel_receipt", "sounds", "glances", "api"}
 	got := map[string]bool{}
 	for _, v := range d.Verbs {
 		got[v.Name] = true
@@ -387,6 +388,115 @@ func TestDescribe(t *testing.T) {
 	}
 	if len(d.Verbs) != len(wantVerbs) {
 		t.Errorf("verb count: got %d want %d", len(d.Verbs), len(wantVerbs))
+	}
+}
+
+// TestSemanticsPassContractChecks asserts this plugin's declarations are
+// must-understand-clean (CheckSemantics) and internally consistent
+// (ValidateSemantics) — pushover declares no semantics today, so both should
+// trivially pass.
+func TestSemanticsPassContractChecks(t *testing.T) {
+	d := pushoverPlugin{}.Describe()
+	d.ProtocolVersion = plugin.ProtocolVersion
+	raw, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("marshal decl: %v", err)
+	}
+	if problems := plugin.CheckSemantics(raw); len(problems) != 0 {
+		t.Fatalf("CheckSemantics: %v", problems)
+	}
+	if problems := plugin.ValidateSemantics(d); len(problems) != 0 {
+		t.Fatalf("ValidateSemantics: %v", problems)
+	}
+}
+
+// TestInvokeNotify proves the notify verb — the former bundled connector's
+// exact verb name and option/output surface — sends a plain message/title
+// send and reports ok: true.
+func TestInvokeNotify(t *testing.T) {
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":1,"request":"abc123"}`))
+	}))
+	defer srv.Close()
+
+	res, err := pushoverPlugin{}.Invoke(plugin.InvokeRequest{
+		Verb:       "notify",
+		Connection: map[string]any{"token": "tok", "user": "usr", "api_base": srv.URL},
+		Options:    map[string]any{"message": "hello", "title": "alert"},
+	})
+	if err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	if res.Outputs["ok"] != true {
+		t.Fatalf("ok: got %v, want true", res.Outputs["ok"])
+	}
+	if bad := undeclaredOutputs(pushoverPlugin{}.Describe(), "notify", res.Outputs); len(bad) > 0 {
+		t.Fatalf("notify returned undeclared outputs %v (conductor rejects the result)", bad)
+	}
+	form, err := url.ParseQuery(gotBody)
+	if err != nil {
+		t.Fatalf("parsing sent body: %v", err)
+	}
+	if form.Get("message") != "hello" || form.Get("title") != "alert" || form.Get("token") != "tok" || form.Get("user") != "usr" {
+		t.Fatalf("sent form: %#v", form)
+	}
+}
+
+// TestInvokeNotifyRequiresMessage proves notify validates like send.
+func TestInvokeNotifyRequiresMessage(t *testing.T) {
+	_, err := pushoverPlugin{}.Invoke(plugin.InvokeRequest{
+		Verb:       "notify",
+		Connection: map[string]any{"token": "tok", "user": "usr"},
+		Options:    map[string]any{},
+	})
+	var pe *plugin.Error
+	if !asPluginError(err, &pe) || pe.Code != plugin.CodeInvalidParams {
+		t.Fatalf("expected CodeInvalidParams for missing message, got %v", err)
+	}
+}
+
+// TestEveryVerbReturnsOnlyDeclaredOutputs is the adversarial-pass check that
+// every pushover verb's actual returned keys are a subset of what its own
+// Describe() Outputs names — not just notify (which the one prior test here
+// covered). conductor rejects a verb result carrying any undeclared key.
+func TestEveryVerbReturnsOnlyDeclaredOutputs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":1,"request":"abc123"}`))
+	}))
+	defer srv.Close()
+	conn := map[string]any{"token": "tok", "user": "usr", "api_base": srv.URL}
+
+	cases := []struct {
+		verb    string
+		options map[string]any
+	}{
+		{"notify", map[string]any{"message": "hi"}},
+		{"send", map[string]any{"message": "hi"}},
+		{"validate_user", map[string]any{"user": "usr"}},
+		{"get_receipt", map[string]any{"receipt": "r-xyz"}},
+		{"cancel_receipt", map[string]any{"receipt": "r-xyz"}},
+		{"sounds", nil},
+		{"glances", map[string]any{"title": "t"}},
+		{"api", map[string]any{"method": "GET", "path": "x"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.verb, func(t *testing.T) {
+			res, err := pushoverPlugin{}.Invoke(plugin.InvokeRequest{
+				Verb: tc.verb, Connection: conn, Options: tc.options,
+			})
+			if err != nil {
+				t.Fatalf("Invoke(%s): %v", tc.verb, err)
+			}
+			if bad := undeclaredOutputs(pushoverPlugin{}.Describe(), tc.verb, res.Outputs); len(bad) > 0 {
+				t.Fatalf("%s returned undeclared outputs %v (conductor rejects the result)", tc.verb, bad)
+			}
+		})
 	}
 }
 
@@ -407,4 +517,22 @@ func asPluginError(err error, target **plugin.Error) bool {
 		*target = pe
 	}
 	return ok
+}
+
+// undeclaredOutputs lists the output keys verb returned that its declaration
+// does not name: conductor rejects a verb result carrying any.
+func undeclaredOutputs(d plugin.Decl, verb string, out map[string]any) []string {
+	for _, v := range d.Verbs {
+		if v.Name != verb {
+			continue
+		}
+		var bad []string
+		for k := range out {
+			if _, ok := v.Outputs[k]; !ok {
+				bad = append(bad, k)
+			}
+		}
+		return bad
+	}
+	return []string{"<no verb " + verb + ">"}
 }

@@ -12,7 +12,7 @@
 //
 // As a source, Twilio's webhook signature scheme is its own thing — HMAC-SHA1
 // over the request URL Twilio hit plus the sorted POST params concatenated,
-// base64-encoded — not the HMAC-SHA256-over-raw-body scheme sourcekit.Listener
+// base64-encoded — not the HMAC-SHA256-over-raw-body scheme relaykit.Listener
 // verifies. So the listener's own Secret is left empty (which disables
 // sourcekit's verification) and this plugin does the Twilio-specific check
 // itself, once the body is parsed into form params. See verifyTwilioSignature.
@@ -42,6 +42,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	relaykit "github.com/NodeSpy/conductor-plugins/internal/relay"
 	"io"
 	"net/http"
 	"net/url"
@@ -429,12 +430,12 @@ func (twilioPlugin) StartSource(ctx context.Context, req plugin.StartSourceReque
 	}
 	requestURL := strings.TrimRight(publicURL, "/") + path
 
-	// sourcekit.Listener's own HMAC verification is HMAC-SHA256 over the raw
+	// relaykit.Listener's own HMAC verification is HMAC-SHA256 over the raw
 	// body (GitHub/Sentry/PagerDuty shape); Twilio's scheme is HMAC-SHA1 over
 	// the request URL plus the sorted form params, so it does not fit. Leave
 	// Secret empty (VerifyHMAC then passes everything through) and verify the
 	// Twilio way ourselves below, once the body is parsed into form params.
-	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: relay}
+	ln := relaykit.Listener{Addr: addr, Path: path, Relay: relay}
 	dedup := sourcekit.NewDedup(2048)
 	if addr != "" {
 		fmt.Fprintf(os.Stderr, "twilio[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)

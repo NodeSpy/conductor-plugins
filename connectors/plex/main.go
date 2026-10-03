@@ -33,7 +33,7 @@
 // webhook URL itself, compared against webhook.secret with a constant-time
 // comparison, and fails closed exactly like the HMAC-verified sources do: no
 // secret configured refuses to start unless webhook.allow_unsigned: true says
-// the operator means it. The shared sourcekit.Listener.ServeReq hands the
+// the operator means it. The shared relay.Listener.ServeReq hands the
 // callback the full request (headers, query, raw body), so the ?token= query
 // case is checked directly and the multipart body is parsed by hand (see
 // extractPayload) — and the same Listener transparently accepts deliveries
@@ -53,6 +53,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"github.com/NodeSpy/conductor-plugins/internal/relay"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -467,7 +468,7 @@ func verifyToken(secret string, rq *sourcekit.Request) bool {
 
 // extractPayload pulls the `payload` form field out of a Plex webhook's raw
 // multipart/form-data body. Unlike the old http.Request-based handler, the
-// shared sourcekit.Listener only hands the callback the request's headers,
+// shared relay.Listener only hands the callback the request's headers,
 // query, and raw body bytes — not a live *http.Request — so there is no
 // r.ParseMultipartForm to lean on. This reimplements just enough of it by
 // hand: read the boundary out of the Content-Type header, then walk the
@@ -526,7 +527,7 @@ func (plexPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest
 	if smeeURL != "" {
 		fmt.Fprintf(os.Stderr, "plex[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
 	}
-	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smeeURL}
+	ln := relay.Listener{Addr: addr, Path: path, Relay: smeeURL}
 	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
 		if secret != "" && !verifyToken(secret, rq) {
 			return
