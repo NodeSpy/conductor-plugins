@@ -715,9 +715,11 @@ esac`)
 
 // TestFunnelOpenRefCountsTheSharedMapping is the regression test for finding
 // #5: `tailscale serve`/`funnel --bg` is one global 443 mapping on the box,
-// not one per lease. Two concurrent funnel_open calls on the same
-// (binary, mode) share it, and closing one must NOT tear it down while the
-// other is still open — regardless of which lease is closed first.
+// not one per lease. Two concurrent funnel_open calls on the SAME
+// (binary, mode, port) share it, and closing one must NOT tear it down while
+// the other is still open — regardless of which lease is closed first. (A
+// different port while a lease is outstanding is refused outright — see
+// TestFunnelOpenRefusesDifferentPortWhileLeaseOutstanding.)
 func TestFunnelOpenRefCountsTheSharedMapping(t *testing.T) {
 	for _, name := range []string{"close first-opened then second-opened", "close second-opened then first-opened"} {
 		t.Run(name, func(t *testing.T) {
@@ -734,7 +736,7 @@ esac`)
 			if err != nil {
 				t.Fatalf("open A: %v", err)
 			}
-			resB, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_open", Options: map[string]any{"local_addr": "127.0.0.1:8100"}, Connection: map[string]any{"funnel_mode": "serve"}})
+			resB, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_open", Options: map[string]any{"local_addr": "127.0.0.1:8099"}, Connection: map[string]any{"funnel_mode": "serve"}})
 			if err != nil {
 				t.Fatalf("open B: %v", err)
 			}
@@ -765,6 +767,86 @@ esac`)
 				t.Fatalf("leases after both closes = %d, want 0", p.leases.Len())
 			}
 		})
+	}
+}
+
+// TestFunnelOpenRefusesDifferentPortWhileLeaseOutstanding is the regression
+// test for round-2 finding #2: two concurrent funnel_open calls on the same
+// (binary, mode) but DIFFERENT ports must not silently retarget the one
+// shared 443 mapping out from under the lease that already holds it. The
+// second open must be refused with a clear error and must not touch the
+// CLI or add a lease; once the first lease fully releases the mapping, a
+// different port may open fresh.
+func TestFunnelOpenRefusesDifferentPortWhileLeaseOutstanding(t *testing.T) {
+	dir := stubTool(t, "tailscale", `echo "$@" >> "$(dirname "$0")/calls"
+case "$1 $2" in
+  "serve status") echo "No serve config"; exit 0 ;;
+esac
+case "$1" in
+  serve) echo "Available at https://box.tailnet.ts.net/" ;;
+  status) echo '{"Self":{"DNSName":"box.tailnet.ts.net."}}' ;;
+esac`)
+	p := newTailscalePlugin()
+	resA, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_open", Options: map[string]any{"local_addr": "127.0.0.1:8099"}, Connection: map[string]any{"funnel_mode": "serve"}})
+	if err != nil {
+		t.Fatalf("open A: %v", err)
+	}
+	leaseA, _ := resA.Outputs["lease"].(string)
+
+	callsBefore, _ := os.ReadFile(filepath.Join(dir, "calls"))
+	if _, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_open", Options: map[string]any{"local_addr": "127.0.0.1:8100"}, Connection: map[string]any{"funnel_mode": "serve"}}); err == nil {
+		t.Fatal("expected an error opening a different port while a lease is outstanding on the shared mapping")
+	}
+	callsAfter, _ := os.ReadFile(filepath.Join(dir, "calls"))
+	if string(callsAfter) != string(callsBefore) {
+		t.Fatalf("a refused open must never touch the tailscale CLI: before=%q after=%q", callsBefore, callsAfter)
+	}
+	if p.leases.Len() != 1 {
+		t.Fatalf("a refused open must not add a lease: leases = %d, want 1", p.leases.Len())
+	}
+
+	if _, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_close", Options: map[string]any{"lease": leaseA}}); err != nil {
+		t.Fatalf("close A: %v", err)
+	}
+	calls, _ := os.ReadFile(filepath.Join(dir, "calls"))
+	if !strings.Contains(string(calls), "--https=443 off") {
+		t.Fatalf("closing the only lease did not tear down the mapping: %s", calls)
+	}
+
+	// Once the mapping is fully released, a different port may open fresh.
+	if _, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_open", Options: map[string]any{"local_addr": "127.0.0.1:8100"}, Connection: map[string]any{"funnel_mode": "serve"}}); err != nil {
+		t.Fatalf("open after full release: %v", err)
+	}
+}
+
+// TestFunnelOpenTearsDownMappingWhenNoURLDeterminable is the regression test
+// for round-2 finding #1: when `<mode> --bg <port>` brings the mapping up
+// but no URL can be determined — neither printed by the command itself nor
+// recoverable from the `status --json` fallback — funnel_open must tear the
+// mapping it just brought up back down, not merely release its own refcount
+// and leave a lease-less mapping dangling on the box (which the next open
+// would then mistake for a pre-existing, operator-owned config and refuse to
+// ever clean up).
+func TestFunnelOpenTearsDownMappingWhenNoURLDeterminable(t *testing.T) {
+	dir := stubTool(t, "tailscale", `echo "$@" >> "$(dirname "$0")/calls"
+case "$1 $2" in
+  "serve status") echo "No serve config"; exit 0 ;;
+esac
+case "$1" in
+  serve) exit 0 ;;   # "succeeds" but prints no URL
+  status) exit 1 ;;  # the status --json fallback also fails
+esac`)
+	p := newTailscalePlugin()
+	_, err := p.Invoke(plugin.InvokeRequest{Verb: "funnel_open", Options: map[string]any{"local_addr": "127.0.0.1:8099"}, Connection: map[string]any{"funnel_mode": "serve"}})
+	if err == nil {
+		t.Fatal("expected an error when no URL can be determined")
+	}
+	calls, _ := os.ReadFile(filepath.Join(dir, "calls"))
+	if !strings.Contains(string(calls), "--https=443 off") {
+		t.Fatalf("a mapping this plugin brought up must be torn down when the open fails with no URL, got calls: %s", calls)
+	}
+	if p.leases.Len() != 0 {
+		t.Fatalf("a failed open must not leave a lease: leases = %d, want 0", p.leases.Len())
 	}
 }
 

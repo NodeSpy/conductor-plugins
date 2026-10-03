@@ -90,17 +90,24 @@ type tailscalePlugin struct {
 // funnelMapping tracks one (binary, mode) pair's shared 443 mapping across
 // every lease this plugin instance has opened on it: `tailscale serve`/
 // `funnel --bg` is a single global toggle on the box, not one per lease, so
-// two concurrent funnel_open calls share the same underlying mapping and
-// must not tear it down until both have closed.
+// two concurrent funnel_open calls on the SAME port share the same
+// underlying mapping and must not tear it down until both have closed. A
+// concurrent open for a DIFFERENT port is refused outright (see
+// funnelOpen) rather than silently retargeting the one mapping out from
+// under the lease(s) already relying on it.
 type funnelMapping struct {
 	mu sync.Mutex
 	// refCount is how many currently-open leases this plugin holds on this
 	// mapping. preExisting, captured only when refCount transitions 0->1 (not
 	// on every open), records whether a serve/funnel config the OPERATOR set
 	// up — not this plugin — was already active before this plugin's first
-	// lease on it; a blanket `--https=443 off` must never clobber that.
+	// lease on it; a blanket `--https=443 off` must never clobber that. port
+	// is the local port the mapping currently targets, likewise captured only
+	// on 0->1; it is compared against every subsequent open while refCount >
+	// 0 so a different port is refused instead of silently retargeting.
 	refCount    int
 	preExisting bool
+	port        string
 }
 
 func newTailscalePlugin() *tailscalePlugin {
@@ -775,19 +782,56 @@ func (p *tailscalePlugin) funnelOpen(req plugin.InvokeRequest) (plugin.InvokeRes
 	ctx := context.Background()
 
 	// The 443 mapping is global per (binary, mode), not per lease: two
-	// concurrent funnel_open calls share it. Snapshot whether it already
-	// existed — belonging to the operator, not this plugin — only on the
-	// FIRST lease to touch it (refCount 0->1); a later concurrent open must
-	// not reset that memory, and a blanket `--https=443 off` must never run
-	// while any lease on this mapping, let alone a pre-existing config, is
-	// still live.
+	// concurrent funnel_open calls on the SAME port share it. Snapshot
+	// whether it already existed — belonging to the operator, not this
+	// plugin — and which port it targets only on the FIRST lease to touch it
+	// (refCount 0->1); a later concurrent open must not reset that memory,
+	// and a blanket `--https=443 off` must never run while any lease on this
+	// mapping, let alone a pre-existing config, is still live. A concurrent
+	// open for a DIFFERENT port while a lease is outstanding is refused
+	// outright — sharing it would silently retarget the mapping out from
+	// under whoever already holds a lease on it.
 	fm := p.funnelMappingFor(binary, mode)
 	fm.mu.Lock()
 	if fm.refCount == 0 {
 		fm.preExisting = tailscaleServeActive(ctx, binary, mode, timeout)
+		fm.port = port
+	} else if fm.port != port {
+		existingPort := fm.port
+		fm.mu.Unlock()
+		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeInvalid,
+			fmt.Sprintf("tailscale: %s already has an open lease on port %s; close it before opening a different port (%s)", mode, existingPort, port), nil)
 	}
 	fm.refCount++
 	fm.mu.Unlock()
+	// stop releases this lease's hold on the shared mapping and, when this
+	// was the LAST lease on it (refCount 0) and nothing pre-existing is at
+	// risk, tears the real mapping down on the box. It is also the correct
+	// cleanup for every failure path below that ran the `--bg` command
+	// successfully: a successful `--bg` really did bring the mapping up (or
+	// confirm it), so any failure after that point must release through the
+	// same last-lease/pre-existing accounting as a normal close — never just
+	// decrement the refcount and walk away, or the mapping this plugin
+	// brought up is left dangling with no lease ever able to tear it down
+	// again (the next open would then see it as pre-existing).
+	stop := func() {
+		fm.mu.Lock()
+		fm.refCount--
+		last := fm.refCount == 0
+		preExisting := fm.preExisting
+		fm.mu.Unlock()
+		if !last {
+			return // another lease on this (binary, mode) mapping is still open
+		}
+		if preExisting {
+			fmt.Fprintf(os.Stderr, "tailscale: %s: a serve mapping existed before this lease — leaving 443 up at close (run `tailscale %s --https=443 off` yourself to clear it)\n", mode, mode)
+			return
+		}
+		_, _ = exposurekit.RunOnce(context.Background(), []string{binary, mode, "--https=443", "off"}, 10*time.Second)
+	}
+	// releaseMapping, unlike stop, never runs the CLI teardown: it is only
+	// for the path below where the `--bg` command itself failed, meaning
+	// nothing was actually brought up on the box for this lease to own.
 	releaseMapping := func() {
 		fm.mu.Lock()
 		fm.refCount--
@@ -803,24 +847,14 @@ func (p *tailscalePlugin) funnelOpen(req plugin.InvokeRequest) (plugin.InvokeRes
 	if url == "" {
 		url, err = tailscaleStatusURL(ctx, binary, timeout)
 		if err != nil {
-			releaseMapping()
+			// The `--bg` command above succeeded — it DID bring the mapping
+			// up (or confirm it was already up) — so simply releasing our
+			// refcount here would leave a mapping with no lease ever able to
+			// tear it down. Run the same last-lease/pre-existing-aware
+			// teardown a normal close would.
+			stop()
 			return plugin.InvokeResult{}, plugin.Fail(plugin.CodeUpstream, fmt.Sprintf("tailscale: no URL from %s output or status: %v", mode, err), nil)
 		}
-	}
-	stop := func() {
-		fm.mu.Lock()
-		fm.refCount--
-		last := fm.refCount == 0
-		preExisting := fm.preExisting
-		fm.mu.Unlock()
-		if !last {
-			return // another lease on this (binary, mode) mapping is still open
-		}
-		if preExisting {
-			fmt.Fprintf(os.Stderr, "tailscale: %s: a serve mapping existed before this lease — leaving 443 up at close (run `tailscale %s --https=443 off` yourself to clear it)\n", mode, mode)
-			return
-		}
-		_, _ = exposurekit.RunOnce(context.Background(), []string{binary, mode, "--https=443", "off"}, 10*time.Second)
 	}
 	lease, err := p.leases.AddCapped(req.Instance, stop, exposurekit.DefaultMaxLeasesPerInstance)
 	if err != nil {
