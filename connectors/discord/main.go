@@ -142,6 +142,14 @@ func (discordPlugin) Describe() plugin.Decl {
 					// with no reply-to (replied_to empty) matches no ask's
 					// ref (which always has a real message id suffix) and
 					// is left as an ordinary, unconsumed reply event.
+					// The gateway delivers it over the bot's authenticated
+					// session: Discord assigned the channel and the author, so
+					// the reply may answer an ask (conductor resolves one only
+					// from a delivery the platform vouches for).
+					Target: &plugin.TargetSemantics{
+						Key: "discord:{{.channel}}:{{.message_id}}", Label: "message", Assigned: json.RawMessage(`true`),
+						Scope: []plugin.ScopeFact{{Dimension: "channel", Fact: "channel"}, {Dimension: "user", Fact: "author"}},
+					},
 					ConversationReply: &plugin.ConversationReply{ID: "{{.channel}}:{{.replied_to}}", Author: "author", Text: "text"},
 					Author:            &plugin.AuthorSemantics{Login: "author", Automated: "author_bot"},
 				},
@@ -598,9 +606,10 @@ func handleFrame(gs *gatewayState, raw []byte, emit func(any) error, log func(st
 				repliedTo = m.MessageReference.MessageID
 			}
 			_ = emit(map[string]any{
-				"event": "reply",
-				"title": "discord: reply in " + m.ChannelID,
-				"dedup": m.ID,
+				"event":  "reply",
+				"title":  "discord: reply in " + m.ChannelID,
+				"dedup":  m.ID,
+				"target": map[string]any{"key": "discord:" + m.ChannelID + ":" + m.ID, "assigned": true},
 				"context": map[string]any{
 					"channel":    m.ChannelID,
 					"author":     m.Author.ID,

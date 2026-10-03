@@ -462,6 +462,9 @@ func TestHandleFrameMessageCreateEmits(t *testing.T) {
 	if ev["event"] != "reply" || ev["dedup"] != "m1" {
 		t.Fatalf("event = %#v", ev)
 	}
+	if tg, _ := ev["target"].(map[string]any); tg["assigned"] != true || tg["key"] != "discord:C123:m1" {
+		t.Fatalf("the reply's target is not marked assigned on the wire: %#v", ev["target"])
+	}
 	ctxm, _ := ev["context"].(map[string]any)
 	if ctxm["channel"] != "C123" || ctxm["author"] != "U999" || ctxm["text"] != "approve" || ctxm["author_bot"] != false {
 		t.Fatalf("context = %#v", ctxm)
@@ -790,5 +793,22 @@ func TestStartSourceIdlesWithoutBotToken(t *testing.T) {
 	}, func(any) error { return nil })
 	if err != nil {
 		t.Fatalf("StartSource: %v", err)
+	}
+}
+
+// A reply arrives over the bot's authenticated gateway: its target is one
+// Discord assigned, declared and on the wire — conductor only lets such a
+// delivery answer an ask.
+func TestReplyTargetIsAssigned(t *testing.T) {
+	d := discordPlugin{}.Describe()
+	var reply *plugin.Event
+	for i := range d.Events {
+		if d.Events[i].Name == "reply" {
+			reply = &d.Events[i]
+		}
+	}
+	if reply == nil || reply.Semantics == nil || reply.Semantics.Target == nil ||
+		string(reply.Semantics.Target.Assigned) != "true" || len(reply.Semantics.Target.Scope) != 2 {
+		t.Fatalf("reply target not declared assigned: %+v", reply)
 	}
 }
