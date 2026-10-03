@@ -223,6 +223,155 @@ func TestFormSubmissionFiresWithValues(t *testing.T) {
 	}
 }
 
+// TestFormSubmissionRedeliveryIsDeduped is the regression test for round-2
+// finding #5: a Socket Mode redelivery of the same view_submission envelope
+// (the ack for the first delivery didn't reach Slack in time) resends a
+// byte-identical payload — same view.id, same submitted state — and must not
+// fire the trigger a second time.
+func TestFormSubmissionRedeliveryIsDeduped(t *testing.T) {
+	form := map[string]any{"form": map[string]any{
+		"fields": []any{map[string]any{"name": "env", "type": "select", "options": []any{"staging", "prod"}}},
+	}}
+	s, _ := sourceWithFake(t, []plugin.SourceTrigger{
+		testTrigger(t, "shortcut1", "message_shortcut", map[string]any{"users": []any{"U1"}}, form),
+	})
+	emit, got := collect()
+	meta := formMeta{Key: "shortcut1", Channel: "C1", TS: "5.5", Via: "shortcut", User: "U1"}
+	submitRaw, _ := json.Marshal(map[string]any{
+		"type": "view_submission",
+		"user": map[string]any{"id": "U1"},
+		"view": map[string]any{
+			"id":               "V1",
+			"callback_id":      formViewCallbackID,
+			"private_metadata": meta.encode(),
+			"state": map[string]any{"values": map[string]any{
+				"env": map[string]any{"value": map[string]any{"type": "static_select", "selected_option": map[string]any{"value": "prod"}}},
+			}},
+		},
+	})
+
+	ack, after := s.handleInteractive(context.Background(), emit, submitRaw)
+	if ack != nil {
+		t.Fatalf("a valid submission must ACK bare, got %v", ack)
+	}
+	fireSync(after)
+
+	// Redelivery: the exact same envelope, byte for byte.
+	ack, after = s.handleInteractive(context.Background(), emit, submitRaw)
+	if ack != nil {
+		t.Fatalf("a redelivered submission must still ACK bare, got %v", ack)
+	}
+	fireSync(after)
+
+	if len(*got) != 1 {
+		t.Fatalf("want 1 event after a redelivered submission, got %d: %+v", len(*got), *got)
+	}
+}
+
+// TestFormSubmissionResubmitAfterValidationErrorFires proves a GENUINE
+// resubmission — Slack keeps the SAME view.id open across a validation
+// error, so the submitter fixes the field and resubmits with the same
+// view.id but different values — is not mistaken for a redelivery of the
+// earlier, invalid attempt and still fires.
+func TestFormSubmissionResubmitAfterValidationErrorFires(t *testing.T) {
+	form := map[string]any{"form": map[string]any{
+		"fields": []any{map[string]any{"name": "env", "type": "select", "options": []any{"staging", "prod"}}},
+	}}
+	s, _ := sourceWithFake(t, []plugin.SourceTrigger{
+		testTrigger(t, "shortcut1", "message_shortcut", map[string]any{"users": []any{"U1"}}, form),
+	})
+	emit, got := collect()
+	meta := formMeta{Key: "shortcut1", Channel: "C1", TS: "5.5", Via: "shortcut", User: "U1"}
+
+	badRaw, _ := json.Marshal(map[string]any{
+		"type": "view_submission",
+		"user": map[string]any{"id": "U1"},
+		"view": map[string]any{
+			"id":               "V1",
+			"callback_id":      formViewCallbackID,
+			"private_metadata": meta.encode(),
+			"state":            map[string]any{"values": map[string]any{"env": map[string]any{"value": map[string]any{"type": "static_select"}}}},
+		},
+	})
+	ack, after := s.handleInteractive(context.Background(), emit, badRaw)
+	if after != nil {
+		t.Fatal("an invalid submission must not run follow-up work")
+	}
+	if m, ok := ack.(map[string]any); !ok || m["response_action"] != "errors" {
+		t.Fatalf("want response_action errors, got %v", ack)
+	}
+
+	// Same view.id as the rejected attempt, but the field is now fixed: a
+	// genuine resubmission, must fire.
+	goodRaw, _ := json.Marshal(map[string]any{
+		"type": "view_submission",
+		"user": map[string]any{"id": "U1"},
+		"view": map[string]any{
+			"id":               "V1",
+			"callback_id":      formViewCallbackID,
+			"private_metadata": meta.encode(),
+			"state": map[string]any{"values": map[string]any{
+				"env": map[string]any{"value": map[string]any{"type": "static_select", "selected_option": map[string]any{"value": "prod"}}},
+			}},
+		},
+	})
+	ack, after = s.handleInteractive(context.Background(), emit, goodRaw)
+	if ack != nil {
+		t.Fatalf("a valid submission must ACK bare, got %v", ack)
+	}
+	fireSync(after)
+	if len(*got) != 1 {
+		t.Fatalf("a genuine resubmission after a validation error must fire, got %d events: %+v", len(*got), *got)
+	}
+}
+
+// TestMessageShortcutRedeliveryIsDeduped is the regression test for round-2
+// finding #5's other half: a Socket Mode redelivery of a non-form
+// (direct-firing) message shortcut carries the identical trigger_id and must
+// not fire its trigger a second time.
+func TestMessageShortcutRedeliveryIsDeduped(t *testing.T) {
+	s, _ := sourceWithFake(t, []plugin.SourceTrigger{
+		testTrigger(t, "t1", "message_shortcut", map[string]any{"users": []any{"U1"}}, nil),
+	})
+	emit, got := collect()
+	raw, _ := json.Marshal(map[string]any{
+		"type": "message_action", "trigger_id": "trig-dup",
+		"user": map[string]any{"id": "U1"}, "channel": map[string]any{"id": "C1"},
+		"message": map[string]any{"ts": "5.5", "text": "x"},
+	})
+	_, after := s.handleInteractive(context.Background(), emit, raw)
+	fireSync(after)
+	// Redelivery: identical trigger_id.
+	_, after = s.handleInteractive(context.Background(), emit, raw)
+	fireSync(after)
+	if len(*got) != 1 {
+		t.Fatalf("want 1 event after a redelivered shortcut, got %d: %+v", len(*got), *got)
+	}
+}
+
+// TestMessageShortcutGenuineRepeatInvocationFires proves two distinct
+// invocations of the same shortcut — Slack mints a fresh trigger_id per
+// interaction — both fire; dedup must not conflate a genuine repeat with a
+// redelivery.
+func TestMessageShortcutGenuineRepeatInvocationFires(t *testing.T) {
+	s, _ := sourceWithFake(t, []plugin.SourceTrigger{
+		testTrigger(t, "t1", "message_shortcut", map[string]any{"users": []any{"U1"}}, nil),
+	})
+	emit, got := collect()
+	for _, trig := range []string{"trig-1", "trig-2"} {
+		raw, _ := json.Marshal(map[string]any{
+			"type": "message_action", "trigger_id": trig,
+			"user": map[string]any{"id": "U1"}, "channel": map[string]any{"id": "C1"},
+			"message": map[string]any{"ts": "5.5", "text": "x"},
+		})
+		_, after := s.handleInteractive(context.Background(), emit, raw)
+		fireSync(after)
+	}
+	if len(*got) != 2 {
+		t.Fatalf("want 2 events for two genuine invocations, got %d: %+v", len(*got), *got)
+	}
+}
+
 // TestFormSubmissionValidationErrors proves a missing required field or an
 // off-list select value comes back as a response_action: errors ACK and
 // fires nothing.

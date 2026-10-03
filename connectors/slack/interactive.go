@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"log"
@@ -219,6 +220,20 @@ func (s *instanceSource) onMessageShortcut(ctx context.Context, emit emitFunc, p
 		log.Printf("slack[%s]: message shortcut %q by %s matched no trigger", s.instance, p.CallbackID, p.User.ID)
 		return nil
 	}
+	// Dedup the DIRECT (non-form) path synchronously, here in the read loop,
+	// before the work below ever moves onto the dispatch goroutine: opening
+	// a form is naturally idempotent from the user's point of view (a
+	// re-opened modal is just reopened; trigger_id's own 3-second window
+	// bounds how stale a redundant views.open can even be), but a direct
+	// trigger fires an event immediately, and a Socket Mode redelivery of
+	// this same interaction must not fire it twice. trigger_id is the key:
+	// Slack mints a fresh one for every actual interaction and a redelivery
+	// (the ack for this one didn't reach Slack in time) resends the
+	// identical payload, trigger_id included, while a genuine second
+	// invocation of the shortcut is a new interaction with a new trigger_id.
+	if len(direct) > 0 && !s.dedup.Add("message_action:"+p.TriggerID) {
+		direct = nil
+	}
 	return func() {
 		if form != nil {
 			s.openForm(ctx, p.TriggerID, form.form, formMeta{
@@ -322,8 +337,31 @@ func (s *instanceSource) onViewSubmission(ctx context.Context, emit emitFunc, p 
 	if len(errs) > 0 {
 		return map[string]any{"response_action": "errors", "errors": errs}, nil
 	}
+	// Dedup synchronously, here in the read loop, before returning the
+	// dispatch closure: a Socket Mode redelivery of this submission (the ack
+	// didn't reach Slack in time) resends a byte-identical payload — same
+	// view.id, same submitted state — and must not fire the trigger twice.
+	// Neither view.id nor the state alone is a safe key on its own: Slack
+	// keeps the SAME view.id across a resubmit-after-validation-error (the
+	// state differs, a genuine resubmission that must still fire), and
+	// trigger_id's documented purpose here (opening a follow-up view) gives
+	// no guarantee it stays fixed across a retry. Hashing view.id together
+	// with the submitted state is identical on a true redelivery and
+	// distinct from any real resubmission, whichever one changed.
+	if !s.dedup.Add("view_submission:" + p.View.ID + ":" + stateHash(p.View.State.Values)) {
+		return nil, nil
+	}
 	ev.form = vals
 	return nil, func() { s.emitEvent(ctx, emit, on, ct.id, ev) }
+}
+
+// stateHash summarizes a view submission's field values into a short, stable
+// signature: encoding/json sorts map keys, so this is deterministic across
+// calls for the same submitted content.
+func stateHash(values map[string]map[string]stateValue) string {
+	b, _ := json.Marshal(values)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:8])
 }
 
 // openForm opens a trigger's form as a modal on trigger_id.
