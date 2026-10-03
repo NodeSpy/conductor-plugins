@@ -18,7 +18,12 @@ import (
 func TestConductorFixtureSnapshotMatchesTheDeclaration(t *testing.T) {
 	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/NodeSpy/conductor").Output()
 	if err != nil {
-		t.Skipf("conductor module not resolvable here: %v", err)
+		// The conductor module is a direct dependency of this repo (see
+		// go.mod) — it must always resolve. A failure here means the guard
+		// itself is broken (module cache wiped, go.mod detached, etc.), not
+		// that there's nothing to check: silently skipping would let a real
+		// declaration/fixture drift slip through undetected.
+		t.Fatalf("conductor module not resolvable (it is a direct dependency and must resolve): %v", err)
 	}
 	snap, err := os.ReadFile(filepath.Join(strings.TrimSpace(string(out)), "internal", "core", "coretest", "testdata", "chat-decl.json"))
 	if err != nil {
