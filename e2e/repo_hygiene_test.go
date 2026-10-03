@@ -88,3 +88,34 @@ func TestRootGitignoreCatchesStrayPluginBinary(t *testing.T) {
 		t.Fatalf("a stray file at the repo root is not ignored by .gitignore (git status: %q) — it would be addable by accident, same as aws-sqs/discord/github were", out)
 	}
 }
+
+// The root .gitignore ignores everything at the top level except an
+// allowlist: a NEW top-level directory must be added to it, or git silently
+// ignores its files. Every directory holding a Go package must be allowed.
+func TestRootGitignoreAllowsEveryGoDirectory(t *testing.T) {
+	root := repoRoot(t)
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		hasGo := false
+		_ = filepath.WalkDir(filepath.Join(root, e.Name()), func(p string, d os.DirEntry, err error) error {
+			if err == nil && !d.IsDir() && strings.HasSuffix(p, ".go") {
+				hasGo = true
+				return filepath.SkipAll
+			}
+			return nil
+		})
+		if !hasGo {
+			continue
+		}
+		probe := filepath.Join(e.Name(), "probe.go")
+		if err := exec.Command("git", "-C", root, "check-ignore", "-q", "--no-index", probe).Run(); err == nil {
+			t.Errorf("top-level directory %s/ holds Go code but the root .gitignore ignores it — add `!/%s/`", e.Name(), e.Name())
+		}
+	}
+}

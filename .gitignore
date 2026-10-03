@@ -7,6 +7,9 @@ dist/
 # at the root by default and explicitly allow back in only the tracked
 # source directories and files, so any future stray plugin binary at root
 # (whatever it's named) is ignored instead of git-add-able by accident.
+#
+# ADDING A NEW TOP-LEVEL DIRECTORY? Add a matching `!/<dir>/` line below, or
+# git will silently ignore it (e2e/repo_hygiene_test.go checks the list).
 /*
 !/.github/
 !/connectors/

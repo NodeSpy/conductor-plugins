@@ -87,7 +87,11 @@ the `gh` CLI's stored login.
    **Pull requests**, and **Issues** set to read/write (add **Actions** for the
    workflow verbs). A classic token with the `repo` scope also works.
 2. Put it in `token:` (or omit `token:` and the connector falls back to
-   `gh auth token`).
+   `gh auth token`). The plugin's environment is scrubbed: `gh` finds a login
+   made with `gh auth login` (its config file under `$HOME`), but a token you
+   give `gh` through the environment (`GH_TOKEN`, `GITHUB_TOKEN`, …) reaches it
+   only if the connector grants that variable — `allow_env: [GH_TOKEN]` (the
+   plugin declares the variables `gh` reads; a grant beyond them is refused).
 
 Events then arrive through a plain repository webhook pointed at
 `webhook.listen` (with the same secret in the repo webhook and `webhook.secret`),
