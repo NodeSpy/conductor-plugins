@@ -129,7 +129,17 @@ func connSemantics() *plugin.ConnSemantics {
 		// webhook.public_url before start_source; see Source.Start, which
 		// logs it (registering it with GitHub is not required — the
 		// operator points their webhook delivery at it themselves).
-		Listeners: []plugin.Listener{{Listen: "webhook.listen", Expose: "webhook.expose", URLTo: "webhook.public_url"}},
+		//
+		// Path names webhook.path (ghsource/http.go's own field, default
+		// "/webhook" when unset): the engine resolves it and folds it into
+		// the exposure itself (conductor docs/design/plugin-contract.md
+		// §2.4) — a relay exposure (smee) gets it passed straight through as
+		// an option, a byte-level tunnel gets it appended to the URL it
+		// returns. Either way this plugin needs no exposure-specific
+		// configuration of its own: the exposure connector learns the path
+		// from THIS declaration, not from a separately operator-maintained
+		// field kept in sync by hand.
+		Listeners: []plugin.Listener{{Listen: "webhook.listen", Expose: "webhook.expose", URLTo: "webhook.public_url", Path: "webhook.path"}},
 	}
 }
 

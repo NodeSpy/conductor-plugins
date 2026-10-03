@@ -214,7 +214,7 @@ func TestDeclDeclaresListeners(t *testing.T) {
 		t.Fatalf("semantics.listeners = %+v, want exactly one", sem)
 	}
 	l := sem.Listeners[0]
-	if l.Listen != "webhook.listen" || l.Expose != "webhook.expose" || l.URLTo != "webhook.public_url" {
+	if l.Listen != "webhook.listen" || l.Expose != "webhook.expose" || l.URLTo != "webhook.public_url" || l.Path != "webhook.path" {
 		t.Fatalf("listener = %+v", l)
 	}
 }

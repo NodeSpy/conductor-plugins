@@ -40,6 +40,47 @@ func msgSemantics() *plugin.EventSemantics {
 	}
 }
 
+// feedbackOptionHooks restores the builtin's old per-trigger `ack`/`on_done`/
+// `on_fail` feedback (an emoji reaction and/or a message, fired at dispatch
+// and when the dispatched work finishes) as the generic `option_hooks`
+// semantic (plugin-contract.md §2.2): whichever of these the trigger's own
+// `options:` sets fires the `feedback` verb at the matching run phase. Args
+// carries the event's own message coordinates, so the verb always acts on
+// the message that triggered the run, not whatever the operator's own
+// react/say block happens to mention.
+func feedbackOptionHooks() []plugin.OptionHook {
+	args := map[string]string{
+		"channel": "{{.slack.channel}}", "ts": "{{.slack.ts}}",
+		"user": "{{.slack.user}}", "thread_ts": "{{.slack.thread_ts}}",
+	}
+	return []plugin.OptionHook{
+		{Option: "ack", At: "start", Verb: "feedback", Args: args},
+		{Option: "on_done", At: "done", Verb: "feedback", Args: args},
+		{Option: "on_fail", At: "fail", Verb: "feedback", Args: args},
+	}
+}
+
+// feedbackOptions is the trigger-options schema for ack/on_done/on_fail,
+// documented on every event that carries feedbackOptionHooks so `conductor
+// validate` checks a trigger's blocks are at least shaped like a map (full
+// cross-field checks — e.g. "ephemeral only applies to say" — are this
+// plugin's own Validate, as they always were).
+func feedbackOptions() plugin.Schema {
+	desc := "{react, say, ephemeral, in_thread}: an optional reaction and/or message on the triggering message"
+	return plugin.Schema{
+		"ack":     {Type: "map", Desc: "fired when the trigger dispatches — " + desc},
+		"on_done": {Type: "map", Desc: "fired when the dispatched work finishes successfully — " + desc},
+		"on_fail": {Type: "map", Desc: "fired when the dispatched work fails — " + desc},
+	}
+}
+
+// withFeedback attaches feedbackOptionHooks to s and returns it, for the
+// events that carry ack/on_done/on_fail.
+func withFeedback(s *plugin.EventSemantics) *plugin.EventSemantics {
+	s.OptionHooks = feedbackOptionHooks()
+	return s
+}
+
 // replySemantics is msgSemantics plus conversation_reply: a thread reply or
 // DM message resolves a pending ask/hand-off on the same (channel,
 // thread_ts) pair; unconsumed, it is an ordinary "reply" event a trigger may

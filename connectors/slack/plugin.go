@@ -67,6 +67,8 @@ func (p *Plugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeResult, error) {
 		return p.postVerb(ctx, api, botToken, webhookURL, req.Options)
 	case "react":
 		return p.reactVerb(ctx, api, botToken, req.Options)
+	case "feedback":
+		return p.feedbackVerb(ctx, api, botToken, req.Options)
 	case "ask":
 		return p.askVerb(ctx, api, botToken, req.Options)
 	case "thread":

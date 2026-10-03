@@ -26,6 +26,9 @@ func (p *Plugin) Validate(_ context.Context, req plugin.ValidateRequest) (plugin
 	}
 	for i, t := range req.Triggers {
 		where := fmt.Sprintf("triggers[%d]", i)
+		for _, name := range []string{"ack", "on_done", "on_fail"} {
+			problems = append(problems, validateFeedbackOption(fmt.Sprintf("%s.options.%s", where, name), t.Options[name])...)
+		}
 		form, err := ParseForm(t.Options["form"])
 		if err != nil {
 			problems = append(problems, plugin.Problem{Path: where + ".options.form", Message: err.Error()})
@@ -56,4 +59,30 @@ func (p *Plugin) Validate(_ context.Context, req plugin.ValidateRequest) (plugin
 		}
 	}
 	return plugin.ValidateResult{Problems: problems}, nil
+}
+
+// validateFeedbackOption checks one ack/on_done/on_fail block: absent (nil)
+// is fine (silence), but a present block must be a map naming at least one
+// of react/say, and ephemeral only makes sense alongside say — the same
+// rules the old builtin's Feedback.empty()/Validate enforced, now run here
+// since the engine's generic option_hooks semantic only checks the block is
+// shaped like a map (plugin-contract.md §1.5's plugin.validate is exactly
+// the seam for a plugin's own, non-generic trigger checks).
+func validateFeedbackOption(path string, v any) []plugin.Problem {
+	if v == nil {
+		return nil
+	}
+	m, ok := v.(map[string]any)
+	if !ok {
+		return []plugin.Problem{{Path: path, Message: "must be a map: {react, say, ephemeral, in_thread}"}}
+	}
+	react := str(m["react"])
+	say := str(m["say"])
+	if react == "" && say == "" {
+		return []plugin.Problem{{Path: path, Message: "neither react nor say is set; omit it for silence instead of an empty block"}}
+	}
+	if truthy(m["ephemeral"]) && say == "" {
+		return []plugin.Problem{{Path: path, Message: "ephemeral only applies to say"}}
+	}
+	return nil
 }

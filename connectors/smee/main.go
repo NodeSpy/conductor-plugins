@@ -17,6 +17,13 @@
 //	            (optional — a fresh channel is created when absent)
 //	smee_base:  override https://smee.io (a self-hosted smee server, or tests)
 //	path:       the local HTTP path deliveries are replayed to (default "/")
+//	            — FALLBACK DEFAULT only: a consumer using the `listeners`
+//	            connection semantic (conductor docs/design/plugin-contract.md
+//	            §2.4) never needs this; its own resolved path arrives as the
+//	            "open" verb's `path` OPTION on every call and wins whenever
+//	            given (see docs/connectors/smee.md's precedence note). This
+//	            field only matters for an operator using smee as a plain web
+//	            exposure with no listener involved at all.
 //	persist:    remember a CREATED channel across plugin restarts via
 //	            host.state, so a webhook already registered against it on
 //	            the sender's side keeps working (default true; irrelevant
@@ -26,17 +33,15 @@
 // never spawns); close (or conductor stopping the instance) stops it.
 // stdout is the RPC transport; all plugin logging goes to stderr.
 //
-// KNOWN LIMITATION (documented, not a contract gap): the `listeners`
-// semantic only carries a listen ADDRESS (host:port), not the HTTP path the
-// consuming plugin's listener expects — fine for a byte-level tunnel
-// (cloudflared et al. forward the whole origin, path included), but this
-// plugin must reconstruct an HTTP request, so the operator sets `path` to
-// match the consumer's own webhook path when it isn't "/". A second,
-// inherent smee.io limitation (pre-existing, not introduced here): smee.io
-// re-serializes JSON bodies, so an HMAC computed over the relayed bytes may
-// not match one computed over the sender's original bytes — the same
-// caveat this repo's other smee-consuming plugins already document for
-// their own `webhook.smee` fields.
+// This plugin declares `exposes.path` (its "open" verb's `path` option): a
+// consumer declaring the `listeners` connection semantic needs no separately
+// configured path at all — the engine resolves the listener's own HTTP path
+// and passes it straight through on every open call. A second, inherent
+// smee.io limitation (pre-existing, not introduced here, and unrelated to
+// path): smee.io re-serializes JSON bodies, so an HMAC computed over the
+// relayed bytes may not match one computed over the sender's original bytes
+// — the same caveat this repo's other smee-consuming plugins already
+// document for their own `webhook.smee` fields.
 package main
 
 import (
@@ -102,11 +107,22 @@ func (p *smeePlugin) Describe() plugin.Decl {
 		Connection: plugin.Schema{
 			"channel":   {Type: "string", Desc: "a pinned smee channel URL, e.g. https://smee.io/AbC123 (default: create a fresh one)"},
 			"smee_base": {Type: "string", Desc: "override https://smee.io (a self-hosted smee server, or tests)"},
-			"path":      {Type: "string", Desc: "local HTTP path deliveries are replayed to (default /)"},
+			"path":      {Type: "string", Desc: "local HTTP path deliveries are replayed to (default /) — fallback default; the open verb's own path option wins when given (see docs/connectors/smee.md)"},
 			"persist":   {Type: "boolean", Desc: "remember a created channel across restarts via host.state (default true)"},
 		},
 		Verbs: []plugin.Verb{
-			exposurekit.OpenVerb("create or reuse a smee channel and relay its deliveries to a local address"),
+			{
+				Name: "open", Desc: "create or reuse a smee channel and relay its deliveries to a local address",
+				Semantics: exposurekit.ExposesWithPath("close", "path"),
+				Options: plugin.Schema{
+					"local_addr": {Type: "string", Required: true, Desc: "host:port to expose, e.g. 127.0.0.1:8099"},
+					"path":       {Type: "string", Desc: "HTTP path to replay deliveries to — set by the engine from a consumer's `listeners` semantic; falls back to the connection's own path field when absent"},
+				},
+				Outputs: plugin.Schema{
+					"public_url": {Type: "string", Required: true},
+					"lease":      {Type: "string", Required: true},
+				},
+			},
 			exposurekit.CloseVerb(),
 		},
 		Capabilities: plugin.Capabilities{Egress: []string{"smee.io:443"}},
@@ -142,7 +158,14 @@ func (p *smeePlugin) open(req plugin.InvokeRequest) (plugin.InvokeResult, error)
 		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeInvalid, "smee: "+err.Error(), nil)
 	}
 	base := strOr(str(req.Connection["smee_base"]), defaultSmeeBase)
-	path := strOr(str(req.Connection["path"]), "/")
+	// The "open" call's own path option — set by the engine from a
+	// consumer's `listeners` semantic (conductor
+	// docs/design/plugin-contract.md §2.4 and this verb's declared
+	// `exposes.path`, §2.3) — wins whenever given. The connection's own
+	// `path` field is only the fallback default for an operator using smee
+	// as a plain web exposure with no listener involved at all (see
+	// docs/connectors/smee.md's precedence note).
+	path := strOr(str(req.Options["path"]), strOr(str(req.Connection["path"]), "/"))
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}

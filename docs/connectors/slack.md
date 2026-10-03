@@ -6,7 +6,11 @@ no public URL needed); messages, reactions, interactive hand-off asks,
 thread reads and file downloads out over the Web API.
 
 This is the same connector conductor used to ship compiled in, now out of
-process: existing configs written for `use: slack` keep working unchanged.
+process: existing configs written for `use: slack` keep working unchanged —
+including a trigger's `ack`/`on_done`/`on_fail` feedback (see
+[Feedback](#feedback-ack--on_done--on_fail) below), restored through
+conductor's generic `option_hooks` semantic rather than a Slack-specific
+completion hook in the engine.
 
 - **Kind:** connector (verbs **and** source)
 - **Source:** [`connectors/slack/`](../../connectors/slack/)
@@ -130,6 +134,49 @@ triggers:
         with: { prompt: "Someone flagged: {{.slack.text}}" }
 ```
 
+### Feedback: `ack` / `on_done` / `on_fail`
+
+`app_mention`, `reaction_added`, `slash_command` and `message_shortcut`
+triggers accept three optional trigger `options:` — `ack`, `on_done`,
+`on_fail` — each a reaction and/or a message on the triggering event's own
+message:
+
+| field | type | |
+|-------|------|---|
+| `react` | string | `reactions.add` emoji name, no colons; omit for no reaction |
+| `say` | string | message text; omit for no message |
+| `ephemeral` | boolean | `say` is visible only to the triggering user (falls back to a normal post if there's no user to send it to) |
+| `in_thread` | boolean | `say` posts into the triggering message's thread (default `true`) |
+
+`ack` fires the moment the trigger dispatches; `on_done` fires once the
+dispatched work finishes successfully; `on_fail` fires once it fails. A
+multi-step or multi-branch trigger fires exactly one of `on_done`/`on_fail`,
+once, after every step/branch has had its chance — the same way an
+explicit `hooks: [{at: done, ...}]`/`{at: fail, ...}` pair already would.
+Feedback is best-effort: a reaction or message that fails to send never
+fails the run it's reporting on.
+
+```yaml
+triggers:
+  - on: bot.app_mention
+    options:
+      ack: { react: eyes }
+      on_done: { react: white_check_mark }
+      on_fail: { react: x, say: "sorry, that didn't work" }
+    steps:
+      - use: agent
+        with: { prompt: "{{.slack.text}}" }
+```
+
+Under the hood this is the host's generic `option_hooks` semantic
+(conductor's plugin-contract.md §2.2) resolving each block into a call to
+this plugin's host-only `feedback` verb, with `channel`/`ts`/`user`/
+`thread_ts` filled in from the triggering event automatically — there is
+nothing Slack-specific left in conductor's engine. Nothing stops you from
+writing the equivalent by hand with `hooks:` and `uses: bot.feedback`
+instead; `ack`/`on_done`/`on_fail` are just the shorthand old configs (and
+new ones) can keep using.
+
 ### Forms
 
 `app_mention` and `message_shortcut` triggers accept `options.form`: a modal
@@ -184,6 +231,27 @@ Outputs: `ts`, `channel`. With a `webhook_url`-only connection, `post` sends
 
 Add a reaction. Options: `channel`, `ts`, `emoji` (all required; colons
 optional). Outputs: `ok`.
+
+### `feedback`
+
+React to and/or reply on a message — the verb behind
+[`ack`/`on_done`/`on_fail`](#feedback-ack--on_done--on_fail) above.
+**Host-only**: conductor's engine invokes it through the `option_hooks`
+semantic; a flow step may not call it directly (it has no event to derive
+`channel`/`ts`/`user`/`thread_ts` from).
+
+| option | type | |
+|--------|------|---|
+| `channel` | string | the message's channel |
+| `ts` | string | the message's timestamp, for `react` |
+| `user` | string | the message's user, for an ephemeral `say` |
+| `thread_ts` | string | the message's thread, for `say`'s `in_thread` |
+| `react` | string | emoji name, no colons; omit for no reaction |
+| `say` | string | message text; omit for no message |
+| `ephemeral` | boolean | `say` visible only to `user:` |
+| `in_thread` | boolean | `say` posts into the thread (default true) |
+
+Outputs: `ok`.
 
 ### `ask`
 

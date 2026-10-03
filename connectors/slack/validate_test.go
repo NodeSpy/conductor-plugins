@@ -40,6 +40,44 @@ func TestValidateTriggersNeedAppToken(t *testing.T) {
 	}
 }
 
+func TestValidateFeedbackOptions(t *testing.T) {
+	p := New()
+	res, err := p.Validate(context.Background(), plugin.ValidateRequest{
+		Config: map[string]any{"bot_token": "xoxb-1", "app_token": "xapp-1"},
+		Triggers: []plugin.SourceTrigger{
+			{ID: "t1", Event: "app_mention", Options: map[string]any{
+				"ack":     map[string]any{"react": "eyes"},
+				"on_done": map[string]any{},
+				"on_fail": map[string]any{"react": "x", "ephemeral": true},
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		"t1.options.on_done": false, "t1.options.on_fail": false,
+	}
+	for _, pr := range res.Problems {
+		switch pr.Path {
+		case "triggers[0].options.on_done":
+			if pr.Message == "" {
+				t.Fatalf("on_done: empty block should be refused, got %+v", pr)
+			}
+			want["t1.options.on_done"] = true
+		case "triggers[0].options.on_fail":
+			want["t1.options.on_fail"] = true
+		case "triggers[0].options.ack":
+			t.Fatalf("ack: {react: eyes} is valid and should not be a problem: %+v", pr)
+		}
+	}
+	for k, got := range want {
+		if !got {
+			t.Fatalf("missing expected problem for %s: %+v", k, res.Problems)
+		}
+	}
+}
+
 func TestValidateFormNeedsUsers(t *testing.T) {
 	p := New()
 	res, err := p.Validate(context.Background(), plugin.ValidateRequest{

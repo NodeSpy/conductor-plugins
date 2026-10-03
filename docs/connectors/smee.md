@@ -32,15 +32,27 @@ ngrok/etc. there, with the tradeoffs under **Known limitations** below.
 
 **For a webhook SOURCE plugin** (github, gitlab, …), the intended path is
 the generic `listeners` semantic (§2.4): the plugin declares
-`{listen: <field>, expose: <field>, url_to: <field>}`, and the engine opens
-the exposure for it automatically — no vendor-specific code in the source
-plugin at all. As of this writing, no connector in this repo declares
-`listeners` yet (it's a new engine feature); check a plugin's own docs for
-whether it has adopted it, and its exact field names, before relying on this
-path. Every webhook-consuming plugin here still has its own ad hoc
-`webhook.smee` config field (see e.g. [`gitea`](gitea.md)) as a
-pre-`listeners` alternative that talks to smee.io directly, in-process, with
-no exposure connector involved.
+`{listen: <field>, expose: <field>, url_to: <field>, path: <field>}`, and the
+engine opens the exposure for it automatically, resolving the listener's own
+HTTP path and handing it straight to this plugin's `open` call as the `path`
+option (below) — no vendor-specific code, and no separately configured path,
+in the source plugin at all. The github plugin (`internal/githubkit/ghplugin`
+in this repo) declares `listeners` this way, naming `webhook.path`; check a
+plugin's own docs for whether it has adopted it, and its exact field names,
+before relying on this path for others. Every webhook-consuming plugin here
+still has its own ad hoc `webhook.smee` config field (see e.g.
+[`gitea`](gitea.md)) as a pre-`listeners` alternative that talks to smee.io
+directly, in-process, with no exposure connector involved.
+
+**Path precedence.** This plugin's `open` verb declares `exposes.path`
+(conductor docs/design/plugin-contract.md §2.3): when a `listeners`-declaring
+consumer's resolved path arrives as the `path` OPTION on an `open` call, it
+always wins. The connection's own `path` field (below) is consulted only
+when no `path` option is given at all — an operator using smee as a plain
+web exposure (`expose:` on the web hand-off page, say) with no listener
+involved. There is never a case where both are set and the connection field
+wins: an operator migrating a consumer onto `listeners` can simply delete
+their old `path:` entry here, rather than having to keep the two in sync.
 
 ## Setup
 
@@ -78,18 +90,19 @@ connectors:
 |-----|------|---------|
 | `channel` | string | a pinned smee channel URL, e.g. `https://smee.io/AbC123` (default: create a fresh one) |
 | `smee_base` | string | override `https://smee.io` (a self-hosted smee server, or tests) |
-| `path` | string | local HTTP path deliveries are replayed to (default `/`) — see **Known limitations** |
+| `path` | string | local HTTP path deliveries are replayed to (default `/`) — **fallback default only**; see **Path precedence** above and **Known limitations** below |
 | `persist` | boolean | remember a *created* channel across restarts via `host.state` (default `true`; irrelevant when `channel` is pinned) |
 
 ## Verbs
 
-### `open` — create or reuse a channel and start relaying (`exposes`)
+### `open` — create or reuse a channel and start relaying (`exposes`, `exposes.path: path`)
 
 | option | type | |
 |--------|------|---|
 | `local_addr` * | string | `host:port` deliveries are replayed to |
+| `path` | string | HTTP path to replay deliveries to — set by the engine from a consumer's `listeners` semantic; falls back to the connection's own `path` field when absent |
 
-Outputs `public_url` (the channel URL), `lease`.
+Outputs `public_url` (the channel URL, unchanged — see **Path precedence**), `lease`.
 
 ### `close` — stop relaying
 
@@ -99,13 +112,16 @@ Outputs `public_url` (the channel URL), `lease`.
 
 These are documented precisely rather than worked around silently:
 
-- **The relay path is a config field, not derived.** The `listeners`
-  semantic only carries a listen *address* (host:port), not the HTTP path
-  the consumer's listener expects it on — fine for a byte-level tunnel
-  (cloudflared et al. forward the whole origin, path included), but this
-  plugin reconstructs an HTTP request from each smee delivery, so it needs
-  the path out of band. Set `path` to match the consuming plugin's own
-  webhook path when it isn't `/`.
+- **A consumer that does not declare `listeners.path` still needs the
+  connection's `path` field set by hand.** The `listeners` semantic's `path`
+  is optional, and the engine's own default when a listener names no path
+  field (or the field is unset) is `/` — never whatever THIS plugin's own
+  `path` connection field says, and never whatever the consuming plugin's
+  own internal default is. A consumer not yet declaring `listeners.path` (or
+  one whose own webhook path defaults to something other than `/`, with the
+  operator relying on that internal default instead of setting the field
+  explicitly) still needs this plugin's `path` field set to match by hand,
+  exactly as before this feature.
 - **smee.io re-serializes JSON bodies.** An HMAC computed over the relayed
   bytes may not byte-match one computed over the sender's original bytes.
   This is a pre-existing smee.io characteristic (not introduced by this

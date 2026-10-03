@@ -120,6 +120,70 @@ func (p *Plugin) reactVerb(ctx context.Context, api *slackAPI, botToken string, 
 	return plugin.InvokeResult{Outputs: map[string]any{"ok": true}}, nil
 }
 
+// feedbackVerb is the generic ack/on_done/on_fail block, restored byte-for-
+// byte from the old builtin's Feedback shape (react, say, ephemeral,
+// in_thread) — only now invoked by the engine's generic option_hooks
+// semantic instead of a vendor-specific completion hook. channel/ts/user/
+// thread_ts come from the triggering event's own facts (feedbackOptionHooks'
+// Args); react/say/ephemeral/in_thread come from the operator's own
+// ack/on_done/on_fail block verbatim. Best-effort by construction — a hook
+// invocation never fails the run — so a missing react target is skipped
+// rather than erroring; only "neither react nor say is set" (a config
+// mistake, not a runtime gap) is reported as an error.
+func (p *Plugin) feedbackVerb(ctx context.Context, api *slackAPI, botToken string, opts map[string]any) (plugin.InvokeResult, error) {
+	channel, _ := opts["channel"].(string)
+	ts, _ := opts["ts"].(string)
+	user, _ := opts["user"].(string)
+	threadTS, _ := opts["thread_ts"].(string)
+	react, _ := opts["react"].(string)
+	say, _ := opts["say"].(string)
+	if react == "" && say == "" {
+		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams,
+			"slack.feedback: neither react nor say is set; omit the block for silence instead of an empty one")
+	}
+	if botToken == "" {
+		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, "slack.feedback needs a bot_token (the webhook_url connection is post-only)")
+	}
+	if react != "" {
+		if channel == "" || ts == "" {
+			// No triggering message to react to (a synthetic/degraded
+			// event) — skip the reaction, still try the say below.
+		} else if err := api.react(ctx, channel, ts, strings.Trim(react, ":")); err != nil {
+			return plugin.InvokeResult{}, remapTargetGone(wrapUpstream("slack.feedback: ", err), fmt.Sprintf("slack:%s:%s", channel, ts))
+		}
+	}
+	if say == "" {
+		return plugin.InvokeResult{Outputs: map[string]any{"ok": true}}, nil
+	}
+	inThread := true
+	if v, ok := opts["in_thread"]; ok {
+		inThread, _ = v.(bool)
+	}
+	if truthy(opts["ephemeral"]) && channel != "" && user != "" {
+		if err := api.postEphemeral(ctx, channel, user, say); err != nil {
+			return plugin.InvokeResult{}, wrapUpstream("slack.feedback: ", err)
+		}
+		return plugin.InvokeResult{Outputs: map[string]any{"ok": true}}, nil
+	}
+	// ephemeral requested but no user to send it to: fall back to a normal
+	// post, same as the old builtin did, rather than silently dropping it.
+	if channel == "" {
+		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, "slack.feedback: say has no channel to post to")
+	}
+	tts := ""
+	if inThread {
+		tts = threadTS
+	}
+	if _, err := api.postMessage(ctx, channel, tts, say); err != nil {
+		wrapped := wrapUpstream("slack.feedback: ", err)
+		if tts != "" {
+			wrapped = remapTargetGone(wrapped, fmt.Sprintf("slack:%s:%s", channel, tts))
+		}
+		return plugin.InvokeResult{}, wrapped
+	}
+	return plugin.InvokeResult{Outputs: map[string]any{"ok": true}}, nil
+}
+
 // askVerb posts a draft (thread or DM) and returns the conversation id the
 // host registers the pending hand-off under (opens_conversation: the engine,
 // not this plugin, waits for the reply and enforces approvers — see

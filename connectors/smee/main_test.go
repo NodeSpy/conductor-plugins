@@ -206,6 +206,106 @@ func TestOpenRelaysDeliveriesAndCloseStopsIt(t *testing.T) {
 	}
 }
 
+// The open verb's own `path` option — how the engine hands this plugin a
+// consumer's `listeners`-resolved HTTP path (conductor
+// docs/design/plugin-contract.md §2.4, this verb's declared `exposes.path`,
+// §2.3) — takes precedence over the connection's own `path` field, which is
+// only the fallback default (docs/connectors/smee.md's precedence note).
+func TestOpenPathOptionTakesPrecedenceOverConnectionPath(t *testing.T) {
+	frames := make(chan string, 4)
+	smeeSrv := fakeSmeeServer(t, frames)
+	defer smeeSrv.Close()
+
+	var mu sync.Mutex
+	var gotPath string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		gotPath = r.URL.Path
+		mu.Unlock()
+	}))
+	defer target.Close()
+	targetAddr := strings.TrimPrefix(target.URL, "http://")
+
+	p := newSmeePlugin()
+	res, err := p.Invoke(plugin.InvokeRequest{
+		Instance:   "src",
+		Verb:       "open",
+		Options:    map[string]any{"local_addr": targetAddr, "path": "/from-option"},
+		Connection: map[string]any{"smee_base": smeeSrv.URL, "path": "/from-connection"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.leases.Release(res.Outputs["lease"].(string))
+
+	frames <- `{"body":"hi"}`
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		mu.Lock()
+		got := gotPath
+		mu.Unlock()
+		if got != "" || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	mu.Lock()
+	got := gotPath
+	mu.Unlock()
+	if got != "/from-option" {
+		t.Fatalf("relayed path = %q, want /from-option (the option must win over the connection field)", got)
+	}
+}
+
+// With no `path` option at all (an operator using smee as a plain web
+// exposure, no `listeners`-declaring consumer involved), the connection's
+// own `path` field is the fallback default.
+func TestOpenPathFallsBackToConnectionFieldWhenNoOption(t *testing.T) {
+	frames := make(chan string, 4)
+	smeeSrv := fakeSmeeServer(t, frames)
+	defer smeeSrv.Close()
+
+	var mu sync.Mutex
+	var gotPath string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		gotPath = r.URL.Path
+		mu.Unlock()
+	}))
+	defer target.Close()
+	targetAddr := strings.TrimPrefix(target.URL, "http://")
+
+	p := newSmeePlugin()
+	res, err := p.Invoke(plugin.InvokeRequest{
+		Instance:   "src",
+		Verb:       "open",
+		Options:    map[string]any{"local_addr": targetAddr},
+		Connection: map[string]any{"smee_base": smeeSrv.URL, "path": "/from-connection"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.leases.Release(res.Outputs["lease"].(string))
+
+	frames <- `{"body":"hi"}`
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		mu.Lock()
+		got := gotPath
+		mu.Unlock()
+		if got != "" || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	mu.Lock()
+	got := gotPath
+	mu.Unlock()
+	if got != "/from-connection" {
+		t.Fatalf("relayed path = %q, want /from-connection (the fallback default)", got)
+	}
+}
+
 func TestOpenWithPinnedChannelSkipsCreation(t *testing.T) {
 	var newHit int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -299,6 +399,18 @@ func TestDeclarationsAreValid(t *testing.T) {
 	}
 	if p := plugin.ValidateSemantics(d); len(p) > 0 {
 		t.Fatalf("ValidateSemantics: %v", p)
+	}
+	var open *plugin.Verb
+	for i := range d.Verbs {
+		if d.Verbs[i].Name == "open" {
+			open = &d.Verbs[i]
+		}
+	}
+	if open == nil || open.Semantics == nil || open.Semantics.Exposes == nil || open.Semantics.Exposes.Path != "path" {
+		t.Fatalf("open verb's exposes.path = %+v, want \"path\" (a consumer's listeners.path must flow straight through as this option)", open)
+	}
+	if _, ok := open.Options["path"]; !ok {
+		t.Fatal(`open declares exposes.path: "path" but no matching "path" option`)
 	}
 }
 

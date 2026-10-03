@@ -111,6 +111,22 @@ func Exposes(release string) *plugin.VerbSemantics {
 	}
 }
 
+// ExposesWithPath is Exposes plus `exposes.path` (conductor
+// docs/design/plugin-contract.md §2.3): the engine passes a consumer
+// listener's resolved HTTP path in the OPTION named pathOption, and uses
+// this verb's returned URL as is — for a relay whose own public address
+// already carries wherever a delivery should land (it replays locally to
+// local_addr+path itself), as opposed to a byte-level tunnel (plain Exposes
+// above) that forwards the whole origin and has the engine append the path
+// to the URL it returns instead. The caller must also add an option named
+// pathOption to its "open" Verb (OpenVerb does not include one).
+func ExposesWithPath(release, pathOption string) *plugin.VerbSemantics {
+	return &plugin.VerbSemantics{
+		HostOnly: true,
+		Exposes:  &plugin.Exposes{Local: "local_addr", URL: "public_url", Lease: "lease", Release: release, Path: pathOption},
+	}
+}
+
 // OpenVerb is the "open" verb every exposure plugin declares: takes
 // local_addr, returns public_url + lease, and names "close" as its release
 // verb. desc is the vendor-specific one line ("start a Cloudflare

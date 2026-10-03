@@ -82,9 +82,9 @@ func Decl() plugin.Decl {
 					"channel": {Type: "string", Desc: "only this channel id"},
 					"users":   {Type: "list", Desc: "only these user ids"},
 				},
-				Options:   slackFormOptions(),
+				Options:   mergeSchema(slackFormOptions(), feedbackOptions()),
 				Context:   slackCtxSchema(),
-				Semantics: msgSemantics(),
+				Semantics: withFeedback(msgSemantics()),
 			},
 			{
 				Name: "message_shortcut", Desc: "a message shortcut was used on a message (with options.form: opens the form first; the trigger fires on submission)",
@@ -93,9 +93,9 @@ func Decl() plugin.Decl {
 					"channel":     {Type: "string", Desc: "only this channel id"},
 					"users":       {Type: "list", Desc: "only these user ids (required unless options.any_user)"},
 				},
-				Options:   slackFormOptions(),
+				Options:   mergeSchema(slackFormOptions(), feedbackOptions()),
 				Context:   slackCtxSchema(),
-				Semantics: msgSemantics(),
+				Semantics: withFeedback(msgSemantics()),
 			},
 			{
 				Name: "reaction_added", Desc: "a reaction was added",
@@ -104,8 +104,9 @@ func Decl() plugin.Decl {
 					"channel":  {Type: "string"},
 					"users":    {Type: "list"},
 				},
+				Options:   feedbackOptions(),
 				Context:   slackCtxSchema(),
-				Semantics: msgSemantics(),
+				Semantics: withFeedback(msgSemantics()),
 			},
 			{
 				Name: "slash_command", Desc: "a slash command was invoked",
@@ -114,8 +115,9 @@ func Decl() plugin.Decl {
 					"channel": {Type: "string"},
 					"users":   {Type: "list"},
 				},
+				Options:   feedbackOptions(),
 				Context:   slackCtxSchema(),
-				Semantics: slashCommandSemantics(),
+				Semantics: withFeedback(slashCommandSemantics()),
 			},
 			{
 				Name: "reply", Desc: "a thread reply or a DM, as Socket Mode delivers them — consumed by a pending ask/hand-off when one is waiting on it, otherwise an ordinary event a trigger may match with `on: slack.reply`",
@@ -141,6 +143,25 @@ func Decl() plugin.Decl {
 					"channel": {Type: "string", Required: true, Scope: "channel"},
 					"ts":      {Type: "string", Required: true, Desc: "message timestamp to react to"},
 					"emoji":   {Type: "string", Required: true, Desc: "emoji name, no colons"},
+				},
+				Outputs: plugin.Schema{"ok": {Type: "boolean"}},
+			},
+			{
+				// host_only: the engine calls this through the option_hooks
+				// semantic (feedbackOptionHooks) with channel/ts/user/
+				// thread_ts filled from the triggering event's own facts; a
+				// flow step would have no event to derive them from.
+				Name: "feedback", Desc: "react to and/or reply on a message — the generic ack/on_done/on_fail block",
+				Semantics: &plugin.VerbSemantics{HostOnly: true},
+				Options: plugin.Schema{
+					"channel":   {Type: "string", Scope: "channel", Desc: "the message's channel"},
+					"ts":        {Type: "string", Desc: "the message's timestamp, for react"},
+					"user":      {Type: "string", Scope: "user", Desc: "the message's user, for an ephemeral say"},
+					"thread_ts": {Type: "string", Desc: "the message's thread, for say's in_thread"},
+					"react":     {Type: "string", Desc: "reactions.add emoji name, no colons; \"\" = no reaction"},
+					"say":       {Type: "string", Desc: "chat.postMessage/postEphemeral text; \"\" = no message"},
+					"ephemeral": {Type: "boolean", Desc: "say is visible only to user: via chat.postEphemeral"},
+					"in_thread": {Type: "boolean", Desc: "say posts into the message's thread (default true)"},
 				},
 				Outputs: plugin.Schema{"ok": {Type: "boolean"}},
 			},
