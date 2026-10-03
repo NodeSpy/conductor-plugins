@@ -340,6 +340,108 @@ func RunAndScan(argv []string, urlRe *regexp.Regexp, timeout time.Duration, onLi
 	}
 }
 
+// RunAndScanPreferred is a variant of RunAndScan for a provider whose own
+// confirmation line can be preceded by unrelated output carrying an
+// incidental URL — e.g. an ssh session's MOTD banner, printed before the
+// tunnel host's own "forwarding to ..." line. Each scanned line is checked
+// against preferred first, in order: a match returns immediately, since
+// these are expected to be tight enough (a specific provider's own hostname
+// suffix) that nothing but the real confirmation line could match. If no
+// preferred pattern EVER matches within timeout, it falls back to the LAST
+// line matching fallback rather than the first — a banner's own URL, if one
+// appears at all, appears before the real line, not after.
+func RunAndScanPreferred(argv []string, preferred []*regexp.Regexp, fallback *regexp.Regexp, timeout time.Duration, onLine func(string)) (publicURL string, stop func(), err error) {
+	if len(argv) == 0 {
+		return "", nil, fmt.Errorf("empty command")
+	}
+	if _, err := exec.LookPath(argv[0]); err != nil {
+		return "", nil, fmt.Errorf("%s not found on PATH (install it): %w", argv[0], err)
+	}
+
+	procCtx, cancel := context.WithCancel(context.Background())
+	cmd := exec.CommandContext(procCtx, argv[0], argv[1:]...)
+	SetNewProcessGroup(cmd)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		cancel()
+		return "", nil, err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		cancel()
+		return "", nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		cancel()
+		return "", nil, fmt.Errorf("start %s: %w", argv[0], err)
+	}
+
+	reaped := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(reaped)
+	}()
+	var closeOnce sync.Once
+	stopFn := func() {
+		closeOnce.Do(func() {
+			cancel()
+			KillProcessGroup(cmd)
+			<-reaped
+		})
+	}
+
+	preferredFound := make(chan string, 1)
+	var mu sync.Mutex
+	var lastFallback string
+	scan := func(r io.Reader) {
+		sc := bufio.NewScanner(r)
+		buf := make([]byte, 0, 64*1024)
+		sc.Buffer(buf, 1024*1024)
+		for sc.Scan() {
+			line := sc.Text()
+			if onLine != nil {
+				onLine(line)
+			}
+			matchedPreferred := false
+			for _, re := range preferred {
+				if m := re.FindString(line); m != "" {
+					select {
+					case preferredFound <- m:
+					default:
+					}
+					matchedPreferred = true
+					break
+				}
+			}
+			if !matchedPreferred && fallback != nil {
+				if m := fallback.FindString(line); m != "" {
+					mu.Lock()
+					lastFallback = m
+					mu.Unlock()
+				}
+			}
+		}
+	}
+	go scan(stdout)
+	go scan(stderr)
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case url := <-preferredFound:
+		return url, stopFn, nil
+	case <-timer.C:
+		mu.Lock()
+		url := lastFallback
+		mu.Unlock()
+		if url == "" {
+			stopFn()
+			return "", nil, fmt.Errorf("%s: no URL detected within %s", argv[0], timeout)
+		}
+		return url, stopFn, nil
+	}
+}
+
 // RunOnce runs argv to completion (bounded by timeout) and returns its
 // combined output — for a vendor CLI's own short-lived control commands
 // (bring a mapping up, query status, tear it down), as opposed to

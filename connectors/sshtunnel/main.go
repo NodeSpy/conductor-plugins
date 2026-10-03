@@ -31,6 +31,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -39,6 +40,20 @@ import (
 )
 
 const defaultStartTimeout = 30 * time.Second
+
+// Known tunnelling providers' own URL patterns, checked (in this order)
+// before falling back to the last generic http(s) URL seen in the session's
+// output. ssh connecting to any of these hosts may print a MOTD banner
+// before the provider's own "forwarding to ..." line — an Ubuntu MOTD's
+// "Documentation: https://..." line, for instance — so the FIRST http(s)
+// URL in the output is not reliably the tunnel's own URL.
+var (
+	localhostRunURLRe = regexp.MustCompile(`https://[a-zA-Z0-9.-]+\.lhr\.life\S*`)
+	serveoURLRe       = regexp.MustCompile(`https://[a-zA-Z0-9.-]+\.serveo\.net\S*`)
+	pinggyURLRe       = regexp.MustCompile(`https://[a-zA-Z0-9.-]+\.pinggy\.(?:io|link)\S*`)
+)
+
+var knownProviderURLRes = []*regexp.Regexp{localhostRunURLRe, serveoURLRe, pinggyURLRe}
 
 type sshtunnelPlugin struct {
 	leases *exposurekit.Leases
@@ -116,7 +131,7 @@ func (p *sshtunnelPlugin) open(req plugin.InvokeRequest) (plugin.InvokeResult, e
 		localPort:  port,
 	})
 
-	url, stop, err := exposurekit.RunAndScan(argv, exposurekit.DefaultURL, timeout, nil)
+	url, stop, err := exposurekit.RunAndScanPreferred(argv, knownProviderURLRes, exposurekit.DefaultURL, timeout, nil)
 	if err != nil {
 		return plugin.InvokeResult{}, plugin.Fail(plugin.CodeUpstream, "sshtunnel: "+err.Error(), nil)
 	}

@@ -327,6 +327,37 @@ func TestRunAndScanReapsSelfExitedProcess(t *testing.T) {
 	}
 }
 
+// TestRunAndScanPreferredPrefersKnownPatternOverFirstMatch and
+// TestRunAndScanPreferredFallsBackToLastMatch are kit-level unit tests for
+// RunAndScanPreferred, backing sshtunnel's finding #7 fix.
+func TestRunAndScanPreferredPrefersKnownPatternOverFirstMatch(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not on PATH")
+	}
+	known := regexp.MustCompile(`https://\S+\.known\.example`)
+	url, stop, err := RunAndScanPreferred(
+		[]string{"sh", "-c", "echo https://banner.example/not-it; echo https://x.known.example; sleep 5"},
+		[]*regexp.Regexp{known}, DefaultURL, 5*time.Second, nil)
+	if err != nil || url != "https://x.known.example" {
+		t.Fatalf("RunAndScanPreferred: %q %v, want the known-pattern match, not the first line", url, err)
+	}
+	stop()
+}
+
+func TestRunAndScanPreferredFallsBackToLastMatch(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not on PATH")
+	}
+	known := regexp.MustCompile(`https://\S+\.known\.example`)
+	url, stop, err := RunAndScanPreferred(
+		[]string{"sh", "-c", "echo https://banner.example/first; echo https://banner.example/last; sleep 5"},
+		[]*regexp.Regexp{known}, DefaultURL, 300*time.Millisecond, nil)
+	if err != nil || url != "https://banner.example/last" {
+		t.Fatalf("RunAndScanPreferred fallback: %q %v, want the LAST generic match", url, err)
+	}
+	stop()
+}
+
 func TestRunOnce(t *testing.T) {
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("sh not on PATH")

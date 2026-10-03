@@ -138,6 +138,56 @@ sleep 30`)
 	}
 }
 
+// TestMOTDBeforeRealLineDoesNotWin is the regression test for finding #7:
+// the generic preset used to take the FIRST https?:// URL in ssh's combined
+// output, so a tunnelling host's own MOTD banner (which may carry its own
+// unrelated URLs, like an Ubuntu "Documentation: https://..." line) won the
+// race against the real forwarding line printed right after it. A known
+// provider's own URL pattern (localhost.run's *.lhr.life here) must win
+// regardless of banner noise before it.
+func TestMOTDBeforeRealLineDoesNotWin(t *testing.T) {
+	stubTool(t, "ssh", `cat <<'MOTD'
+Welcome to Ubuntu 22.04.3 LTS (GNU/Linux 5.15.0-91-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+MOTD
+echo "tunneled https://real.lhr.life"
+sleep 30`)
+	p := newSSHTunnelPlugin()
+	res, err := p.Invoke(plugin.InvokeRequest{
+		Verb:       "open",
+		Options:    map[string]any{"local_addr": "127.0.0.1:8099"},
+		Connection: map[string]any{"host": "localhost.run", "start_timeout": "5s"},
+	})
+	if err != nil || res.Outputs["public_url"] != "https://real.lhr.life" {
+		t.Fatalf("open: %v %v, want https://real.lhr.life (not an MOTD URL)", res.Outputs, err)
+	}
+	p.leases.Release(res.Outputs["lease"].(string))
+}
+
+// TestGenericFallbackUsesLastMatchNotFirst covers the other half of finding
+// #7: for a host matching none of the known provider patterns, the fallback
+// must prefer the LAST generic URL seen, not the first — a banner's own URL
+// (if it's going to appear at all) appears before the real line, not after.
+func TestGenericFallbackUsesLastMatchNotFirst(t *testing.T) {
+	stubTool(t, "ssh", `echo "Documentation: https://help.ubuntu.com"
+echo "tunneled https://xyz.generic-tunnel.example"
+sleep 30`)
+	p := newSSHTunnelPlugin()
+	res, err := p.Invoke(plugin.InvokeRequest{
+		Verb:       "open",
+		Options:    map[string]any{"local_addr": "127.0.0.1:8099"},
+		Connection: map[string]any{"host": "ssh.example.com", "start_timeout": "300ms"},
+	})
+	if err != nil || res.Outputs["public_url"] != "https://xyz.generic-tunnel.example" {
+		t.Fatalf("open: %v %v, want the LAST url seen, not the MOTD's first", res.Outputs, err)
+	}
+	p.leases.Release(res.Outputs["lease"].(string))
+}
+
 func TestHostRequired(t *testing.T) {
 	p := newSSHTunnelPlugin()
 	if _, err := p.Invoke(plugin.InvokeRequest{Verb: "open", Options: map[string]any{"local_addr": "127.0.0.1:8099"}}); err == nil {
