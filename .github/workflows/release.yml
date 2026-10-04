@@ -102,3 +102,13 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --title "${{ steps.ref.outputs.kind }}/${{ steps.ref.outputs.name }} ${{ steps.ref.outputs.version }}" \
             --notes "conductor ${{ steps.ref.outputs.name }} ${{ steps.ref.outputs.noun }} plugin ${{ steps.ref.outputs.version }} — per-platform binaries + checksums. Install: add \`${{ steps.ref.outputs.block }}: { ${{ steps.ref.outputs.name }}: { use: ${{ steps.ref.outputs.name }} } }\` to your config and run \`conductor init\`."
+
+      # conductor fetches plugins from git refs (refs/dist/<tag>/<os>_<arch>),
+      # not from the release assets, so `use: <plugin>` resolves from any git
+      # host with no API token.
+      - name: Publish binaries as git refs (refs/dist/<tag>/<platform>)
+        working-directory: conductor-plugins
+        run: |
+          git config user.name "release"
+          git config user.email "release@users.noreply.github.com"
+          scripts/publish-dist.sh "${GITHUB_REF_NAME}" dist "conductor-${{ steps.ref.outputs.name }}"
