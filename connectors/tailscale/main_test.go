@@ -587,6 +587,15 @@ func TestDescribe(t *testing.T) {
 	if len(d.Capabilities.Egress) != 1 || d.Capabilities.Egress[0] != "api.tailscale.com:443" {
 		t.Errorf("Capabilities.Egress: got %v", d.Capabilities.Egress)
 	}
+	// SingleProcess: funnelMapping's refcount (below) is an in-memory
+	// box-global resource — two instances in two processes would each keep
+	// their own, independent count, breaking the "refuse a different port"
+	// guard and the pre-existing/last-lease teardown logic across them. The
+	// host must run every configured instance of this plugin in ONE process
+	// regardless of the operator's own shared_process: setting.
+	if !d.Capabilities.SingleProcess {
+		t.Error("Capabilities.SingleProcess must be true: funnelMapping's refcount is a box-global resource every instance must share")
+	}
 
 	if d.Auth == nil {
 		t.Fatal("expected Describe().Auth to be non-nil (managed OAuth2 client_credentials)")
@@ -720,6 +729,22 @@ esac`)
 // the other is still open — regardless of which lease is closed first. (A
 // different port while a lease is outstanding is refused outright — see
 // TestFunnelOpenRefusesDifferentPortWhileLeaseOutstanding.)
+//
+// This is also the refcount semantics Capabilities.SingleProcess (Describe,
+// TestDescribe) exists to PROTECT across configured connector instances, not
+// just across two calls on one instance: both opens here go through the
+// same *tailscalePlugin — exactly what conductor's single_process-driven
+// shared-process shape guarantees for two DIFFERENT configured instances of
+// this plugin (conductor's internal/plugin.Manager.PromoteSharedProcess/
+// SpecFromRef). Two instances in two SEPARATE processes would each hold
+// their own funnelMap, starting at refCount 0 — the second process's first
+// open would see the first process's already-live mapping as "pre-existing"
+// (never tearing it down right), and a close on either side could turn the
+// mapping off out from under the other, or fail to refuse a conflicting
+// port it never even knew was open on the sibling. This test cannot observe
+// a separate PROCESS directly (that is conductor's own job, not this
+// plugin's), so it proves the invariant the one process that single_process
+// keeps every instance inside must uphold.
 func TestFunnelOpenRefCountsTheSharedMapping(t *testing.T) {
 	for _, name := range []string{"close first-opened then second-opened", "close second-opened then first-opened"} {
 		t.Run(name, func(t *testing.T) {

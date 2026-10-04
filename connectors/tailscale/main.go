@@ -296,7 +296,22 @@ func (p *tailscalePlugin) Describe() plugin.Decl {
 		// api.tailscale.com's token endpoint on this plugin's behalf; the
 		// plugin itself only ever calls the Tailscale API host. funnel_open/
 		// funnel_close additionally shell out to the LOCAL tailscale CLI.
-		Capabilities: plugin.Capabilities{Egress: []string{"api.tailscale.com:443"}, Commands: []string{"tailscale"}, Spawns: true},
+		//
+		// SingleProcess: true — funnelMapping (above) keeps an IN-MEMORY
+		// refcount on the box's one `tailscale serve`/`funnel --https=443`
+		// mapping, a box-global resource with exactly one real state
+		// regardless of how many connector instances this plugin serves. A
+		// second process would keep its OWN refcount starting at zero,
+		// unaware of the first process's lease(s): it would see the first
+		// process's mapping as "pre-existing" (never tearing it down right),
+		// one instance's close could turn funnel off out from under the
+		// other, and the "refuse a different port while a lease is open"
+		// guard (funnelOpen) would no longer see the sibling process's port
+		// at all. Declaring this makes conductor run every configured
+		// instance of this plugin in ONE process (docs/wiki/Plugins.md
+		// "Multi-instance isolation"), so funnelMap's refcount is the single
+		// source of truth it was written to be.
+		Capabilities: plugin.Capabilities{Egress: []string{"api.tailscale.com:443"}, Commands: []string{"tailscale"}, Spawns: true, SingleProcess: true},
 		Auth: &plugin.AuthSpec{
 			Grants:   []string{"client_credentials"},
 			TokenURL: "https://api.tailscale.com/api/v2/oauth/token",

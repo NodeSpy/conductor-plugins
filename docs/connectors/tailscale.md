@@ -13,7 +13,7 @@ the LOCAL tailscale CLI. See **Funnel/serve exposure** below.
 - **Kind:** connector (verbs only — no source)
 - **Source:** [`connectors/tailscale/main.go`](../../connectors/tailscale/main.go)
 - **Provides:** `tailscale`
-- **Capabilities:** egress `["api.tailscale.com:443"]`; spawns `tailscale` (for `funnel_open`/`funnel_close` only)
+- **Capabilities:** egress `["api.tailscale.com:443"]`; spawns `tailscale` (for `funnel_open`/`funnel_close` only); `single_process: true` (every configured instance shares one process — see **Funnel/serve exposure** and **Capabilities & security** below)
 
 ## Setup
 
@@ -229,8 +229,11 @@ port 443 already existed before `funnel_open` (someone else's, or a previous
 manual `tailscale serve`), `funnel_close` leaves it alone and logs that fact
 to stderr instead of running `tailscale serve --https=443 off` — it only
 tears down a mapping it created itself. Tailscale supports one serve/funnel
-mapping per port, so concurrent leases across instances contend at the OS
-level, not this plugin's.
+mapping per port — a box-global resource, not a per-connector-instance one —
+so this plugin tracks its refcount and the port already open on it
+in-memory, and refuses a concurrent `funnel_open` for a DIFFERENT port while
+one is outstanding. That bookkeeping only works if every configured instance
+of this connector shares the SAME process: see `single_process` below.
 
 ## Capabilities & security
 
@@ -240,3 +243,13 @@ this plugin, talks to Tailscale's OAuth token endpoint for the managed
 least privilege the workflow needs; Tailscale OAuth clients can be scoped
 read-only (`all:read`) or to specific resource types. Also declares `Commands:
 ["tailscale"]` and `Spawns: true`, used only by `funnel_open`/`funnel_close`.
+
+Declares `single_process: true`: the box's one serve/funnel mapping on port
+443 is tracked by an in-memory refcount this plugin keeps, which only stays
+correct if every configured `tailscale:` instance runs in the SAME process.
+conductor enforces this automatically — every configured instance of this
+connector shares one process, with the union of their `network:`/
+`allow_secrets:`/`allow_env:` grants, regardless of whether you set
+`shared_process:` yourself (you don't need to, and can't opt back out of it
+for this connector). `conductor plugin show tailscale` / `plugin list --caps`
+show this in the permission display.
