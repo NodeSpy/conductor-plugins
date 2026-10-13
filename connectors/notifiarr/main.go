@@ -38,8 +38,9 @@ func (notifiarrPlugin) Describe() plugin.Decl {
 		Type: "notifiarr",
 		Desc: "Notifiarr: send Discord notifications via Notifiarr's Passthrough integration, plus a generic API escape hatch.",
 		Connection: plugin.Schema{
-			"api_key":  {Type: "string", Required: true, Desc: "Notifiarr API key"},
-			"api_base": {Type: "string", Desc: "override the Notifiarr API base URL (tests, or a private gateway)"},
+			"api_key":    {Type: "string", Required: true, Secret: true, Desc: "Notifiarr API key"},
+			"api_base":   {Type: "string", Desc: "override the Notifiarr API base URL (tests, or a private gateway)"},
+			"channel_id": {Type: "string", Desc: "default Discord channel id override (used by `notify` when its own channel_id option is omitted)"},
 		},
 		Verbs:        notifiarrVerbs(),
 		Capabilities: plugin.Capabilities{Egress: []string{"notifiarr.com:443"}},
@@ -49,6 +50,19 @@ func (notifiarrPlugin) Describe() plugin.Decl {
 func notifiarrVerbs() []plugin.Verb {
 	resultOnly := plugin.Schema{"result": {Type: "any"}, "status_code": {Type: "integer"}}
 	return []plugin.Verb{
+		{
+			// notify is the former bundled connector's verb name and option/
+			// output surface (text, channel_id -> ok), kept alongside
+			// passthrough's richer embed surface for parity: a config
+			// written for the bundled connector's `notifiarr.notify` works
+			// unchanged here.
+			Name: "notify", Desc: "send a passthrough notification (the simple surface: text + channel_id)",
+			Options: plugin.Schema{
+				"text":       {Type: "string", Required: true},
+				"channel_id": {Type: "string", Scope: "channel", Desc: "Discord channel id (default: the connection's)"},
+			},
+			Outputs: plugin.Schema{"ok": {Type: "boolean"}, "result": {Type: "any"}, "status_code": {Type: "integer"}},
+		},
 		{
 			Name: "passthrough", Desc: "send a Discord notification via Notifiarr's Passthrough integration",
 			Usage: "post a message/embed to a Discord channel through Notifiarr",
@@ -83,8 +97,9 @@ func notifiarrVerbs() []plugin.Verb {
 
 // notifiarrConn is the resolved connection config for one invocation.
 type notifiarrConn struct {
-	apiKey string
-	base   string
+	apiKey    string
+	base      string
+	channelID string
 }
 
 func parseConn(m map[string]any) (notifiarrConn, error) {
@@ -93,8 +108,9 @@ func parseConn(m map[string]any) (notifiarrConn, error) {
 		return notifiarrConn{}, fmt.Errorf("connection.api_key is required")
 	}
 	return notifiarrConn{
-		apiKey: key,
-		base:   strOr(m["api_base"], defaultAPIBase),
+		apiKey:    key,
+		base:      strOr(m["api_base"], defaultAPIBase),
+		channelID: str(m["channel_id"]),
 	}, nil
 }
 
@@ -108,7 +124,7 @@ func (notifiarrPlugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeResult, er
 		o = map[string]any{}
 	}
 
-	call, err := verbCall(req.Verb, o, conn.apiKey)
+	call, err := verbCall(req.Verb, o, conn.apiKey, conn.channelID)
 	if err != nil {
 		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, req.Verb+": "+err.Error())
 	}
@@ -116,6 +132,12 @@ func (notifiarrPlugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeResult, er
 	outputs, err := conn.do(call.method, call.path, call.body)
 	if err != nil {
 		return plugin.InvokeResult{}, err
+	}
+	if req.Verb == "notify" {
+		// do() only returns without error on a 2xx response, so a successful
+		// call here is always "ok" — the bundled connector's exact output
+		// shape, plus result/status_code for anyone who wants them.
+		outputs["ok"] = true
 	}
 	return plugin.InvokeResult{Outputs: outputs}, nil
 }
@@ -129,14 +151,42 @@ type apiCall struct {
 
 // verbCall builds the HTTP call for one verb. Pure and hermetically
 // testable — no request is sent here.
-func verbCall(verb string, o map[string]any, apiKey string) (apiCall, error) {
+func verbCall(verb string, o map[string]any, apiKey, defaultChannel string) (apiCall, error) {
 	switch verb {
+	case "notify":
+		return notifyCall(o, apiKey, defaultChannel)
 	case "passthrough":
 		return passthroughCall(o, apiKey)
 	case "api":
 		return apiVerbCall(o)
 	}
 	return apiCall{}, fmt.Errorf("unknown verb")
+}
+
+// notifyCall assembles the former bundled connector's exact Passthrough
+// Discord-notification payload — a minimal {"text":{"description":…}}
+// envelope, byte-identical to what the legacy notify: block and the bundled
+// `notifiarr.notify` verb sent — from the simple text/channel_id surface.
+func notifyCall(o map[string]any, apiKey, defaultChannel string) (apiCall, error) {
+	text := str(o["text"])
+	if text == "" {
+		return apiCall{}, fmt.Errorf("text is required")
+	}
+	channel := defaultChannel
+	if c := str(o["channel_id"]); c != "" {
+		channel = c
+	}
+	discord := map[string]any{
+		"text": map[string]string{"description": text},
+	}
+	if channel != "" {
+		discord["ids"] = map[string]string{"channel": channel}
+	}
+	body := map[string]any{
+		"notification": map[string]string{"name": "conductor"},
+		"discord":      discord,
+	}
+	return apiCall{method: http.MethodPost, path: "notification/passthrough/" + apiKey, body: body}, nil
 }
 
 // passthroughCall assembles Notifiarr's documented Passthrough Discord

@@ -30,6 +30,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"github.com/NodeSpy/conductor-plugins/internal/relay"
 	"net/http"
 	"os"
 	"strings"
@@ -431,12 +432,12 @@ func (telegram) StartSource(ctx context.Context, req plugin.StartSourceRequest, 
 		allowUnsigned, _ = webhook["allow_unsigned"].(bool)
 		smee = str(webhook["smee"])
 	}
-	// sourcekit.Listener.Secret stays empty: Telegram authenticates a webhook
+	// relay.Listener.Secret stays empty: Telegram authenticates a webhook
 	// delivery with a bare secret token it echoes back in the
 	// X-Telegram-Bot-Api-Secret-Token header, not an HMAC signature — so
 	// VerifyHMAC's scheme doesn't apply. We compare the header ourselves,
 	// below, with a constant-time comparison.
-	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smee}
+	ln := relay.Listener{Addr: addr, Path: path, Relay: smee}
 	if ln.Addr == "" && ln.Relay == "" {
 		return fmt.Errorf("telegram: no webhook.listen address or smee relay configured")
 	}

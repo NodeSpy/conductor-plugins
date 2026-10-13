@@ -21,7 +21,7 @@
 // verify. Instead, the operator pastes a shared token into the webhook URL
 // (?token=<secret>) or a custom header (X-Conductor-Token: <secret>), and this
 // plugin compares it (constant-time) to webhook.secret. The shared
-// sourcekit.Listener.ServeReq hands the callback the full request (headers,
+// relay.Listener.ServeReq hands the callback the full request (headers,
 // query, body), so the ?token= query case is checked directly — and the same
 // Listener transparently accepts deliveries over a smee.io-style relay
 // (webhook.smee) for endpoints with no public URL. See verifyToken below and
@@ -37,6 +37,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"github.com/NodeSpy/conductor-plugins/internal/relay"
 	"io"
 	"net/http"
 	"net/url"
@@ -440,7 +441,7 @@ func (datadogPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequ
 	if smeeURL != "" {
 		fmt.Fprintf(os.Stderr, "datadog[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
 	}
-	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smeeURL}
+	ln := relay.Listener{Addr: addr, Path: path, Relay: smeeURL}
 	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
 		if secret != "" && !verifyToken(secret, rq) {
 			return

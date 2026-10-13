@@ -27,7 +27,7 @@
 // or query string an operator types into the Zap's URL/header fields. So,
 // like Datadog, authentication here is a shared token compared in constant
 // time against either the X-Conductor-Token header or a `?token=` query
-// parameter, never an HMAC. The shared sourcekit.Listener.ServeReq hands the
+// parameter, never an HMAC. The shared relay.Listener.ServeReq hands the
 // callback the full request (headers, query, body), so the ?token= query
 // case is checked directly — and the same Listener transparently accepts
 // deliveries relayed over webhook.smee. See requireWebhookSecret and
@@ -42,6 +42,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"github.com/NodeSpy/conductor-plugins/internal/relay"
 	"io"
 	"net/http"
 	"net/url"
@@ -216,7 +217,7 @@ func (zapierPlugin) StartSource(ctx context.Context, req plugin.StartSourceReque
 	if smeeURL != "" {
 		fmt.Fprintf(os.Stderr, "zapier[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
 	}
-	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smeeURL}
+	ln := relay.Listener{Addr: addr, Path: path, Relay: smeeURL}
 	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
 		if secret != "" && !verifyToken(secret, rq) {
 			return

@@ -17,7 +17,7 @@
 // (for a delivery path that can set a custom header instead, e.g. a
 // forwarding proxy). Omitting the secret fails closed: `webhook.allow_unsigned:
 // true` is the explicit, greppable way to say you accept unauthenticated
-// deliveries anyway. The shared sourcekit.Listener.ServeReq hands the
+// deliveries anyway. The shared relay.Listener.ServeReq hands the
 // callback the full request (headers, query, body), so the ?secret= query
 // case is checked directly — and the same Listener transparently accepts
 // deliveries over a smee.io-style relay (webhook.smee) for endpoints with no
@@ -48,6 +48,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"github.com/NodeSpy/conductor-plugins/internal/relay"
 	"io"
 	"net/http"
 	"net/url"
@@ -612,7 +613,7 @@ func doAPI(conn jiraConn, o map[string]any) (plugin.InvokeResult, error) {
 // StartSource runs the webhook listener for one connector instance. Jira
 // Cloud webhooks carry no signature, so authentication is a shared secret
 // checked against the `secret` query parameter or an X-Conductor-Token
-// header — never sourcekit.Listener's built-in HMAC verification (there is
+// header — never relay.Listener's built-in HMAC verification (there is
 // no HMAC to verify), hence Listener.Secret is left empty and
 // verifyJiraSecret does the check itself against the sourcekit.Request the
 // shared Listener hands the callback (headers, query, body — over the HTTP
@@ -644,7 +645,7 @@ func (jiraPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest
 		fmt.Fprintf(os.Stderr, "jira[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
 	}
 
-	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smeeURL}
+	ln := relay.Listener{Addr: addr, Path: path, Relay: smeeURL}
 	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
 		if !verifyJiraSecret(secret, rq) {
 			return

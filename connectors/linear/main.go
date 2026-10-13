@@ -32,6 +32,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/NodeSpy/conductor-plugins/internal/relay"
 	"io"
 	"net/http"
 	"os"
@@ -492,8 +493,8 @@ func (l *linearPlugin) StartSource(ctx context.Context, req plugin.StartSourceRe
 	}
 
 	// Signature verification is done by hand (below), not by
-	// sourcekit.Listener's built-in check, so ln.Secret is left empty.
-	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smee}
+	// relay.Listener's built-in check, so ln.Secret is left empty.
+	ln := relay.Listener{Addr: addr, Path: path, Relay: smee}
 	dedup := sourcekit.NewDedup(4096)
 	if ln.Addr != "" {
 		fmt.Fprintf(os.Stderr, "linear[%s]: listening on %s%s\n", req.Instance, ln.Addr, ln.Path)

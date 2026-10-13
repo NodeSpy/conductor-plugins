@@ -55,6 +55,7 @@ below.
 | `token` | string | Bearer access token |
 | `username` | string | Basic auth username (paired with `password`) |
 | `password` | string | Basic auth password (paired with `username`) |
+| `topic` | string | default topic for `publish` (used when a call's own `topic` option is omitted) |
 | `subscribe` | list | topics to subscribe to (StartSource only) |
 
 `token` and `username`/`password` are alternatives — `token` wins if both are
@@ -110,13 +111,15 @@ triggers:
 
 ### `publish`
 
-Publish a message to a topic. `topic` is the only required option; ntfy fills
-in sane defaults for everything else.
+Publish a message to a topic. `topic` falls back to the connection's default
+(set `topic:` on the connection) when a call omits its own — set one or the
+other. `message` is the only option every call must carry; ntfy fills in sane
+defaults for everything else.
 
 | option | type | |
 |--------|------|---|
-| `topic` | string, required | the ntfy topic to publish to |
-| `message` | string | message body |
+| `topic` | string | the ntfy topic to publish to (default: the connection's `topic:`) |
+| `message` | string, required | message body |
 | `title` | string | notification title |
 | `priority` | any | `1`..`5`, or the name: `min`/`low`/`default`/`high`/`max` |
 | `tags` | list | tags / emoji shortcodes |
@@ -135,6 +138,7 @@ Outputs:
 
 | output | type | |
 |--------|------|---|
+| `ok` | boolean | true on a 2xx response — the former bundled connector's exact output |
 | `status_code` | integer | the HTTP status ntfy returned |
 | `result` | any | the parsed JSON response body |
 

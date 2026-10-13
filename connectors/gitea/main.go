@@ -23,7 +23,7 @@
 // Gitea signs webhook deliveries with HMAC-SHA256 over the raw body,
 // hex-encoded, in X-Gitea-Signature — exactly the bare-hex shape
 // sourcekit.VerifyHMAC already accepts (no v1=/sha256= prefix to strip), so
-// this source hands verification straight to sourcekit.Listener rather than
+// this source hands verification straight to relaykit.Listener rather than
 // hand-rolling crypto/hmac here. It fails closed: no secret and no
 // `webhook.allow_unsigned: true` refuses to start.
 //
@@ -41,6 +41,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	relaykit "github.com/NodeSpy/conductor-plugins/internal/relay"
 	"net/http"
 	"net/url"
 	"os"
@@ -662,7 +663,7 @@ func (giteaPlugin) StartSource(ctx context.Context, req plugin.StartSourceReques
 	// trim) is exactly Gitea's X-Gitea-Signature format: hex-encoded
 	// HMAC-SHA256 over the raw body, nothing else — so the shared listener
 	// verifies it with no custom crypto needed here.
-	ln := sourcekit.Listener{Addr: addr, Path: path, Secret: secret, SigHeader: "X-Gitea-Signature", Relay: relay}
+	ln := relaykit.Listener{Addr: addr, Path: path, Secret: secret, SigHeader: "X-Gitea-Signature", Relay: relay}
 	if ln.Addr == "" && ln.Relay == "" {
 		return fmt.Errorf("gitea: no webhook.listen address or smee relay configured")
 	}

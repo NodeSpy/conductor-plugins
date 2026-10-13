@@ -1,0 +1,3138 @@
+# Vendored subset of GitHub's public GraphQL schema (see extract_graphql.py).
+
+type Query implements Node {
+  codeOfConduct(
+    key: String!
+  ): CodeOfConduct
+  codesOfConduct: [CodeOfConduct]
+  enterprise(
+    invitationToken: String
+    slug: String!
+  ): Enterprise
+  enterpriseAdministratorInvitation(
+    enterpriseSlug: String!
+    role: EnterpriseAdministratorRole!
+    userLogin: String!
+  ): EnterpriseAdministratorInvitation
+  enterpriseAdministratorInvitationByToken(
+    invitationToken: String!
+  ): EnterpriseAdministratorInvitation
+  enterpriseMemberInvitation(
+    enterpriseSlug: String!
+    userLogin: String!
+  ): EnterpriseMemberInvitation
+  enterpriseMemberInvitationByToken(
+    invitationToken: String!
+  ): EnterpriseMemberInvitation
+  id: ID!
+  license(
+    key: String!
+  ): License
+  licenses: [License]!
+  marketplaceCategories(
+    excludeEmpty: Boolean
+    excludeSubcategories: Boolean
+    includeCategories: [String!]
+  ): [MarketplaceCategory!]!
+  marketplaceCategory(
+    slug: String!
+    useTopicAliases: Boolean
+  ): MarketplaceCategory
+  marketplaceListing(
+    slug: String!
+  ): MarketplaceListing
+  marketplaceListings(
+    adminId: ID
+    after: String
+    allStates: Boolean
+    before: String
+    categorySlug: String
+    first: Int
+    last: Int
+    organizationId: ID
+    primaryCategoryOnly: Boolean = false
+    slugs: [String]
+    useTopicAliases: Boolean
+    viewerCanAdmin: Boolean
+    withFreeTrialsOnly: Boolean = false
+  ): MarketplaceListingConnection!
+  meta: GitHubMetadata!
+  node(
+    id: ID!
+  ): Node
+  nodes(
+    ids: [ID!]!
+  ): [Node]!
+  organization(
+    login: String!
+  ): Organization
+  rateLimit(
+    dryRun: Boolean = false
+  ): RateLimit
+  relay: Query!
+  repository(
+    followRenames: Boolean = true
+    name: String!
+    owner: String!
+  ): Repository
+  repositoryOwner(
+    login: String!
+  ): RepositoryOwner
+  resource(
+    url: URI!
+  ): UniformResourceLocatable
+  search(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    query: String!
+    type: SearchType!
+  ): SearchResultItemConnection!
+  securityAdvisories(
+    after: String
+    before: String
+    classifications: [SecurityAdvisoryClassification!]
+    epssPercentage: Float
+    epssPercentile: Float
+    first: Int
+    identifier: SecurityAdvisoryIdentifierFilter
+    last: Int
+    orderBy: SecurityAdvisoryOrder = {field: UPDATED_AT, direction: DESC}
+    publishedSince: DateTime
+    updatedSince: DateTime
+  ): SecurityAdvisoryConnection!
+  securityAdvisory(
+    ghsaId: String!
+  ): SecurityAdvisory
+  securityVulnerabilities(
+    after: String
+    before: String
+    classifications: [SecurityAdvisoryClassification!]
+    ecosystem: SecurityAdvisoryEcosystem
+    first: Int
+    last: Int
+    orderBy: SecurityVulnerabilityOrder = {field: UPDATED_AT, direction: DESC}
+    package: String
+    severities: [SecurityAdvisorySeverity!]
+  ): SecurityVulnerabilityConnection!
+  sponsorables(
+    after: String
+    before: String
+    dependencyEcosystem: SecurityAdvisoryEcosystem
+    ecosystem: DependencyGraphEcosystem
+    first: Int
+    last: Int
+    onlyDependencies: Boolean = false
+    orderBy: SponsorableOrder = {field: LOGIN, direction: ASC}
+    orgLoginForDependencies: String
+  ): SponsorableItemConnection!
+  topic(
+    name: String!
+  ): Topic
+  user(
+    login: String!
+  ): User
+  viewer: User!
+}
+
+type Mutation {
+  abortQueuedMigrations(
+    input: AbortQueuedMigrationsInput!
+  ): AbortQueuedMigrationsPayload
+  abortRepositoryMigration(
+    input: AbortRepositoryMigrationInput!
+  ): AbortRepositoryMigrationPayload
+  acceptEnterpriseAdministratorInvitation(
+    input: AcceptEnterpriseAdministratorInvitationInput!
+  ): AcceptEnterpriseAdministratorInvitationPayload
+  acceptEnterpriseMemberInvitation(
+    input: AcceptEnterpriseMemberInvitationInput!
+  ): AcceptEnterpriseMemberInvitationPayload
+  acceptTopicSuggestion(
+    input: AcceptTopicSuggestionInput!
+  ): AcceptTopicSuggestionPayload
+  accessUserNamespaceRepository(
+    input: AccessUserNamespaceRepositoryInput!
+  ): AccessUserNamespaceRepositoryPayload
+  addAssigneesToAssignable(
+    input: AddAssigneesToAssignableInput!
+  ): AddAssigneesToAssignablePayload
+  addBlockedBy(
+    input: AddBlockedByInput!
+  ): AddBlockedByPayload
+  addComment(
+    input: AddCommentInput!
+  ): AddCommentPayload
+  addDiscussionComment(
+    input: AddDiscussionCommentInput!
+  ): AddDiscussionCommentPayload
+  addDiscussionPollVote(
+    input: AddDiscussionPollVoteInput!
+  ): AddDiscussionPollVotePayload
+  addEnterpriseOrganizationMember(
+    input: AddEnterpriseOrganizationMemberInput!
+  ): AddEnterpriseOrganizationMemberPayload
+  addEnterpriseSupportEntitlement(
+    input: AddEnterpriseSupportEntitlementInput!
+  ): AddEnterpriseSupportEntitlementPayload
+  addLabelsToLabelable(
+    input: AddLabelsToLabelableInput!
+  ): AddLabelsToLabelablePayload
+  addProjectCard(
+    input: AddProjectCardInput!
+  ): AddProjectCardPayload
+  addProjectColumn(
+    input: AddProjectColumnInput!
+  ): AddProjectColumnPayload
+  addProjectV2DraftIssue(
+    input: AddProjectV2DraftIssueInput!
+  ): AddProjectV2DraftIssuePayload
+  addProjectV2ItemById(
+    input: AddProjectV2ItemByIdInput!
+  ): AddProjectV2ItemByIdPayload
+  addPullRequestCreationCapBypassUsers(
+    input: AddPullRequestCreationCapBypassUsersInput!
+  ): AddPullRequestCreationCapBypassUsersPayload
+  addPullRequestReview(
+    input: AddPullRequestReviewInput!
+  ): AddPullRequestReviewPayload
+  addPullRequestReviewComment(
+    input: AddPullRequestReviewCommentInput!
+  ): AddPullRequestReviewCommentPayload
+  addPullRequestReviewThread(
+    input: AddPullRequestReviewThreadInput!
+  ): AddPullRequestReviewThreadPayload
+  addPullRequestReviewThreadReply(
+    input: AddPullRequestReviewThreadReplyInput!
+  ): AddPullRequestReviewThreadReplyPayload
+  addReaction(
+    input: AddReactionInput!
+  ): AddReactionPayload
+  addStar(
+    input: AddStarInput!
+  ): AddStarPayload
+  addSubIssue(
+    input: AddSubIssueInput!
+  ): AddSubIssuePayload
+  addUpvote(
+    input: AddUpvoteInput!
+  ): AddUpvotePayload
+  addVerifiableDomain(
+    input: AddVerifiableDomainInput!
+  ): AddVerifiableDomainPayload
+  applyPendingIssueSuggestions(
+    input: ApplyPendingIssueSuggestionsInput!
+  ): ApplyPendingIssueSuggestionsPayload
+  approveDeployments(
+    input: ApproveDeploymentsInput!
+  ): ApproveDeploymentsPayload
+  approveVerifiableDomain(
+    input: ApproveVerifiableDomainInput!
+  ): ApproveVerifiableDomainPayload
+  archiveProjectV2Item(
+    input: ArchiveProjectV2ItemInput!
+  ): ArchiveProjectV2ItemPayload
+  archivePullRequest(
+    input: ArchivePullRequestInput!
+  ): ArchivePullRequestPayload
+  archiveRepository(
+    input: ArchiveRepositoryInput!
+  ): ArchiveRepositoryPayload
+  cancelEnterpriseAdminInvitation(
+    input: CancelEnterpriseAdminInvitationInput!
+  ): CancelEnterpriseAdminInvitationPayload
+  cancelEnterpriseMemberInvitation(
+    input: CancelEnterpriseMemberInvitationInput!
+  ): CancelEnterpriseMemberInvitationPayload
+  cancelSponsorship(
+    input: CancelSponsorshipInput!
+  ): CancelSponsorshipPayload
+  changeUserStatus(
+    input: ChangeUserStatusInput!
+  ): ChangeUserStatusPayload
+  clearLabelsFromLabelable(
+    input: ClearLabelsFromLabelableInput!
+  ): ClearLabelsFromLabelablePayload
+  clearProjectV2ItemFieldValue(
+    input: ClearProjectV2ItemFieldValueInput!
+  ): ClearProjectV2ItemFieldValuePayload
+  cloneProject(
+    input: CloneProjectInput!
+  ): CloneProjectPayload
+  cloneTemplateRepository(
+    input: CloneTemplateRepositoryInput!
+  ): CloneTemplateRepositoryPayload
+  closeDiscussion(
+    input: CloseDiscussionInput!
+  ): CloseDiscussionPayload
+  closeIssue(
+    input: CloseIssueInput!
+  ): CloseIssuePayload
+  closePullRequest(
+    input: ClosePullRequestInput!
+  ): ClosePullRequestPayload
+  convertProjectCardNoteToIssue(
+    input: ConvertProjectCardNoteToIssueInput!
+  ): ConvertProjectCardNoteToIssuePayload
+  convertProjectV2DraftIssueItemToIssue(
+    input: ConvertProjectV2DraftIssueItemToIssueInput!
+  ): ConvertProjectV2DraftIssueItemToIssuePayload
+  convertPullRequestToDraft(
+    input: ConvertPullRequestToDraftInput!
+  ): ConvertPullRequestToDraftPayload
+  copyProjectV2(
+    input: CopyProjectV2Input!
+  ): CopyProjectV2Payload
+  createAttributionInvitation(
+    input: CreateAttributionInvitationInput!
+  ): CreateAttributionInvitationPayload
+  createBranchProtectionRule(
+    input: CreateBranchProtectionRuleInput!
+  ): CreateBranchProtectionRulePayload
+  createCheckRun(
+    input: CreateCheckRunInput!
+  ): CreateCheckRunPayload
+  createCheckSuite(
+    input: CreateCheckSuiteInput!
+  ): CreateCheckSuitePayload
+  createCommitOnBranch(
+    input: CreateCommitOnBranchInput!
+  ): CreateCommitOnBranchPayload
+  createDeployment(
+    input: CreateDeploymentInput!
+  ): CreateDeploymentPayload
+  createDeploymentStatus(
+    input: CreateDeploymentStatusInput!
+  ): CreateDeploymentStatusPayload
+  createDiscussion(
+    input: CreateDiscussionInput!
+  ): CreateDiscussionPayload
+  createEnterpriseOrganization(
+    input: CreateEnterpriseOrganizationInput!
+  ): CreateEnterpriseOrganizationPayload
+  createEnvironment(
+    input: CreateEnvironmentInput!
+  ): CreateEnvironmentPayload
+  createIpAllowListEntry(
+    input: CreateIpAllowListEntryInput!
+  ): CreateIpAllowListEntryPayload
+  createIssue(
+    input: CreateIssueInput!
+  ): CreateIssuePayload
+  createIssueField(
+    input: CreateIssueFieldInput!
+  ): CreateIssueFieldPayload
+  createIssueFieldValue(
+    input: CreateIssueFieldValueInput!
+  ): CreateIssueFieldValuePayload
+  createIssueType(
+    input: CreateIssueTypeInput!
+  ): CreateIssueTypePayload
+  createLabel(
+    input: CreateLabelInput!
+  ): CreateLabelPayload
+  createLinkedBranch(
+    input: CreateLinkedBranchInput!
+  ): CreateLinkedBranchPayload
+  createMigrationSource(
+    input: CreateMigrationSourceInput!
+  ): CreateMigrationSourcePayload
+  createProject(
+    input: CreateProjectInput!
+  ): CreateProjectPayload
+  createProjectV2(
+    input: CreateProjectV2Input!
+  ): CreateProjectV2Payload
+  createProjectV2Field(
+    input: CreateProjectV2FieldInput!
+  ): CreateProjectV2FieldPayload
+  createProjectV2IssueField(
+    input: CreateProjectV2IssueFieldInput!
+  ): CreateProjectV2IssueFieldPayload
+  createProjectV2StatusUpdate(
+    input: CreateProjectV2StatusUpdateInput!
+  ): CreateProjectV2StatusUpdatePayload
+  createProjectV2View(
+    input: CreateProjectV2ViewInput!
+  ): CreateProjectV2ViewPayload
+  createPullRequest(
+    input: CreatePullRequestInput!
+  ): CreatePullRequestPayload
+  createRef(
+    input: CreateRefInput!
+  ): CreateRefPayload
+  createRepository(
+    input: CreateRepositoryInput!
+  ): CreateRepositoryPayload
+  createRepositoryCustomProperty(
+    input: CreateRepositoryCustomPropertyInput!
+  ): CreateRepositoryCustomPropertyPayload
+  createRepositoryRuleset(
+    input: CreateRepositoryRulesetInput!
+  ): CreateRepositoryRulesetPayload
+  createSponsorsListing(
+    input: CreateSponsorsListingInput!
+  ): CreateSponsorsListingPayload
+  createSponsorsTier(
+    input: CreateSponsorsTierInput!
+  ): CreateSponsorsTierPayload
+  createSponsorship(
+    input: CreateSponsorshipInput!
+  ): CreateSponsorshipPayload
+  createSponsorships(
+    input: CreateSponsorshipsInput!
+  ): CreateSponsorshipsPayload
+  createUserList(
+    input: CreateUserListInput!
+  ): CreateUserListPayload
+  declineTopicSuggestion(
+    input: DeclineTopicSuggestionInput!
+  ): DeclineTopicSuggestionPayload
+  deleteBranchProtectionRule(
+    input: DeleteBranchProtectionRuleInput!
+  ): DeleteBranchProtectionRulePayload
+  deleteDeployment(
+    input: DeleteDeploymentInput!
+  ): DeleteDeploymentPayload
+  deleteDiscussion(
+    input: DeleteDiscussionInput!
+  ): DeleteDiscussionPayload
+  deleteDiscussionComment(
+    input: DeleteDiscussionCommentInput!
+  ): DeleteDiscussionCommentPayload
+  deleteEnvironment(
+    input: DeleteEnvironmentInput!
+  ): DeleteEnvironmentPayload
+  deleteIpAllowListEntry(
+    input: DeleteIpAllowListEntryInput!
+  ): DeleteIpAllowListEntryPayload
+  deleteIssue(
+    input: DeleteIssueInput!
+  ): DeleteIssuePayload
+  deleteIssueComment(
+    input: DeleteIssueCommentInput!
+  ): DeleteIssueCommentPayload
+  deleteIssueField(
+    input: DeleteIssueFieldInput!
+  ): DeleteIssueFieldPayload
+  deleteIssueFieldValue(
+    input: DeleteIssueFieldValueInput!
+  ): DeleteIssueFieldValuePayload
+  deleteIssueType(
+    input: DeleteIssueTypeInput!
+  ): DeleteIssueTypePayload
+  deleteLabel(
+    input: DeleteLabelInput!
+  ): DeleteLabelPayload
+  deleteLinkedBranch(
+    input: DeleteLinkedBranchInput!
+  ): DeleteLinkedBranchPayload
+  deletePackageVersion(
+    input: DeletePackageVersionInput!
+  ): DeletePackageVersionPayload
+  deleteProject(
+    input: DeleteProjectInput!
+  ): DeleteProjectPayload
+  deleteProjectCard(
+    input: DeleteProjectCardInput!
+  ): DeleteProjectCardPayload
+  deleteProjectColumn(
+    input: DeleteProjectColumnInput!
+  ): DeleteProjectColumnPayload
+  deleteProjectV2(
+    input: DeleteProjectV2Input!
+  ): DeleteProjectV2Payload
+  deleteProjectV2Field(
+    input: DeleteProjectV2FieldInput!
+  ): DeleteProjectV2FieldPayload
+  deleteProjectV2Item(
+    input: DeleteProjectV2ItemInput!
+  ): DeleteProjectV2ItemPayload
+  deleteProjectV2StatusUpdate(
+    input: DeleteProjectV2StatusUpdateInput!
+  ): DeleteProjectV2StatusUpdatePayload
+  deleteProjectV2View(
+    input: DeleteProjectV2ViewInput!
+  ): DeleteProjectV2ViewPayload
+  deleteProjectV2Workflow(
+    input: DeleteProjectV2WorkflowInput!
+  ): DeleteProjectV2WorkflowPayload
+  deletePullRequestReview(
+    input: DeletePullRequestReviewInput!
+  ): DeletePullRequestReviewPayload
+  deletePullRequestReviewComment(
+    input: DeletePullRequestReviewCommentInput!
+  ): DeletePullRequestReviewCommentPayload
+  deleteRef(
+    input: DeleteRefInput!
+  ): DeleteRefPayload
+  deleteRepositoryCustomProperty(
+    input: DeleteRepositoryCustomPropertyInput!
+  ): DeleteRepositoryCustomPropertyPayload
+  deleteRepositoryRuleset(
+    input: DeleteRepositoryRulesetInput!
+  ): DeleteRepositoryRulesetPayload
+  deleteUserList(
+    input: DeleteUserListInput!
+  ): DeleteUserListPayload
+  deleteVerifiableDomain(
+    input: DeleteVerifiableDomainInput!
+  ): DeleteVerifiableDomainPayload
+  dequeuePullRequest(
+    input: DequeuePullRequestInput!
+  ): DequeuePullRequestPayload
+  disablePullRequestAutoMerge(
+    input: DisablePullRequestAutoMergeInput!
+  ): DisablePullRequestAutoMergePayload
+  dismissPullRequestReview(
+    input: DismissPullRequestReviewInput!
+  ): DismissPullRequestReviewPayload
+  dismissRepositoryVulnerabilityAlert(
+    input: DismissRepositoryVulnerabilityAlertInput!
+  ): DismissRepositoryVulnerabilityAlertPayload
+  enablePullRequestAutoMerge(
+    input: EnablePullRequestAutoMergeInput!
+  ): EnablePullRequestAutoMergePayload
+  enqueuePullRequest(
+    input: EnqueuePullRequestInput!
+  ): EnqueuePullRequestPayload
+  followOrganization(
+    input: FollowOrganizationInput!
+  ): FollowOrganizationPayload
+  followUser(
+    input: FollowUserInput!
+  ): FollowUserPayload
+  grantEnterpriseOrganizationsMigratorRole(
+    input: GrantEnterpriseOrganizationsMigratorRoleInput!
+  ): GrantEnterpriseOrganizationsMigratorRolePayload
+  grantMigratorRole(
+    input: GrantMigratorRoleInput!
+  ): GrantMigratorRolePayload
+  importProject(
+    input: ImportProjectInput!
+  ): ImportProjectPayload
+  inviteEnterpriseAdmin(
+    input: InviteEnterpriseAdminInput!
+  ): InviteEnterpriseAdminPayload
+  inviteEnterpriseMember(
+    input: InviteEnterpriseMemberInput!
+  ): InviteEnterpriseMemberPayload
+  linkProjectV2ToRepository(
+    input: LinkProjectV2ToRepositoryInput!
+  ): LinkProjectV2ToRepositoryPayload
+  linkProjectV2ToTeam(
+    input: LinkProjectV2ToTeamInput!
+  ): LinkProjectV2ToTeamPayload
+  linkRepositoryToProject(
+    input: LinkRepositoryToProjectInput!
+  ): LinkRepositoryToProjectPayload
+  lockLockable(
+    input: LockLockableInput!
+  ): LockLockablePayload
+  markDiscussionCommentAsAnswer(
+    input: MarkDiscussionCommentAsAnswerInput!
+  ): MarkDiscussionCommentAsAnswerPayload
+  markFileAsViewed(
+    input: MarkFileAsViewedInput!
+  ): MarkFileAsViewedPayload
+  markProjectV2AsTemplate(
+    input: MarkProjectV2AsTemplateInput!
+  ): MarkProjectV2AsTemplatePayload
+  markPullRequestReadyForReview(
+    input: MarkPullRequestReadyForReviewInput!
+  ): MarkPullRequestReadyForReviewPayload
+  mergeBranch(
+    input: MergeBranchInput!
+  ): MergeBranchPayload
+  mergePullRequest(
+    input: MergePullRequestInput!
+  ): MergePullRequestPayload
+  minimizeComment(
+    input: MinimizeCommentInput!
+  ): MinimizeCommentPayload
+  moveProjectCard(
+    input: MoveProjectCardInput!
+  ): MoveProjectCardPayload
+  moveProjectColumn(
+    input: MoveProjectColumnInput!
+  ): MoveProjectColumnPayload
+  pinEnvironment(
+    input: PinEnvironmentInput!
+  ): PinEnvironmentPayload
+  pinIssue(
+    input: PinIssueInput!
+  ): PinIssuePayload
+  pinIssueComment(
+    input: PinIssueCommentInput!
+  ): PinIssueCommentPayload
+  promoteRepositoryCustomProperty(
+    input: PromoteRepositoryCustomPropertyInput!
+  ): PromoteRepositoryCustomPropertyPayload
+  publishSponsorsTier(
+    input: PublishSponsorsTierInput!
+  ): PublishSponsorsTierPayload
+  regenerateEnterpriseIdentityProviderRecoveryCodes(
+    input: RegenerateEnterpriseIdentityProviderRecoveryCodesInput!
+  ): RegenerateEnterpriseIdentityProviderRecoveryCodesPayload
+  regenerateVerifiableDomainToken(
+    input: RegenerateVerifiableDomainTokenInput!
+  ): RegenerateVerifiableDomainTokenPayload
+  rejectDeployments(
+    input: RejectDeploymentsInput!
+  ): RejectDeploymentsPayload
+  rejectPendingIssueSuggestions(
+    input: RejectPendingIssueSuggestionsInput!
+  ): RejectPendingIssueSuggestionsPayload
+  removeAssigneesFromAssignable(
+    input: RemoveAssigneesFromAssignableInput!
+  ): RemoveAssigneesFromAssignablePayload
+  removeBlockedBy(
+    input: RemoveBlockedByInput!
+  ): RemoveBlockedByPayload
+  removeEnterpriseAdmin(
+    input: RemoveEnterpriseAdminInput!
+  ): RemoveEnterpriseAdminPayload
+  removeEnterpriseIdentityProvider(
+    input: RemoveEnterpriseIdentityProviderInput!
+  ): RemoveEnterpriseIdentityProviderPayload
+  removeEnterpriseMember(
+    input: RemoveEnterpriseMemberInput!
+  ): RemoveEnterpriseMemberPayload
+  removeEnterpriseOrganization(
+    input: RemoveEnterpriseOrganizationInput!
+  ): RemoveEnterpriseOrganizationPayload
+  removeEnterpriseSupportEntitlement(
+    input: RemoveEnterpriseSupportEntitlementInput!
+  ): RemoveEnterpriseSupportEntitlementPayload
+  removeLabelsFromLabelable(
+    input: RemoveLabelsFromLabelableInput!
+  ): RemoveLabelsFromLabelablePayload
+  removeOutsideCollaborator(
+    input: RemoveOutsideCollaboratorInput!
+  ): RemoveOutsideCollaboratorPayload
+  removePullRequestCreationCapBypassUsers(
+    input: RemovePullRequestCreationCapBypassUsersInput!
+  ): RemovePullRequestCreationCapBypassUsersPayload
+  removeReaction(
+    input: RemoveReactionInput!
+  ): RemoveReactionPayload
+  removeStar(
+    input: RemoveStarInput!
+  ): RemoveStarPayload
+  removeSubIssue(
+    input: RemoveSubIssueInput!
+  ): RemoveSubIssuePayload
+  removeUpvote(
+    input: RemoveUpvoteInput!
+  ): RemoveUpvotePayload
+  reopenDiscussion(
+    input: ReopenDiscussionInput!
+  ): ReopenDiscussionPayload
+  reopenIssue(
+    input: ReopenIssueInput!
+  ): ReopenIssuePayload
+  reopenPullRequest(
+    input: ReopenPullRequestInput!
+  ): ReopenPullRequestPayload
+  reorderEnvironment(
+    input: ReorderEnvironmentInput!
+  ): ReorderEnvironmentPayload
+  replaceActorsForAssignable(
+    input: ReplaceActorsForAssignableInput!
+  ): ReplaceActorsForAssignablePayload
+  reprioritizeSubIssue(
+    input: ReprioritizeSubIssueInput!
+  ): ReprioritizeSubIssuePayload
+  requestReviews(
+    input: RequestReviewsInput!
+  ): RequestReviewsPayload
+  requestReviewsByLogin(
+    input: RequestReviewsByLoginInput!
+  ): RequestReviewsByLoginPayload
+  rerequestCheckSuite(
+    input: RerequestCheckSuiteInput!
+  ): RerequestCheckSuitePayload
+  resolveReviewThread(
+    input: ResolveReviewThreadInput!
+  ): ResolveReviewThreadPayload
+  retireSponsorsTier(
+    input: RetireSponsorsTierInput!
+  ): RetireSponsorsTierPayload
+  revertPullRequest(
+    input: RevertPullRequestInput!
+  ): RevertPullRequestPayload
+  revokeEnterpriseOrganizationsMigratorRole(
+    input: RevokeEnterpriseOrganizationsMigratorRoleInput!
+  ): RevokeEnterpriseOrganizationsMigratorRolePayload
+  revokeMigratorRole(
+    input: RevokeMigratorRoleInput!
+  ): RevokeMigratorRolePayload
+  setEnterpriseIdentityProvider(
+    input: SetEnterpriseIdentityProviderInput!
+  ): SetEnterpriseIdentityProviderPayload
+  setIssueFieldValue(
+    input: SetIssueFieldValueInput!
+  ): SetIssueFieldValuePayload
+  setOrganizationInteractionLimit(
+    input: SetOrganizationInteractionLimitInput!
+  ): SetOrganizationInteractionLimitPayload
+  setRepositoryCustomPropertyValues(
+    input: SetRepositoryCustomPropertyValuesInput!
+  ): SetRepositoryCustomPropertyValuesPayload
+  setRepositoryInteractionLimit(
+    input: SetRepositoryInteractionLimitInput!
+  ): SetRepositoryInteractionLimitPayload
+  setUserInteractionLimit(
+    input: SetUserInteractionLimitInput!
+  ): SetUserInteractionLimitPayload
+  startOrganizationMigration(
+    input: StartOrganizationMigrationInput!
+  ): StartOrganizationMigrationPayload
+  startRepositoryMigration(
+    input: StartRepositoryMigrationInput!
+  ): StartRepositoryMigrationPayload
+  submitPullRequestReview(
+    input: SubmitPullRequestReviewInput!
+  ): SubmitPullRequestReviewPayload
+  transferEnterpriseOrganization(
+    input: TransferEnterpriseOrganizationInput!
+  ): TransferEnterpriseOrganizationPayload
+  transferIssue(
+    input: TransferIssueInput!
+  ): TransferIssuePayload
+  unarchiveProjectV2Item(
+    input: UnarchiveProjectV2ItemInput!
+  ): UnarchiveProjectV2ItemPayload
+  unarchivePullRequest(
+    input: UnarchivePullRequestInput!
+  ): UnarchivePullRequestPayload
+  unarchiveRepository(
+    input: UnarchiveRepositoryInput!
+  ): UnarchiveRepositoryPayload
+  unfollowOrganization(
+    input: UnfollowOrganizationInput!
+  ): UnfollowOrganizationPayload
+  unfollowUser(
+    input: UnfollowUserInput!
+  ): UnfollowUserPayload
+  unlinkProjectV2FromRepository(
+    input: UnlinkProjectV2FromRepositoryInput!
+  ): UnlinkProjectV2FromRepositoryPayload
+  unlinkProjectV2FromTeam(
+    input: UnlinkProjectV2FromTeamInput!
+  ): UnlinkProjectV2FromTeamPayload
+  unlinkRepositoryFromProject(
+    input: UnlinkRepositoryFromProjectInput!
+  ): UnlinkRepositoryFromProjectPayload
+  unlockLockable(
+    input: UnlockLockableInput!
+  ): UnlockLockablePayload
+  unmarkDiscussionCommentAsAnswer(
+    input: UnmarkDiscussionCommentAsAnswerInput!
+  ): UnmarkDiscussionCommentAsAnswerPayload
+  unmarkFileAsViewed(
+    input: UnmarkFileAsViewedInput!
+  ): UnmarkFileAsViewedPayload
+  unmarkIssueAsDuplicate(
+    input: UnmarkIssueAsDuplicateInput!
+  ): UnmarkIssueAsDuplicatePayload
+  unmarkProjectV2AsTemplate(
+    input: UnmarkProjectV2AsTemplateInput!
+  ): UnmarkProjectV2AsTemplatePayload
+  unminimizeComment(
+    input: UnminimizeCommentInput!
+  ): UnminimizeCommentPayload
+  unpinIssue(
+    input: UnpinIssueInput!
+  ): UnpinIssuePayload
+  unpinIssueComment(
+    input: UnpinIssueCommentInput!
+  ): UnpinIssueCommentPayload
+  unresolveReviewThread(
+    input: UnresolveReviewThreadInput!
+  ): UnresolveReviewThreadPayload
+  updateBranchProtectionRule(
+    input: UpdateBranchProtectionRuleInput!
+  ): UpdateBranchProtectionRulePayload
+  updateCheckRun(
+    input: UpdateCheckRunInput!
+  ): UpdateCheckRunPayload
+  updateCheckSuitePreferences(
+    input: UpdateCheckSuitePreferencesInput!
+  ): UpdateCheckSuitePreferencesPayload
+  updateDiscussion(
+    input: UpdateDiscussionInput!
+  ): UpdateDiscussionPayload
+  updateDiscussionComment(
+    input: UpdateDiscussionCommentInput!
+  ): UpdateDiscussionCommentPayload
+  updateEnterpriseAdministratorRole(
+    input: UpdateEnterpriseAdministratorRoleInput!
+  ): UpdateEnterpriseAdministratorRolePayload
+  updateEnterpriseAllowPrivateRepositoryForkingSetting(
+    input: UpdateEnterpriseAllowPrivateRepositoryForkingSettingInput!
+  ): UpdateEnterpriseAllowPrivateRepositoryForkingSettingPayload
+  updateEnterpriseDefaultRepositoryPermissionSetting(
+    input: UpdateEnterpriseDefaultRepositoryPermissionSettingInput!
+  ): UpdateEnterpriseDefaultRepositoryPermissionSettingPayload
+  updateEnterpriseDeployKeySetting(
+    input: UpdateEnterpriseDeployKeySettingInput!
+  ): UpdateEnterpriseDeployKeySettingPayload
+  updateEnterpriseMembersCanChangeRepositoryVisibilitySetting(
+    input: UpdateEnterpriseMembersCanChangeRepositoryVisibilitySettingInput!
+  ): UpdateEnterpriseMembersCanChangeRepositoryVisibilitySettingPayload
+  updateEnterpriseMembersCanCreateRepositoriesSetting(
+    input: UpdateEnterpriseMembersCanCreateRepositoriesSettingInput!
+  ): UpdateEnterpriseMembersCanCreateRepositoriesSettingPayload
+  updateEnterpriseMembersCanDeleteIssuesSetting(
+    input: UpdateEnterpriseMembersCanDeleteIssuesSettingInput!
+  ): UpdateEnterpriseMembersCanDeleteIssuesSettingPayload
+  updateEnterpriseMembersCanDeleteRepositoriesSetting(
+    input: UpdateEnterpriseMembersCanDeleteRepositoriesSettingInput!
+  ): UpdateEnterpriseMembersCanDeleteRepositoriesSettingPayload
+  updateEnterpriseMembersCanInviteCollaboratorsSetting(
+    input: UpdateEnterpriseMembersCanInviteCollaboratorsSettingInput!
+  ): UpdateEnterpriseMembersCanInviteCollaboratorsSettingPayload
+  updateEnterpriseMembersCanMakePurchasesSetting(
+    input: UpdateEnterpriseMembersCanMakePurchasesSettingInput!
+  ): UpdateEnterpriseMembersCanMakePurchasesSettingPayload
+  updateEnterpriseMembersCanUpdateProtectedBranchesSetting(
+    input: UpdateEnterpriseMembersCanUpdateProtectedBranchesSettingInput!
+  ): UpdateEnterpriseMembersCanUpdateProtectedBranchesSettingPayload
+  updateEnterpriseMembersCanViewDependencyInsightsSetting(
+    input: UpdateEnterpriseMembersCanViewDependencyInsightsSettingInput!
+  ): UpdateEnterpriseMembersCanViewDependencyInsightsSettingPayload
+  updateEnterpriseOrganizationProjectsSetting(
+    input: UpdateEnterpriseOrganizationProjectsSettingInput!
+  ): UpdateEnterpriseOrganizationProjectsSettingPayload
+  updateEnterpriseOwnerOrganizationRole(
+    input: UpdateEnterpriseOwnerOrganizationRoleInput!
+  ): UpdateEnterpriseOwnerOrganizationRolePayload
+  updateEnterpriseProfile(
+    input: UpdateEnterpriseProfileInput!
+  ): UpdateEnterpriseProfilePayload
+  updateEnterpriseProofOfPresenceRequiredSetting(
+    input: UpdateEnterpriseProofOfPresenceRequiredSettingInput!
+  ): UpdateEnterpriseProofOfPresenceRequiredSettingPayload
+  updateEnterpriseRepositoryProjectsSetting(
+    input: UpdateEnterpriseRepositoryProjectsSettingInput!
+  ): UpdateEnterpriseRepositoryProjectsSettingPayload
+  updateEnterpriseTwoFactorAuthenticationDisallowedMethodsSetting(
+    input: UpdateEnterpriseTwoFactorAuthenticationDisallowedMethodsSettingInput!
+  ): UpdateEnterpriseTwoFactorAuthenticationDisallowedMethodsSettingPayload
+  updateEnterpriseTwoFactorAuthenticationRequiredSetting(
+    input: UpdateEnterpriseTwoFactorAuthenticationRequiredSettingInput!
+  ): UpdateEnterpriseTwoFactorAuthenticationRequiredSettingPayload
+  updateEnvironment(
+    input: UpdateEnvironmentInput!
+  ): UpdateEnvironmentPayload
+  updateIpAllowListEnabledSetting(
+    input: UpdateIpAllowListEnabledSettingInput!
+  ): UpdateIpAllowListEnabledSettingPayload
+  updateIpAllowListEntry(
+    input: UpdateIpAllowListEntryInput!
+  ): UpdateIpAllowListEntryPayload
+  updateIpAllowListForInstalledAppsEnabledSetting(
+    input: UpdateIpAllowListForInstalledAppsEnabledSettingInput!
+  ): UpdateIpAllowListForInstalledAppsEnabledSettingPayload
+  updateIpAllowListUserLevelEnforcementEnabledSetting(
+    input: UpdateIpAllowListUserLevelEnforcementEnabledSettingInput!
+  ): UpdateIpAllowListUserLevelEnforcementEnabledSettingPayload
+  updateIssue(
+    input: UpdateIssueInput!
+  ): UpdateIssuePayload
+  updateIssueComment(
+    input: UpdateIssueCommentInput!
+  ): UpdateIssueCommentPayload
+  updateIssueField(
+    input: UpdateIssueFieldInput!
+  ): UpdateIssueFieldPayload
+  updateIssueFieldValue(
+    input: UpdateIssueFieldValueInput!
+  ): UpdateIssueFieldValuePayload
+  updateIssueIssueType(
+    input: UpdateIssueIssueTypeInput!
+  ): UpdateIssueIssueTypePayload
+  updateIssueType(
+    input: UpdateIssueTypeInput!
+  ): UpdateIssueTypePayload
+  updateLabel(
+    input: UpdateLabelInput!
+  ): UpdateLabelPayload
+  updateNotificationRestrictionSetting(
+    input: UpdateNotificationRestrictionSettingInput!
+  ): UpdateNotificationRestrictionSettingPayload
+  updateOrganizationAllowPrivateRepositoryForkingSetting(
+    input: UpdateOrganizationAllowPrivateRepositoryForkingSettingInput!
+  ): UpdateOrganizationAllowPrivateRepositoryForkingSettingPayload
+  updateOrganizationWebCommitSignoffSetting(
+    input: UpdateOrganizationWebCommitSignoffSettingInput!
+  ): UpdateOrganizationWebCommitSignoffSettingPayload
+  updatePatreonSponsorability(
+    input: UpdatePatreonSponsorabilityInput!
+  ): UpdatePatreonSponsorabilityPayload
+  updateProject(
+    input: UpdateProjectInput!
+  ): UpdateProjectPayload
+  updateProjectCard(
+    input: UpdateProjectCardInput!
+  ): UpdateProjectCardPayload
+  updateProjectColumn(
+    input: UpdateProjectColumnInput!
+  ): UpdateProjectColumnPayload
+  updateProjectV2(
+    input: UpdateProjectV2Input!
+  ): UpdateProjectV2Payload
+  updateProjectV2Collaborators(
+    input: UpdateProjectV2CollaboratorsInput!
+  ): UpdateProjectV2CollaboratorsPayload
+  updateProjectV2DraftIssue(
+    input: UpdateProjectV2DraftIssueInput!
+  ): UpdateProjectV2DraftIssuePayload
+  updateProjectV2Field(
+    input: UpdateProjectV2FieldInput!
+  ): UpdateProjectV2FieldPayload
+  updateProjectV2ItemFieldValue(
+    input: UpdateProjectV2ItemFieldValueInput!
+  ): UpdateProjectV2ItemFieldValuePayload
+  updateProjectV2ItemPosition(
+    input: UpdateProjectV2ItemPositionInput!
+  ): UpdateProjectV2ItemPositionPayload
+  updateProjectV2StatusUpdate(
+    input: UpdateProjectV2StatusUpdateInput!
+  ): UpdateProjectV2StatusUpdatePayload
+  updateProjectV2View(
+    input: UpdateProjectV2ViewInput!
+  ): UpdateProjectV2ViewPayload
+  updatePullRequest(
+    input: UpdatePullRequestInput!
+  ): UpdatePullRequestPayload
+  updatePullRequestBranch(
+    input: UpdatePullRequestBranchInput!
+  ): UpdatePullRequestBranchPayload
+  updatePullRequestReview(
+    input: UpdatePullRequestReviewInput!
+  ): UpdatePullRequestReviewPayload
+  updatePullRequestReviewComment(
+    input: UpdatePullRequestReviewCommentInput!
+  ): UpdatePullRequestReviewCommentPayload
+  updateRef(
+    input: UpdateRefInput!
+  ): UpdateRefPayload
+  updateRefs(
+    input: UpdateRefsInput!
+  ): UpdateRefsPayload
+  updateRepository(
+    input: UpdateRepositoryInput!
+  ): UpdateRepositoryPayload
+  updateRepositoryCustomProperty(
+    input: UpdateRepositoryCustomPropertyInput!
+  ): UpdateRepositoryCustomPropertyPayload
+  updateRepositoryRuleset(
+    input: UpdateRepositoryRulesetInput!
+  ): UpdateRepositoryRulesetPayload
+  updateRepositoryWebCommitSignoffSetting(
+    input: UpdateRepositoryWebCommitSignoffSettingInput!
+  ): UpdateRepositoryWebCommitSignoffSettingPayload
+  updateSponsorshipPreferences(
+    input: UpdateSponsorshipPreferencesInput!
+  ): UpdateSponsorshipPreferencesPayload
+  updateSubscription(
+    input: UpdateSubscriptionInput!
+  ): UpdateSubscriptionPayload
+  updateTeamReviewAssignment(
+    input: UpdateTeamReviewAssignmentInput!
+  ): UpdateTeamReviewAssignmentPayload
+  updateTeamsRepository(
+    input: UpdateTeamsRepositoryInput!
+  ): UpdateTeamsRepositoryPayload
+  updateTopics(
+    input: UpdateTopicsInput!
+  ): UpdateTopicsPayload
+  updateUserList(
+    input: UpdateUserListInput!
+  ): UpdateUserListPayload
+  updateUserListsForItem(
+    input: UpdateUserListsForItemInput!
+  ): UpdateUserListsForItemPayload
+  verifyVerifiableDomain(
+    input: VerifyVerifiableDomainInput!
+  ): VerifyVerifiableDomainPayload
+}
+
+interface Node {
+  id: ID!
+}
+
+interface Actor {
+  avatarUrl(
+    size: Int
+  ): URI!
+  login: String!
+  resourcePath: URI!
+  url: URI!
+}
+
+type User implements Actor & Agentic & Node & PackageOwner & ProfileOwner & ProjectOwner & ProjectV2Owner & ProjectV2Recent & RepositoryDiscussionAuthor & RepositoryDiscussionCommentAuthor & RepositoryOwner & Sponsorable & UniformResourceLocatable
+  {
+  anyPinnableItems(
+    type: PinnableItemType
+  ): Boolean!
+  avatarUrl(
+    size: Int
+  ): URI!
+  bio: String
+  bioHTML: HTML!
+  canReceiveOrganizationEmailsWhenNotificationsRestricted(
+    login: String!
+  ): Boolean!
+  commitComments(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): CommitCommentConnection!
+  company: String
+  companyHTML: HTML!
+  contributionsCollection(
+    from: DateTime
+    organizationID: ID
+    to: DateTime
+  ): ContributionsCollection!
+  copilotEndpoints: CopilotEndpoints
+  createdAt: DateTime!
+  databaseId: Int
+  email: String!
+  enterprises(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    membershipType: EnterpriseMembershipType = ALL
+    orderBy: EnterpriseOrder = {field: NAME, direction: ASC}
+  ): EnterpriseConnection
+  estimatedNextSponsorsPayoutInCents: Int!
+  followers(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): FollowerConnection!
+  following(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): FollowingConnection!
+  gist(
+    name: String!
+  ): Gist
+  gistComments(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): GistCommentConnection!
+  gists(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: GistOrder
+    privacy: GistPrivacy
+  ): GistConnection!
+  hasSponsorsListing: Boolean!
+  hovercard(
+    primarySubjectId: ID
+  ): Hovercard!
+  id: ID!
+  interactionAbility: RepositoryInteractionAbility
+  isBountyHunter: Boolean!
+  isCampusExpert: Boolean!
+  isDeveloperProgramMember: Boolean!
+  isEmployee: Boolean!
+  isFollowingViewer: Boolean!
+  isGitHubStar: Boolean!
+  isHireable: Boolean!
+  isSiteAdmin: Boolean!
+  isSponsoredBy(
+    accountLogin: String!
+  ): Boolean!
+  isSponsoringViewer: Boolean!
+  isViewer: Boolean!
+  issueComments(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: IssueCommentOrder
+  ): IssueCommentConnection!
+  issues(
+    after: String
+    before: String
+    filterBy: IssueFilters
+    first: Int
+    labels: [String!]
+    last: Int
+    orderBy: IssueOrder
+    states: [IssueState!]
+  ): IssueConnection!
+  itemShowcase: ProfileItemShowcase!
+  lifetimeReceivedSponsorshipValues(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: SponsorAndLifetimeValueOrder = {field: SPONSOR_LOGIN, direction: ASC}
+  ): SponsorAndLifetimeValueConnection!
+  lists(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): UserListConnection!
+  location: String
+  login: String!
+  monthlyEstimatedSponsorsIncomeInCents: Int!
+  name: String
+  organization(
+    login: String!
+  ): Organization
+  organizationVerifiedDomainEmails(
+    login: String!
+  ): [String!]!
+  organizations(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: OrganizationOrder = null
+  ): OrganizationConnection!
+  packages(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    names: [String]
+    orderBy: PackageOrder = {field: CREATED_AT, direction: DESC}
+    packageType: PackageType
+    repositoryId: ID
+  ): PackageConnection!
+  pinnableItems(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    types: [PinnableItemType!]
+  ): PinnableItemConnection!
+  pinnedItems(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    types: [PinnableItemType!]
+  ): PinnableItemConnection!
+  pinnedItemsRemaining: Int!
+  project(
+    number: Int!
+  ): Project
+  projectV2(
+    number: Int!
+  ): ProjectV2
+  projects(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: ProjectOrder
+    search: String
+    states: [ProjectState!]
+  ): ProjectConnection!
+  projectsResourcePath: URI!
+  projectsUrl: URI!
+  projectsV2(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    minPermissionLevel: ProjectV2PermissionLevel = READ
+    orderBy: ProjectV2Order = {field: NUMBER, direction: DESC}
+    query: String
+  ): ProjectV2Connection!
+  pronouns: String
+  publicKeys(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): PublicKeyConnection!
+  pullRequests(
+    after: String
+    baseRefName: String
+    before: String
+    first: Int
+    headRefName: String
+    labels: [String!]
+    last: Int
+    orderBy: IssueOrder
+    states: [PullRequestState!]
+  ): PullRequestConnection!
+  recentProjects(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): ProjectV2Connection!
+  repositories(
+    affiliations: [RepositoryAffiliation]
+    after: String
+    before: String
+    first: Int
+    hasIssuesEnabled: Boolean
+    isArchived: Boolean
+    isFork: Boolean
+    isLocked: Boolean
+    last: Int
+    orderBy: RepositoryOrder
+    ownerAffiliations: [RepositoryAffiliation] = [OWNER, COLLABORATOR]
+    privacy: RepositoryPrivacy
+    visibility: RepositoryVisibility
+  ): RepositoryConnection!
+  repositoriesContributedTo(
+    after: String
+    before: String
+    contributionTypes: [RepositoryContributionType]
+    first: Int
+    hasIssues: Boolean
+    includeUserRepositories: Boolean
+    isLocked: Boolean
+    last: Int
+    orderBy: RepositoryOrder
+    privacy: RepositoryPrivacy
+  ): RepositoryConnection!
+  repository(
+    followRenames: Boolean = true
+    name: String!
+  ): Repository
+  repositoryDiscussionComments(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    onlyAnswers: Boolean = false
+    repositoryId: ID
+  ): DiscussionCommentConnection!
+  repositoryDiscussions(
+    after: String
+    answered: Boolean = null
+    before: String
+    first: Int
+    last: Int
+    orderBy: DiscussionOrder = {field: CREATED_AT, direction: DESC}
+    repositoryId: ID
+    states: [DiscussionState!] = []
+  ): DiscussionConnection!
+  resourcePath: URI!
+  savedReplies(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: SavedReplyOrder = {field: UPDATED_AT, direction: DESC}
+  ): SavedReplyConnection
+  socialAccounts(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): SocialAccountConnection!
+  sponsoring(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: SponsorOrder = {field: RELEVANCE, direction: DESC}
+  ): SponsorConnection!
+  sponsors(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: SponsorOrder = {field: RELEVANCE, direction: DESC}
+    tierId: ID
+  ): SponsorConnection!
+  sponsorsActivities(
+    actions: [SponsorsActivityAction!] = []
+    after: String
+    before: String
+    first: Int
+    includeAsSponsor: Boolean = false
+    includePrivate: Boolean = true
+    last: Int
+    orderBy: SponsorsActivityOrder = {field: TIMESTAMP, direction: DESC}
+    period: SponsorsActivityPeriod = MONTH
+    since: DateTime
+    until: DateTime
+  ): SponsorsActivityConnection!
+  sponsorsListing: SponsorsListing
+  sponsorshipForViewerAsSponsor(
+    activeOnly: Boolean = true
+  ): Sponsorship
+  sponsorshipForViewerAsSponsorable(
+    activeOnly: Boolean = true
+  ): Sponsorship
+  sponsorshipNewsletters(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: SponsorshipNewsletterOrder = {field: CREATED_AT, direction: DESC}
+  ): SponsorshipNewsletterConnection!
+  sponsorshipsAsMaintainer(
+    activeOnly: Boolean = true
+    after: String
+    before: String
+    first: Int
+    includePrivate: Boolean = false
+    last: Int
+    orderBy: SponsorshipOrder
+  ): SponsorshipConnection!
+  sponsorshipsAsSponsor(
+    activeOnly: Boolean = true
+    after: String
+    before: String
+    first: Int
+    last: Int
+    maintainerLogins: [String!]
+    orderBy: SponsorshipOrder
+  ): SponsorshipConnection!
+  starredRepositories(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: StarOrder
+    ownedByViewer: Boolean
+  ): StarredRepositoryConnection!
+  status: UserStatus
+  suggestedListNames: [UserListSuggestion!]!
+  topRepositories(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: RepositoryOrder!
+    since: DateTime
+  ): RepositoryConnection!
+  totalSponsorshipAmountAsSponsorInCents(
+    since: DateTime
+    sponsorableLogins: [String!] = []
+    until: DateTime
+  ): Int
+  twitterUsername: String
+  updatedAt: DateTime!
+  url: URI!
+  userViewType: UserViewType!
+  viewerCanChangePinnedItems: Boolean!
+  viewerCanCreateProjects: Boolean!
+  viewerCanFollow: Boolean!
+  viewerCanSponsor: Boolean!
+  viewerCopilotAgentCreatesChannel: String
+  viewerCopilotAgentLogUpdatesChannel: String
+  viewerCopilotAgentTaskUpdatesChannel: String
+  viewerCopilotAgentUpdatesChannel: String
+  viewerIsFollowing: Boolean!
+  viewerIsSponsoring: Boolean!
+  watching(
+    affiliations: [RepositoryAffiliation]
+    after: String
+    before: String
+    first: Int
+    hasIssuesEnabled: Boolean
+    isLocked: Boolean
+    last: Int
+    orderBy: RepositoryOrder
+    ownerAffiliations: [RepositoryAffiliation] = [OWNER, COLLABORATOR]
+    privacy: RepositoryPrivacy
+    visibility: RepositoryVisibility
+  ): RepositoryConnection!
+  websiteUrl: URI
+}
+
+type Bot implements Actor & Node & UniformResourceLocatable {
+  avatarUrl(
+    size: Int
+  ): URI!
+  createdAt: DateTime!
+  databaseId: Int
+  id: ID!
+  login: String!
+  resourcePath: URI!
+  updatedAt: DateTime!
+  url: URI!
+}
+
+type Mannequin implements Actor & Node & UniformResourceLocatable {
+  avatarUrl(
+    size: Int
+  ): URI!
+  claimant: User
+  createdAt: DateTime!
+  databaseId: Int
+  email: String
+  id: ID!
+  login: String!
+  name: String
+  resourcePath: URI!
+  updatedAt: DateTime!
+  url: URI!
+}
+
+type Organization implements Actor & MemberStatusable & Node & PackageOwner & ProfileOwner & ProjectOwner & ProjectV2Owner & ProjectV2Recent & RepositoryDiscussionAuthor & RepositoryDiscussionCommentAuthor & RepositoryOwner & Sponsorable & UniformResourceLocatable
+  {
+  announcementBanner: AnnouncementBanner
+  anyPinnableItems(
+    type: PinnableItemType
+  ): Boolean!
+  archivedAt: DateTime
+  auditLog(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: AuditLogOrder = {field: CREATED_AT, direction: DESC}
+    query: String
+  ): OrganizationAuditEntryConnection!
+  avatarUrl(
+    size: Int
+  ): URI!
+  createdAt: DateTime!
+  databaseId: Int
+  description: String
+  descriptionHTML: String
+  domains(
+    after: String
+    before: String
+    first: Int
+    isApproved: Boolean = null
+    isVerified: Boolean = null
+    last: Int
+    orderBy: VerifiableDomainOrder = {field: DOMAIN, direction: ASC}
+  ): VerifiableDomainConnection
+  email: String
+  enterpriseOwners(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: OrgEnterpriseOwnerOrder = {field: LOGIN, direction: ASC}
+    organizationRole: RoleInOrganization
+    query: String
+  ): OrganizationEnterpriseOwnerConnection!
+  estimatedNextSponsorsPayoutInCents: Int!
+  hasSponsorsListing: Boolean!
+  id: ID!
+  interactionAbility: RepositoryInteractionAbility
+  ipAllowListEnabledSetting: IpAllowListEnabledSettingValue!
+  ipAllowListEntries(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: IpAllowListEntryOrder = {field: ALLOW_LIST_VALUE, direction: ASC}
+  ): IpAllowListEntryConnection!
+  ipAllowListForInstalledAppsEnabledSetting: IpAllowListForInstalledAppsEnabledSettingValue!
+  isSponsoredBy(
+    accountLogin: String!
+  ): Boolean!
+  isSponsoringViewer: Boolean!
+  isVerified: Boolean!
+  issueFields(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: IssueFieldOrder = {field: CREATED_AT, direction: ASC}
+  ): IssueFieldsConnection
+  issueTypes(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: IssueTypeOrder = {field: CREATED_AT, direction: ASC}
+  ): IssueTypeConnection
+  itemShowcase: ProfileItemShowcase!
+  lifetimeReceivedSponsorshipValues(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: SponsorAndLifetimeValueOrder = {field: SPONSOR_LOGIN, direction: ASC}
+  ): SponsorAndLifetimeValueConnection!
+  location: String
+  login: String!
+  mannequins(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    login: String
+    orderBy: MannequinOrder = {field: CREATED_AT, direction: ASC}
+  ): MannequinConnection!
+  memberStatuses(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: UserStatusOrder = {field: UPDATED_AT, direction: DESC}
+  ): UserStatusConnection!
+  membersCanForkPrivateRepositories: Boolean!
+  membersWithRole(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): OrganizationMemberConnection!
+  monthlyEstimatedSponsorsIncomeInCents: Int!
+  name: String
+  newTeamResourcePath: URI!
+  newTeamUrl: URI!
+  notificationDeliveryRestrictionEnabledSetting: NotificationRestrictionSettingValue!
+  organizationBillingEmail: String
+  packages(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    names: [String]
+    orderBy: PackageOrder = {field: CREATED_AT, direction: DESC}
+    packageType: PackageType
+    repositoryId: ID
+  ): PackageConnection!
+  pendingMembers(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): UserConnection!
+  pinnableItems(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    types: [PinnableItemType!]
+  ): PinnableItemConnection!
+  pinnedItems(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    types: [PinnableItemType!]
+  ): PinnableItemConnection!
+  pinnedItemsRemaining: Int!
+  project(
+    number: Int!
+  ): Project
+  projectV2(
+    number: Int!
+  ): ProjectV2
+  projects(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: ProjectOrder
+    search: String
+    states: [ProjectState!]
+  ): ProjectConnection!
+  projectsResourcePath: URI!
+  projectsUrl: URI!
+  projectsV2(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    minPermissionLevel: ProjectV2PermissionLevel = READ
+    orderBy: ProjectV2Order = {field: NUMBER, direction: DESC}
+    query: String
+  ): ProjectV2Connection!
+  recentProjects(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): ProjectV2Connection!
+  repositories(
+    affiliations: [RepositoryAffiliation]
+    after: String
+    before: String
+    first: Int
+    hasIssuesEnabled: Boolean
+    isArchived: Boolean
+    isFork: Boolean
+    isLocked: Boolean
+    last: Int
+    orderBy: RepositoryOrder
+    ownerAffiliations: [RepositoryAffiliation] = [OWNER, COLLABORATOR]
+    privacy: RepositoryPrivacy
+    visibility: RepositoryVisibility
+  ): RepositoryConnection!
+  repository(
+    followRenames: Boolean = true
+    name: String!
+  ): Repository
+  repositoryCustomProperties(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): RepositoryCustomPropertyConnection
+  repositoryCustomProperty(
+    propertyName: String!
+  ): RepositoryCustomProperty
+  repositoryDiscussionComments(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    onlyAnswers: Boolean = false
+    repositoryId: ID
+  ): DiscussionCommentConnection!
+  repositoryDiscussions(
+    after: String
+    answered: Boolean = null
+    before: String
+    first: Int
+    last: Int
+    orderBy: DiscussionOrder = {field: CREATED_AT, direction: DESC}
+    repositoryId: ID
+    states: [DiscussionState!] = []
+  ): DiscussionConnection!
+  repositoryMigrations(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: RepositoryMigrationOrder = {field: CREATED_AT, direction: ASC}
+    repositoryName: String
+    state: MigrationState
+  ): RepositoryMigrationConnection!
+  requiresTwoFactorAuthentication: Boolean
+  resourcePath: URI!
+  ruleset(
+    databaseId: Int!
+    includeParents: Boolean = true
+  ): RepositoryRuleset
+  rulesets(
+    after: String
+    before: String
+    first: Int
+    includeParents: Boolean = true
+    last: Int
+    targets: [RepositoryRulesetTarget!] = null
+  ): RepositoryRulesetConnection
+  samlIdentityProvider: OrganizationIdentityProvider
+  sponsoring(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: SponsorOrder = {field: RELEVANCE, direction: DESC}
+  ): SponsorConnection!
+  sponsors(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: SponsorOrder = {field: RELEVANCE, direction: DESC}
+    tierId: ID
+  ): SponsorConnection!
+  sponsorsActivities(
+    actions: [SponsorsActivityAction!] = []
+    after: String
+    before: String
+    first: Int
+    includeAsSponsor: Boolean = false
+    includePrivate: Boolean = true
+    last: Int
+    orderBy: SponsorsActivityOrder = {field: TIMESTAMP, direction: DESC}
+    period: SponsorsActivityPeriod = MONTH
+    since: DateTime
+    until: DateTime
+  ): SponsorsActivityConnection!
+  sponsorsListing: SponsorsListing
+  sponsorshipForViewerAsSponsor(
+    activeOnly: Boolean = true
+  ): Sponsorship
+  sponsorshipForViewerAsSponsorable(
+    activeOnly: Boolean = true
+  ): Sponsorship
+  sponsorshipNewsletters(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: SponsorshipNewsletterOrder = {field: CREATED_AT, direction: DESC}
+  ): SponsorshipNewsletterConnection!
+  sponsorshipsAsMaintainer(
+    activeOnly: Boolean = true
+    after: String
+    before: String
+    first: Int
+    includePrivate: Boolean = false
+    last: Int
+    orderBy: SponsorshipOrder
+  ): SponsorshipConnection!
+  sponsorshipsAsSponsor(
+    activeOnly: Boolean = true
+    after: String
+    before: String
+    first: Int
+    last: Int
+    maintainerLogins: [String!]
+    orderBy: SponsorshipOrder
+  ): SponsorshipConnection!
+  team(
+    slug: String!
+  ): Team
+  teams(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    ldapMapped: Boolean
+    notificationSetting: TeamNotificationSetting
+    orderBy: TeamOrder
+    privacy: TeamPrivacy
+    query: String
+    role: TeamRole
+    rootTeamsOnly: Boolean = false
+    userLogins: [String!]
+  ): TeamConnection!
+  teamsResourcePath: URI!
+  teamsUrl: URI!
+  totalSponsorshipAmountAsSponsorInCents(
+    since: DateTime
+    sponsorableLogins: [String!] = []
+    until: DateTime
+  ): Int
+  twitterUsername: String
+  updatedAt: DateTime!
+  url: URI!
+  viewerCanAdminister: Boolean!
+  viewerCanChangePinnedItems: Boolean!
+  viewerCanCreateProjects: Boolean!
+  viewerCanCreateRepositories: Boolean!
+  viewerCanCreateTeams: Boolean!
+  viewerCanSponsor: Boolean!
+  viewerIsAMember: Boolean!
+  viewerIsFollowing: Boolean!
+  viewerIsSponsoring: Boolean!
+  webCommitSignoffRequired: Boolean!
+  websiteUrl: URI
+}
+
+type EnterpriseUserAccount implements Actor & Node {
+  avatarUrl(
+    size: Int
+  ): URI!
+  createdAt: DateTime!
+  enterprise: Enterprise!
+  enterpriseInstallations(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: EnterpriseServerInstallationOrder = {field: HOST_NAME, direction: ASC}
+    query: String
+    role: EnterpriseUserAccountMembershipRole
+  ): EnterpriseServerInstallationMembershipConnection!
+  id: ID!
+  login: String!
+  name: String
+  organizations(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: OrganizationOrder = {field: LOGIN, direction: ASC}
+    query: String
+    role: EnterpriseUserAccountMembershipRole
+  ): EnterpriseOrganizationMembershipConnection!
+  resourcePath: URI!
+  updatedAt: DateTime!
+  url: URI!
+  user: User
+}
+
+type Repository implements Node & PackageOwner & ProjectOwner & ProjectV2Recent & RepositoryInfo & Starrable & Subscribable & UniformResourceLocatable
+  {
+  allowUpdateBranch: Boolean!
+  archivedAt: DateTime
+  assignableUsers(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    query: String
+  ): UserConnection!
+  autoMergeAllowed: Boolean!
+  branchProtectionRules(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): BranchProtectionRuleConnection!
+  codeOfConduct: CodeOfConduct
+  codeowners(
+    refName: String
+  ): RepositoryCodeowners
+  collaborators(
+    affiliation: CollaboratorAffiliation
+    after: String
+    before: String
+    first: Int
+    last: Int
+    login: String
+    query: String
+  ): RepositoryCollaboratorConnection
+  commitComments(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): CommitCommentConnection!
+  contactLinks: [RepositoryContactLink!]
+  contributingGuidelines: ContributingGuidelines
+  createdAt: DateTime!
+  databaseId: Int
+  defaultBranchRef: Ref
+  deleteBranchOnMerge: Boolean!
+  dependencyGraphManifests(
+    after: String
+    before: String
+    dependenciesAfter: String
+    dependenciesFirst: Int
+    first: Int
+    last: Int
+    withDependencies: Boolean
+  ): DependencyGraphManifestConnection
+  deployKeys(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): DeployKeyConnection!
+  deployments(
+    after: String
+    before: String
+    environments: [String!]
+    first: Int
+    last: Int
+    orderBy: DeploymentOrder = {field: CREATED_AT, direction: ASC}
+  ): DeploymentConnection!
+  description: String
+  descriptionHTML: HTML!
+  discussion(
+    number: Int!
+  ): Discussion
+  discussionCategories(
+    after: String
+    before: String
+    filterByAssignable: Boolean = false
+    first: Int
+    last: Int
+  ): DiscussionCategoryConnection!
+  discussionCategory(
+    slug: String!
+  ): DiscussionCategory
+  discussions(
+    after: String
+    answered: Boolean = null
+    before: String
+    categoryId: ID = null
+    first: Int
+    last: Int
+    orderBy: DiscussionOrder = {field: UPDATED_AT, direction: DESC}
+    states: [DiscussionState!] = []
+  ): DiscussionConnection!
+  diskUsage: Int
+  environment(
+    name: String!
+  ): Environment
+  environments(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    names: [String!] = []
+    orderBy: Environments = {field: NAME, direction: ASC}
+    pinnedEnvironmentFilter: EnvironmentPinnedFilterField = ALL
+  ): EnvironmentConnection!
+  forkCount: Int!
+  forkingAllowed: Boolean!
+  forks(
+    affiliations: [RepositoryAffiliation]
+    after: String
+    before: String
+    first: Int
+    hasIssuesEnabled: Boolean
+    isLocked: Boolean
+    last: Int
+    orderBy: RepositoryOrder
+    ownerAffiliations: [RepositoryAffiliation] = [OWNER, COLLABORATOR]
+    privacy: RepositoryPrivacy
+    visibility: RepositoryVisibility
+  ): RepositoryConnection!
+  fundingLinks: [FundingLink!]!
+  hasDiscussionsEnabled: Boolean!
+  hasIssuesEnabled: Boolean!
+  hasProjectsEnabled: Boolean!
+  hasPullRequestsEnabled: Boolean!
+  hasSponsorshipsEnabled: Boolean!
+  hasVulnerabilityAlertsEnabled: Boolean!
+  hasWikiEnabled: Boolean!
+  homepageUrl: URI
+  id: ID!
+  interactionAbility: RepositoryInteractionAbility
+  isArchived: Boolean!
+  isBlankIssuesEnabled: Boolean!
+  isDisabled: Boolean!
+  isEmpty: Boolean!
+  isFork: Boolean!
+  isInOrganization: Boolean!
+  isLocked: Boolean!
+  isMirror: Boolean!
+  isPrivate: Boolean!
+  isSecurityPolicyEnabled: Boolean
+  isTemplate: Boolean!
+  isUserConfigurationRepository: Boolean!
+  issue(
+    number: Int!
+  ): Issue
+  issueCreationPolicy: IssueCreationPolicy
+  issueFields(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: IssueFieldOrder = {field: CREATED_AT, direction: ASC}
+  ): IssueFieldsConnection
+  issueOrPullRequest(
+    number: Int!
+  ): IssueOrPullRequest
+  issueTemplates: [IssueTemplate!]
+  issueType(
+    name: String!
+  ): IssueType
+  issueTypes(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: IssueTypeOrder = {field: CREATED_AT, direction: ASC}
+  ): IssueTypeConnection
+  issues(
+    after: String
+    before: String
+    filterBy: IssueFilters
+    first: Int
+    labels: [String!]
+    last: Int
+    orderBy: IssueOrder
+    states: [IssueState!]
+  ): IssueConnection!
+  label(
+    name: String!
+  ): Label
+  labels(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: LabelOrder = {field: CREATED_AT, direction: ASC}
+    query: String
+  ): LabelConnection
+  languages(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: LanguageOrder
+  ): LanguageConnection
+  latestRelease: Release
+  licenseInfo: License
+  lockReason: RepositoryLockReason
+  mentionableUsers(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    query: String
+  ): UserConnection!
+  mergeCommitAllowed: Boolean!
+  mergeCommitMessage: MergeCommitMessage!
+  mergeCommitTitle: MergeCommitTitle!
+  mergeQueue(
+    branch: String
+  ): MergeQueue
+  milestone(
+    number: Int!
+  ): Milestone
+  milestones(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: MilestoneOrder
+    query: String
+    states: [MilestoneState!]
+  ): MilestoneConnection
+  mirrorUrl: URI
+  name: String!
+  nameWithOwner: String!
+  object(
+    expression: String
+    oid: GitObjectID
+  ): GitObject
+  openGraphImageUrl: URI!
+  owner: RepositoryOwner!
+  packages(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    names: [String]
+    orderBy: PackageOrder = {field: CREATED_AT, direction: DESC}
+    packageType: PackageType
+    repositoryId: ID
+  ): PackageConnection!
+  parent: Repository
+  pinnedDiscussions(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): PinnedDiscussionConnection!
+  pinnedEnvironments(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: PinnedEnvironmentOrder = {field: POSITION, direction: ASC}
+  ): PinnedEnvironmentConnection
+  pinnedIssues(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): PinnedIssueConnection
+  planFeatures: RepositoryPlanFeatures!
+  primaryLanguage: Language
+  project(
+    number: Int!
+  ): Project
+  projectV2(
+    number: Int!
+  ): ProjectV2
+  projects(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: ProjectOrder
+    search: String
+    states: [ProjectState!]
+  ): ProjectConnection!
+  projectsResourcePath: URI!
+  projectsUrl: URI!
+  projectsV2(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    minPermissionLevel: ProjectV2PermissionLevel = READ
+    orderBy: ProjectV2Order = {field: NUMBER, direction: DESC}
+    query: String
+  ): ProjectV2Connection!
+  pullRequest(
+    number: Int!
+  ): PullRequest
+  pullRequestCreationCapConfig: PullRequestCreationCapConfig
+  pullRequestCreationPolicy: PullRequestCreationPolicy
+  pullRequestTemplates: [PullRequestTemplate!]
+  pullRequests(
+    after: String
+    baseRefName: String
+    before: String
+    first: Int
+    headRefName: String
+    labels: [String!]
+    last: Int
+    orderBy: IssueOrder
+    states: [PullRequestState!]
+  ): PullRequestConnection!
+  pushedAt: DateTime
+  rebaseMergeAllowed: Boolean!
+  recentProjects(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): ProjectV2Connection!
+  ref(
+    qualifiedName: String!
+  ): Ref
+  refs(
+    after: String
+    before: String
+    direction: OrderDirection
+    first: Int
+    last: Int
+    orderBy: RefOrder
+    query: String
+    refPrefix: String!
+  ): RefConnection
+  release(
+    tagName: String!
+  ): Release
+  releases(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: ReleaseOrder
+  ): ReleaseConnection!
+  repositoryCustomPropertyValue(
+    propertyName: String!
+  ): RepositoryCustomPropertyValue
+  repositoryCustomPropertyValues(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): RepositoryCustomPropertyValueConnection
+  repositoryTopics(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): RepositoryTopicConnection!
+  resourcePath: URI!
+  ruleset(
+    databaseId: Int!
+    includeParents: Boolean = true
+  ): RepositoryRuleset
+  rulesets(
+    after: String
+    before: String
+    first: Int
+    includeParents: Boolean = true
+    last: Int
+    targets: [RepositoryRulesetTarget!] = null
+  ): RepositoryRulesetConnection
+  securityPolicyUrl: URI
+  shortDescriptionHTML(
+    limit: Int = 200
+  ): HTML!
+  squashMergeAllowed: Boolean!
+  squashMergeCommitMessage: SquashMergeCommitMessage!
+  squashMergeCommitTitle: SquashMergeCommitTitle!
+  squashPrTitleUsedAsDefault: Boolean!
+  sshUrl: GitSSHRemote!
+  stargazerCount: Int!
+  stargazers(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: StarOrder
+  ): StargazerConnection!
+  submodules(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): SubmoduleConnection!
+  suggestedActors(
+    after: String
+    before: String
+    capabilities: [RepositorySuggestedActorFilter!]!
+    first: Int
+    last: Int
+    loginNames: String
+    query: String
+  ): ActorConnection!
+  tempCloneToken: String
+  templateRepository: Repository
+  updatedAt: DateTime!
+  url: URI!
+  usesCustomOpenGraphImage: Boolean!
+  viewerCanAdminister: Boolean!
+  viewerCanCreateIssues: Boolean!
+  viewerCanCreateProjects: Boolean!
+  viewerCanSeeIssueFields: Boolean!
+  viewerCanSubscribe: Boolean!
+  viewerCanUpdateTopics: Boolean!
+  viewerContentWarning: ContentWarning
+  viewerDefaultCommitEmail: String
+  viewerDefaultMergeMethod: PullRequestMergeMethod!
+  viewerHasStarred: Boolean!
+  viewerPermission: RepositoryPermission
+  viewerPossibleCommitEmails: [String!]
+  viewerSubscription: SubscriptionState
+  visibility: RepositoryVisibility!
+  vulnerabilityAlert(
+    number: Int!
+  ): RepositoryVulnerabilityAlert
+  vulnerabilityAlerts(
+    after: String
+    before: String
+    classifications: [SecurityAdvisoryClassification!]
+    dependencyScopes: [RepositoryVulnerabilityAlertDependencyScope!]
+    first: Int
+    last: Int
+    states: [RepositoryVulnerabilityAlertState!]
+  ): RepositoryVulnerabilityAlertConnection
+  watchers(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): UserConnection!
+  webCommitSignoffRequired: Boolean!
+}
+
+type PullRequest implements Assignable & Closable & Comment & Labelable & Lockable & Node & ProjectV2Owner & Reactable & RepositoryNode & Subscribable & UniformResourceLocatable & Updatable & UpdatableComment
+  {
+  activeLockReason: LockReason
+  additions: Int!
+  assignedActors(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): AssigneeConnection!
+  assignees(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): UserConnection!
+  author: Actor
+  authorAssociation: CommentAuthorAssociation!
+  autoMergeRequest: AutoMergeRequest
+  baseRef: Ref
+  baseRefName: String!
+  baseRefOid: GitObjectID!
+  baseRepository: Repository
+  body: String!
+  bodyHTML: HTML!
+  bodyText: String!
+  canBeRebased: Boolean!
+  changedFiles: Int!
+  checksResourcePath: URI!
+  checksUrl: URI!
+  closed: Boolean!
+  closedAt: DateTime
+  closingIssuesReferences(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: IssueOrder
+    userLinkedOnly: Boolean = false
+  ): IssueConnection
+  comments(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: IssueCommentOrder
+  ): IssueCommentConnection!
+  commits(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): PullRequestCommitConnection!
+  createdAt: DateTime!
+  createdViaEmail: Boolean!
+  databaseId: Int
+  deletions: Int!
+  editor: Actor
+  files(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): PullRequestChangedFileConnection
+  fullDatabaseId: BigInt
+  headRef: Ref
+  headRefName: String!
+  headRefOid: GitObjectID!
+  headRepository: Repository
+  headRepositoryOwner: RepositoryOwner
+  hovercard(
+    includeNotificationContexts: Boolean = true
+  ): Hovercard!
+  id: ID!
+  includesCreatedEdit: Boolean!
+  isCrossRepository: Boolean!
+  isDraft: Boolean!
+  isInMergeQueue: Boolean!
+  isMergeQueueEnabled: Boolean!
+  isReadByViewer: Boolean
+  labels(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: LabelOrder = {field: CREATED_AT, direction: ASC}
+  ): LabelConnection
+  lastEditedAt: DateTime
+  latestOpinionatedReviews(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    writersOnly: Boolean = false
+  ): PullRequestReviewConnection
+  latestReviews(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): PullRequestReviewConnection
+  locked: Boolean!
+  maintainerCanModify: Boolean!
+  mergeCommit: Commit
+  mergeQueue: MergeQueue
+  mergeQueueEntry: MergeQueueEntry
+  mergeStateStatus: MergeStateStatus!
+  mergeable: MergeableState!
+  merged: Boolean!
+  mergedAt: DateTime
+  mergedBy: Actor
+  milestone: Milestone
+  number: Int!
+  participants(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): UserConnection!
+  permalink: URI!
+  potentialMergeCommit: Commit
+  projectCards(
+    after: String
+    archivedStates: [ProjectCardArchivedState] = [ARCHIVED, NOT_ARCHIVED]
+    before: String
+    first: Int
+    last: Int
+  ): ProjectCardConnection!
+  projectItems(
+    after: String
+    before: String
+    first: Int
+    includeArchived: Boolean = true
+    last: Int
+  ): ProjectV2ItemConnection
+  projectV2(
+    number: Int!
+  ): ProjectV2
+  projectsV2(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    minPermissionLevel: ProjectV2PermissionLevel = READ
+    orderBy: ProjectV2Order = {field: NUMBER, direction: DESC}
+    query: String
+  ): ProjectV2Connection!
+  publishedAt: DateTime
+  reactionGroups: [ReactionGroup!]
+  reactions(
+    after: String
+    before: String
+    content: ReactionContent
+    first: Int
+    last: Int
+    orderBy: ReactionOrder
+  ): ReactionConnection!
+  repository: Repository!
+  resourcePath: URI!
+  revertResourcePath: URI!
+  revertUrl: URI!
+  reviewDecision: PullRequestReviewDecision
+  reviewRequests(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): ReviewRequestConnection
+  reviewThreads(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): PullRequestReviewThreadConnection!
+  reviews(
+    after: String
+    author: String
+    before: String
+    first: Int
+    last: Int
+    states: [PullRequestReviewState!]
+  ): PullRequestReviewConnection
+  stack: PullRequestStack
+  stackEntry: PullRequestStackEntry
+  state: PullRequestState!
+  statusCheckRollup: StatusCheckRollup
+  suggestedActors(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    query: String
+  ): AssigneeConnection!
+  suggestedReviewerActors(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    query: String
+  ): SuggestedReviewerActorConnection!
+  suggestedReviewers: [SuggestedReviewer]!
+  timeline(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    since: DateTime
+  ): PullRequestTimelineConnection!
+  timelineItems(
+    after: String
+    before: String
+    first: Int
+    itemTypes: [PullRequestTimelineItemsItemType!]
+    last: Int
+    since: DateTime
+    skip: Int
+  ): PullRequestTimelineItemsConnection!
+  title: String!
+  titleHTML: HTML!
+  totalCommentsCount: Int
+  updatedAt: DateTime!
+  url: URI!
+  userContentEdits(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): UserContentEditConnection
+  viewerCanApplySuggestion: Boolean!
+  viewerCanAssign: Boolean!
+  viewerCanClose: Boolean!
+  viewerCanDeleteHeadRef: Boolean!
+  viewerCanDisableAutoMerge: Boolean!
+  viewerCanEditFiles: Boolean!
+  viewerCanEnableAutoMerge: Boolean!
+  viewerCanLabel: Boolean!
+  viewerCanMergeAsAdmin: Boolean!
+  viewerCanReact: Boolean!
+  viewerCanReopen: Boolean!
+  viewerCanSubscribe: Boolean!
+  viewerCanUpdate: Boolean!
+  viewerCanUpdateBranch: Boolean!
+  viewerCannotUpdateReasons: [CommentCannotUpdateReason!]!
+  viewerDidAuthor: Boolean!
+  viewerLatestReview: PullRequestReview
+  viewerLatestReviewRequest: ReviewRequest
+  viewerMergeBodyText(
+    mergeType: PullRequestMergeMethod
+  ): String!
+  viewerMergeHeadlineText(
+    mergeType: PullRequestMergeMethod
+  ): String!
+  viewerSubscription: SubscriptionState
+}
+
+type Issue implements Assignable & Closable & Comment & Deletable & Labelable & Lockable & Node & ProjectV2Owner & Reactable & RepositoryNode & Subscribable & SubscribableThread & UniformResourceLocatable & Updatable & UpdatableComment
+  {
+  activeLockReason: LockReason
+  assignedActors(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): AssigneeConnection!
+  assignees(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): UserConnection!
+  author: Actor
+  authorAssociation: CommentAuthorAssociation!
+  blockedBy(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: IssueDependencyOrder = {field: DEPENDENCY_ADDED_AT, direction: DESC}
+  ): IssueConnection!
+  blocking(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: IssueDependencyOrder = {field: DEPENDENCY_ADDED_AT, direction: DESC}
+  ): IssueConnection!
+  body: String!
+  bodyHTML: HTML!
+  bodyResourcePath: URI!
+  bodyText: String!
+  bodyUrl: URI!
+  closed: Boolean!
+  closedAt: DateTime
+  closedByPullRequestsReferences(
+    after: String
+    before: String
+    first: Int
+    includeClosedPrs: Boolean = false
+    last: Int
+    orderByState: Boolean = false
+    userLinkedOnly: Boolean = false
+  ): PullRequestConnection
+  comments(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: IssueCommentOrder
+  ): IssueCommentConnection!
+  createdAt: DateTime!
+  createdViaEmail: Boolean!
+  databaseId: Int
+  duplicateOf: Issue
+  editor: Actor
+  eventRationales: [IssueEventRationale!]!
+  fullDatabaseId: BigInt
+  hovercard(
+    includeNotificationContexts: Boolean = true
+  ): Hovercard!
+  id: ID!
+  includesCreatedEdit: Boolean!
+  isPinned: Boolean
+  isReadByViewer: Boolean
+  issueDependenciesSummary: IssueDependenciesSummary!
+  issueFieldValues(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): IssueFieldValueConnection
+  issueType: IssueType
+  labels(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: LabelOrder = {field: CREATED_AT, direction: ASC}
+  ): LabelConnection
+  lastEditedAt: DateTime
+  linkedBranches(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): LinkedBranchConnection!
+  locked: Boolean!
+  milestone: Milestone
+  number: Int!
+  parent: Issue
+  participants(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): UserConnection!
+  pendingSuggestions: [PendingIssueSuggestion!]
+  pinnedIssueComment: PinnedIssueComment
+  projectCards(
+    after: String
+    archivedStates: [ProjectCardArchivedState] = [ARCHIVED, NOT_ARCHIVED]
+    before: String
+    first: Int
+    last: Int
+  ): ProjectCardConnection!
+  projectItems(
+    after: String
+    before: String
+    first: Int
+    includeArchived: Boolean = true
+    last: Int
+  ): ProjectV2ItemConnection
+  projectV2(
+    number: Int!
+  ): ProjectV2
+  projectsV2(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    minPermissionLevel: ProjectV2PermissionLevel = READ
+    orderBy: ProjectV2Order = {field: NUMBER, direction: DESC}
+    query: String
+  ): ProjectV2Connection!
+  publishedAt: DateTime
+  reactionGroups: [ReactionGroup!]
+  reactions(
+    after: String
+    before: String
+    content: ReactionContent
+    first: Int
+    last: Int
+    orderBy: ReactionOrder
+  ): ReactionConnection!
+  repository: Repository!
+  resourcePath: URI!
+  state: IssueState!
+  stateReason(
+    enableDuplicate: Boolean = false
+  ): IssueStateReason
+  subIssues(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): IssueConnection!
+  subIssuesSummary: SubIssuesSummary!
+  suggestedActors(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    query: String
+  ): AssigneeConnection!
+  timeline(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    since: DateTime
+  ): IssueTimelineConnection!
+  timelineItems(
+    after: String
+    before: String
+    first: Int
+    itemTypes: [IssueTimelineItemsItemType!]
+    last: Int
+    since: DateTime
+    skip: Int
+  ): IssueTimelineItemsConnection!
+  title: String!
+  titleHTML: String!
+  trackedInIssues(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): IssueConnection!
+  trackedIssues(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): IssueConnection!
+  trackedIssuesCount(
+    states: [TrackedIssueStates]
+  ): Int!
+  updatedAt: DateTime!
+  url: URI!
+  userContentEdits(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): UserContentEditConnection
+  viewerCanAssign: Boolean!
+  viewerCanClose: Boolean!
+  viewerCanDelete: Boolean!
+  viewerCanLabel: Boolean!
+  viewerCanReact: Boolean!
+  viewerCanReopen: Boolean!
+  viewerCanSetFields: Boolean
+  viewerCanSetMilestone: Boolean!
+  viewerCanSubscribe: Boolean!
+  viewerCanType: Boolean
+  viewerCanUpdate: Boolean!
+  viewerCanUpdateMetadata: Boolean
+  viewerCannotUpdateReasons: [CommentCannotUpdateReason!]!
+  viewerDidAuthor: Boolean!
+  viewerSubscription: SubscriptionState
+  viewerThreadSubscriptionFormAction: ThreadSubscriptionFormAction
+  viewerThreadSubscriptionStatus: ThreadSubscriptionState
+}
+
+type Label implements Node {
+  color: String!
+  createdAt: DateTime
+  description: String
+  id: ID!
+  isDefault: Boolean!
+  issues(
+    after: String
+    before: String
+    filterBy: IssueFilters
+    first: Int
+    labels: [String!]
+    last: Int
+    orderBy: IssueOrder
+    states: [IssueState!]
+  ): IssueConnection!
+  name: String!
+  pullRequests(
+    after: String
+    baseRefName: String
+    before: String
+    first: Int
+    headRefName: String
+    labels: [String!]
+    last: Int
+    orderBy: IssueOrder
+    states: [PullRequestState!]
+  ): PullRequestConnection!
+  repository: Repository!
+  resourcePath: URI!
+  updatedAt: DateTime
+  url: URI!
+}
+
+type LabelConnection {
+  edges: [LabelEdge]
+  nodes: [Label]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type UserConnection {
+  edges: [UserEdge]
+  nodes: [User]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type PullRequestReview implements Comment & Deletable & Minimizable & Node & Reactable & RepositoryNode & Updatable & UpdatableComment
+  {
+  author: Actor
+  authorAssociation: CommentAuthorAssociation!
+  authorCanPushToRepository: Boolean!
+  body: String!
+  bodyHTML: HTML!
+  bodyText: String!
+  comments(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): PullRequestReviewCommentConnection!
+  commit: Commit
+  createdAt: DateTime!
+  createdViaEmail: Boolean!
+  databaseId: Int
+  editor: Actor
+  fullDatabaseId: BigInt
+  id: ID!
+  includesCreatedEdit: Boolean!
+  isMinimized: Boolean!
+  lastEditedAt: DateTime
+  minimizedReason: String
+  onBehalfOf(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): TeamConnection!
+  publishedAt: DateTime
+  pullRequest: PullRequest!
+  reactionGroups: [ReactionGroup!]
+  reactions(
+    after: String
+    before: String
+    content: ReactionContent
+    first: Int
+    last: Int
+    orderBy: ReactionOrder
+  ): ReactionConnection!
+  repository: Repository!
+  resourcePath: URI!
+  state: PullRequestReviewState!
+  submittedAt: DateTime
+  updatedAt: DateTime!
+  url: URI!
+  userContentEdits(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): UserContentEditConnection
+  viewerCanDelete: Boolean!
+  viewerCanMinimize: Boolean!
+  viewerCanReact: Boolean!
+  viewerCanUnminimize: Boolean!
+  viewerCanUpdate: Boolean!
+  viewerCannotUpdateReasons: [CommentCannotUpdateReason!]!
+  viewerDidAuthor: Boolean!
+}
+
+type PullRequestReviewConnection {
+  edges: [PullRequestReviewEdge]
+  nodes: [PullRequestReview]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+enum PullRequestReviewState {
+  APPROVED
+  CHANGES_REQUESTED
+  COMMENTED
+  DISMISSED
+  PENDING
+}
+
+enum PullRequestReviewDecision {
+  APPROVED
+  CHANGES_REQUESTED
+  REVIEW_REQUIRED
+}
+
+type PullRequestReviewThread implements Node {
+  comments(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    skip: Int
+  ): PullRequestReviewCommentConnection!
+  diffSide: DiffSide!
+  id: ID!
+  isCollapsed: Boolean!
+  isOutdated: Boolean!
+  isResolved: Boolean!
+  line: Int
+  originalLine: Int
+  originalStartLine: Int
+  path: String!
+  pullRequest: PullRequest!
+  repository: Repository!
+  resolvedBy: User
+  startDiffSide: DiffSide
+  startLine: Int
+  subjectType: PullRequestReviewThreadSubjectType!
+  viewerCanReply: Boolean!
+  viewerCanResolve: Boolean!
+  viewerCanUnresolve: Boolean!
+}
+
+type PullRequestReviewThreadConnection {
+  edges: [PullRequestReviewThreadEdge]
+  nodes: [PullRequestReviewThread]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type PullRequestReviewComment implements Comment & Deletable & Minimizable & Node & Reactable & RepositoryNode & Updatable & UpdatableComment
+  {
+  author: Actor
+  authorAssociation: CommentAuthorAssociation!
+  body: String!
+  bodyHTML: HTML!
+  bodyText: String!
+  commit: Commit
+  createdAt: DateTime!
+  createdViaEmail: Boolean!
+  databaseId: Int
+  diffHunk: String!
+  draftedAt: DateTime!
+  editor: Actor
+  fullDatabaseId: BigInt
+  id: ID!
+  includesCreatedEdit: Boolean!
+  isMinimized: Boolean!
+  lastEditedAt: DateTime
+  line: Int
+  minimizedReason: String
+  originalCommit: Commit
+  originalLine: Int
+  originalPosition: Int!
+  originalStartLine: Int
+  outdated: Boolean!
+  path: String!
+  position: Int
+  publishedAt: DateTime
+  pullRequest: PullRequest!
+  pullRequestReview: PullRequestReview
+  reactionGroups: [ReactionGroup!]
+  reactions(
+    after: String
+    before: String
+    content: ReactionContent
+    first: Int
+    last: Int
+    orderBy: ReactionOrder
+  ): ReactionConnection!
+  replyTo: PullRequestReviewComment
+  repository: Repository!
+  resourcePath: URI!
+  startLine: Int
+  state: PullRequestReviewCommentState!
+  subjectType: PullRequestReviewThreadSubjectType!
+  updatedAt: DateTime!
+  url: URI!
+  userContentEdits(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): UserContentEditConnection
+  viewerCanDelete: Boolean!
+  viewerCanMinimize: Boolean!
+  viewerCanReact: Boolean!
+  viewerCanUnminimize: Boolean!
+  viewerCanUpdate: Boolean!
+  viewerCannotUpdateReasons: [CommentCannotUpdateReason!]!
+  viewerDidAuthor: Boolean!
+}
+
+type PullRequestReviewCommentConnection {
+  edges: [PullRequestReviewCommentEdge]
+  nodes: [PullRequestReviewComment]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+enum MergeStateStatus {
+  BEHIND
+  BLOCKED
+  CLEAN
+  DIRTY
+  DRAFT
+  HAS_HOOKS
+  UNKNOWN
+  UNSTABLE
+}
+
+type ProjectV2Item implements Node {
+  content: ProjectV2ItemContent
+  createdAt: DateTime!
+  creator: Actor
+  databaseId: Int
+  fieldValueByName(
+    name: String!
+  ): ProjectV2ItemFieldValue
+  fieldValues(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: ProjectV2ItemFieldValueOrder = {field: POSITION, direction: ASC}
+  ): ProjectV2ItemFieldValueConnection!
+  fullDatabaseId: BigInt
+  id: ID!
+  isArchived: Boolean!
+  project: ProjectV2!
+  type: ProjectV2ItemType!
+  updatedAt: DateTime!
+}
+
+type ProjectV2ItemConnection {
+  edges: [ProjectV2ItemEdge]
+  nodes: [ProjectV2Item]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+union ProjectV2ItemContent = DraftIssue | Issue | PullRequest
+
+union ProjectV2ItemFieldValue =
+  | ProjectV2ItemFieldDateValue
+  | ProjectV2ItemFieldIterationValue
+  | ProjectV2ItemFieldLabelValue
+  | ProjectV2ItemFieldMilestoneValue
+  | ProjectV2ItemFieldMultiSelectValue
+  | ProjectV2ItemFieldNumberValue
+  | ProjectV2ItemFieldPullRequestValue
+  | ProjectV2ItemFieldRepositoryValue
+  | ProjectV2ItemFieldReviewerValue
+  | ProjectV2ItemFieldSingleSelectValue
+  | ProjectV2ItemFieldTextValue
+  | ProjectV2ItemFieldUserValue
+  | ProjectV2ItemIssueFieldValue
+
+type ProjectV2ItemFieldValueConnection {
+  edges: [ProjectV2ItemFieldValueEdge]
+  nodes: [ProjectV2ItemFieldValue]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ProjectV2ItemFieldSingleSelectValue implements Node & ProjectV2ItemFieldValueCommon
+  {
+  color: ProjectV2SingleSelectFieldOptionColor!
+  createdAt: DateTime!
+  creator: Actor
+  databaseId: Int
+  description: String
+  descriptionHTML: String
+  field: ProjectV2FieldConfiguration!
+  id: ID!
+  item: ProjectV2Item!
+  name: String
+  nameHTML: String
+  optionId: String
+  updatedAt: DateTime!
+}
+
+type ProjectV2ItemFieldTextValue implements Node & ProjectV2ItemFieldValueCommon {
+  createdAt: DateTime!
+  creator: Actor
+  databaseId: Int
+  field: ProjectV2FieldConfiguration!
+  id: ID!
+  item: ProjectV2Item!
+  text: String
+  updatedAt: DateTime!
+}
+
+interface ProjectV2FieldCommon {
+  createdAt: DateTime!
+  dataType: ProjectV2FieldType!
+  databaseId: Int
+  id: ID!
+  name: String!
+  project: ProjectV2!
+  updatedAt: DateTime!
+}
+
+type ProjectV2Field implements Node & ProjectV2FieldCommon {
+  createdAt: DateTime!
+  dataType: ProjectV2FieldType!
+  databaseId: Int
+  id: ID!
+  name: String!
+  project: ProjectV2!
+  updatedAt: DateTime!
+}
+
+type ProjectV2SingleSelectField implements Node & ProjectV2FieldCommon {
+  createdAt: DateTime!
+  dataType: ProjectV2FieldType!
+  databaseId: Int
+  id: ID!
+  name: String!
+  options(
+    names: [String!]
+  ): [ProjectV2SingleSelectFieldOption!]!
+  project: ProjectV2!
+  updatedAt: DateTime!
+}
+
+type ProjectV2IterationField implements Node & ProjectV2FieldCommon {
+  configuration: ProjectV2IterationFieldConfiguration!
+  createdAt: DateTime!
+  dataType: ProjectV2FieldType!
+  databaseId: Int
+  id: ID!
+  name: String!
+  project: ProjectV2!
+  updatedAt: DateTime!
+}
+
+union ProjectV2FieldConfiguration =
+  | ProjectV2Field
+  | ProjectV2IterationField
+  | ProjectV2MultiSelectField
+  | ProjectV2SingleSelectField
+
+type LinkedBranchConnection {
+  edges: [LinkedBranchEdge]
+  nodes: [LinkedBranch]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type PullRequestConnection {
+  edges: [PullRequestEdge]
+  nodes: [PullRequest]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+input AddReactionInput {
+  clientMutationId: String
+  content: ReactionContent!
+  subjectId: ID!
+}
+
+type AddReactionPayload {
+  clientMutationId: String
+  reaction: Reaction
+  reactionGroups: [ReactionGroup!]
+  subject: Reactable
+}
+
+input RemoveReactionInput {
+  clientMutationId: String
+  content: ReactionContent!
+  subjectId: ID!
+}
+
+type RemoveReactionPayload {
+  clientMutationId: String
+  reaction: Reaction
+  reactionGroups: [ReactionGroup!]
+  subject: Reactable
+}
+
+type Reaction implements Node {
+  content: ReactionContent!
+  createdAt: DateTime!
+  databaseId: Int
+  id: ID!
+  reactable: Reactable!
+  user: User
+}
+
+enum ReactionContent {
+  CONFUSED
+  EYES
+  HEART
+  HOORAY
+  LAUGH
+  ROCKET
+  THUMBS_DOWN
+  THUMBS_UP
+}
+
+input MarkPullRequestReadyForReviewInput {
+  clientMutationId: String
+  pullRequestId: ID!
+}
+
+type MarkPullRequestReadyForReviewPayload {
+  clientMutationId: String
+  pullRequest: PullRequest
+}
+
+input ConvertPullRequestToDraftInput {
+  clientMutationId: String
+  pullRequestId: ID!
+}
+
+type ConvertPullRequestToDraftPayload {
+  clientMutationId: String
+  pullRequest: PullRequest
+}

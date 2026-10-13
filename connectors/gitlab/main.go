@@ -22,7 +22,7 @@
 // GitLab webhooks authenticate with a plain shared-secret header
 // (`X-Gitlab-Token`), NOT an HMAC signature — so this source compares it with
 // a constant-time equality check (crypto/subtle) rather than
-// sourcekit.VerifyHMAC, and leaves sourcekit.Listener.Secret empty so the
+// sourcekit.VerifyHMAC, and leaves relay.Listener.Secret empty so the
 // listener's own (HMAC-shaped) verification is never invoked; verification
 // happens in this file's handler instead. It fails closed: no secret and no
 // `allow_unsigned: true` refuses to start.
@@ -36,6 +36,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"github.com/NodeSpy/conductor-plugins/internal/relay"
 	"io"
 	"net/http"
 	"net/url"
@@ -613,10 +614,10 @@ func (gitlabPlugin) StartSource(ctx context.Context, req plugin.StartSourceReque
 	}
 
 	// Left deliberately empty: GitLab's webhook auth is a plain shared-secret
-	// header (X-Gitlab-Token), not an HMAC signature, so sourcekit.Listener's
+	// header (X-Gitlab-Token), not an HMAC signature, so relay.Listener's
 	// own (HMAC-shaped) verification must not run here — this handler verifies
 	// the header itself, by constant-time equality.
-	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smee}
+	ln := relay.Listener{Addr: addr, Path: path, Relay: smee}
 
 	dedup := sourcekit.NewDedup(4096)
 	if addr != "" {

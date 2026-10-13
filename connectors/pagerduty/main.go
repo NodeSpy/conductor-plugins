@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/NodeSpy/conductor-plugins/internal/relay"
 	"net/http"
 	"os"
 	"strings"
@@ -62,7 +63,7 @@ func (pagerduty) Invoke(plugin.InvokeRequest) (plugin.InvokeResult, error) {
 
 func (pagerduty) StartSource(ctx context.Context, req plugin.StartSourceRequest, emit func(any) error) error {
 	cfg := req.Config
-	ln := sourcekit.Listener{
+	ln := relay.Listener{
 		Addr:      str(cfg["listen"]),
 		Path:      strOr(cfg["path"], "/pagerduty"),
 		Secret:    str(cfg["signing_secret"]),

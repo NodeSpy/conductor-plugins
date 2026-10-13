@@ -22,7 +22,7 @@
 // against webhook.secret with a constant-time comparison — and fails closed
 // exactly like the HMAC-verified sources do: a webhook with no secret
 // configured refuses to start unless webhook.allow_unsigned: true says the
-// operator means it. The shared sourcekit.Listener.ServeReq hands the
+// operator means it. The shared relay.Listener.ServeReq hands the
 // callback the full request (headers, query, body), so the ?token= query
 // case is checked directly — and the same Listener transparently accepts
 // deliveries over a smee.io-style relay (webhook.smee) for endpoints with no
@@ -54,6 +54,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"github.com/NodeSpy/conductor-plugins/internal/relay"
 	"io"
 	"net/http"
 	"net/url"
@@ -496,7 +497,7 @@ func (prowlarrPlugin) StartSource(ctx context.Context, req plugin.StartSourceReq
 	if smeeURL != "" {
 		fmt.Fprintf(os.Stderr, "prowlarr[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
 	}
-	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smeeURL}
+	ln := relay.Listener{Addr: addr, Path: path, Relay: smeeURL}
 	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
 		if secret != "" && !verifyToken(secret, rq) {
 			return

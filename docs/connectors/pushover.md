@@ -72,6 +72,7 @@ included only where the endpoint needs the connection's own user/group —
 
 | verb | purpose |
 |------|---------|
+| `notify` | send a push notification: the simple surface (`message`, `title` only), matching conductor's former bundled `pushover` connector's verb name and outputs (`ok`) exactly — a config written for it works unchanged here |
 | `send` | send a push notification (`message`, `title`, `priority`, `url`, `url_title`, `sound`, `device`, `html`, `monospace`, `timestamp`, `retry`, `expire`, `tags`) |
 | `validate_user` | validate a user or group key (and optional `device`) |
 | `get_receipt` | check the delivery status of an emergency-priority (priority 2) notification by `receipt` |
@@ -83,6 +84,9 @@ included only where the endpoint needs the connection's own user/group —
 Every verb's HTTP outcome is decoded as-is into `result` (the raw parsed JSON
 response) plus `status_code`. A non-2xx response from Pushover surfaces as a
 plugin error carrying the HTTP status and response body, not partial output.
+`notify` additionally reports `ok: true` on success (and never returns
+otherwise — a non-2xx response is still a plugin error), matching the former
+bundled connector's output exactly.
 
 ### Emergency priority (priority 2)
 

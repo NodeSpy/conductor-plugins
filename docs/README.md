@@ -14,7 +14,9 @@ it, and runs it.
 
 Each plugin is built **only** against conductor's public SDK — `pkg/plugin`,
 plus `pkg/sourcekit` for webhook sources and `pkg/githubkit` for the GitHub
-client — and imports **no** conductor internals. That is enforced at release
+client (with `pkg/githubkit/ghsource` / `ghplugin`, the github event source and
+plugin handler conductor's own bundled connector runs) — and imports **no**
+conductor internals. That is enforced at release
 time (`go list -deps ./... | grep NodeSpy/conductor/internal` must print
 nothing), not merely asserted.
 
@@ -162,8 +164,10 @@ binaries + `checksums.txt`.
 | `datadog` | connector (verbs + source) | [connectors/datadog.md](connectors/datadog.md) |
 | `asana` | connector (verbs + source) | [connectors/asana.md](connectors/asana.md) |
 | `jira` | connector (verbs + source) | [connectors/jira.md](connectors/jira.md) |
+| `slack` | connector (verbs + source) | [connectors/slack.md](connectors/slack.md) |
 | `telegram` | connector (verbs + source) | [connectors/telegram.md](connectors/telegram.md) |
 | `matrix` | connector (verbs + source) | [connectors/matrix.md](connectors/matrix.md) |
+| `discord` | connector (verbs + source) | [connectors/discord.md](connectors/discord.md) |
 | `homeassistant` | connector (verbs + source) | [connectors/homeassistant.md](connectors/homeassistant.md) |
 | `proxmox` | connector (verbs + source) | [connectors/proxmox.md](connectors/proxmox.md) |
 | `truenas` | connector (verbs + source) | [connectors/truenas.md](connectors/truenas.md) |
@@ -214,6 +218,11 @@ binaries + `checksums.txt`.
 | `sentry` | connector (source) | [connectors/sentry.md](connectors/sentry.md) |
 | `pagerduty` | connector (source) | [connectors/pagerduty.md](connectors/pagerduty.md) |
 | `twilio` | connector (verbs + source) | [connectors/twilio.md](connectors/twilio.md) |
+| `cloudflared` | connector (verbs — exposure) | [connectors/cloudflared.md](connectors/cloudflared.md) |
+| `ngrok` | connector (verbs — exposure) | [connectors/ngrok.md](connectors/ngrok.md) |
+| `localxpose` | connector (verbs — exposure) | [connectors/localxpose.md](connectors/localxpose.md) |
+| `sshtunnel` | connector (verbs — exposure) | [connectors/sshtunnel.md](connectors/sshtunnel.md) |
+| `smee` | connector (verbs — exposure) | [connectors/smee.md](connectors/smee.md) |
 | `paseo` | runtime | [runtimes/paseo.md](runtimes/paseo.md) |
 | `jev` | runtime (decision) | [runtimes/jev.md](runtimes/jev.md) |
 | `js` | engine | [engines/js.md](engines/js.md) |

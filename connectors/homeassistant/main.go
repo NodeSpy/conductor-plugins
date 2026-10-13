@@ -21,7 +21,7 @@
 //	  allow_unsigned: false           # explicitly accept unverified deliveries
 //	  smee:          "https://smee.io/abc123" # optional smee.io-style SSE relay channel
 //
-// The shared sourcekit.Listener.ServeReq hands the callback the full request
+// The shared relay.Listener.ServeReq hands the callback the full request
 // (headers, query, body), so the ?token= query case is checked directly —
 // and the same Listener transparently accepts deliveries over the smee relay
 // for endpoints with no public URL.
@@ -35,6 +35,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"github.com/NodeSpy/conductor-plugins/internal/relay"
 	"io"
 	"net/http"
 	"net/url"
@@ -411,7 +412,7 @@ func (haPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest, 
 		fmt.Fprintf(os.Stderr, "homeassistant[%s]: relaying via smee channel %s\n", req.Instance, smeeURL)
 	}
 
-	ln := sourcekit.Listener{Addr: addr, Path: path, Relay: smeeURL}
+	ln := relay.Listener{Addr: addr, Path: path, Relay: smeeURL}
 	return ln.ServeReq(ctx, func(rq *sourcekit.Request) {
 		if !verifyToken(secret, rq) {
 			return
