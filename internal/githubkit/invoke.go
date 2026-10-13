@@ -180,6 +180,12 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 			return nil, fmt.Errorf("github.pr_diff: options.pr is required")
 		}
 		diff, err := c.getText(ctx, tok, fmt.Sprintf("%s/repos/%s/pulls/%d", base, repo, number), "application/vnd.github.diff")
+		if isDiffTooLarge(err) {
+			// GitHub refuses the whole-PR diff past its size limits (20,000
+			// lines or 300 files). Rebuild it from the per-file patches,
+			// which it still serves (up to 3,000 files).
+			diff, err = c.diffFromFilePatches(ctx, tok, base, repo, number)
+		}
 		if err != nil {
 			return nil, c.remapTargetGone(ctx, tok, repo, key, err)
 		}
