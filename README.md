@@ -53,6 +53,7 @@ Each plugin has a full reference page under [`docs/`](docs/README.md).
 - **[postgres](docs/connectors/postgres.md)** — PostgreSQL LISTEN/NOTIFY as an event source (react to a row change, no polling) + query/exec/notify verbs.
 - **[redis](docs/connectors/redis.md)** — Redis / Valkey: get/set/del/incr/expire, publish, raw `command`, and a live pub/sub source (SUBSCRIBE / PSUBSCRIBE).
 - **[aws-sqs](docs/connectors/aws-sqs.md)** — Amazon SQS: long-poll a queue as an event source + send/receive/delete/attributes verbs. SDK-free & CLI-free (hand-rolled SigV4).
+- **[aws-cost](docs/connectors/aws-cost.md)** — AWS cost & commitments: Cost Explorer spend/forecast/utilization/coverage/recommendations, Savings Plans and Reserved Instances, and purchase verbs whose typed total amount is verified against the offering. SDK-free.
 
 ### Exposure (tunnels & relays)
 Named-vendor counterparts to conductor's own vendor-neutral `lan`/`tunnel` exposure builtins — each declares an `exposes` verb, so any connector that names one in `expose:` (the web hand-off, or a webhook source declaring `listeners`) gets a public URL for a local address with no vendor code of its own.
