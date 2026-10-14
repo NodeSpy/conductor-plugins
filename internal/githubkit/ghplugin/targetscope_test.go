@@ -39,10 +39,22 @@ func TestWriteVerbsAreScopedToTheTarget(t *testing.T) {
 			t.Errorf("%s.branch: scope %q absent %q, want %q %q", name, f.Scope, f.ScopeAbsent, dimBranch, absent)
 		}
 	}
-	for _, read := range []string{"pr_get", "pr_files", "pr_diff", "review_comments", "get_issue"} {
-		for opt, f := range verbs[read].Options {
-			if f.Scope != "" && f.Scope != "repo" {
-				t.Errorf("read %s.%s is scoped %q: reads stay open beyond the repo", read, opt, f.Scope)
+	// Every verb that names a PR, issue or branch is either a read (left
+	// open) or a bound write: a new write verb that forgets its scope fails
+	// here, not in production.
+	reads := map[string]bool{"pr_get": true, "pr_head": true, "pr_files": true, "pr_diff": true,
+		"review_comments": true, "get_issue": true, "list_runs": true}
+	for _, v := range Decl().Verbs {
+		for _, opt := range []string{"pr", "number", "branch"} {
+			f, ok := v.Options[opt]
+			if !ok {
+				continue
+			}
+			switch {
+			case reads[v.Name] && f.Scope != "":
+				t.Errorf("read %s.%s is scoped %q: reads stay open beyond the repo", v.Name, opt, f.Scope)
+			case !reads[v.Name] && f.Scope == "":
+				t.Errorf("write %s.%s names the target but is not scoped to it", v.Name, opt)
 			}
 		}
 	}
