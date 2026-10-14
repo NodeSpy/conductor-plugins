@@ -93,7 +93,7 @@ Named-vendor counterparts to conductor's own vendor-neutral `lan`/`tunnel` expos
 - **[netdata](docs/connectors/netdata.md)** — metrics, charts, alarms + an active-alarm source.
 - **[datadog](docs/connectors/datadog.md)** — events, monitors, metrics + a webhook alert source.
 - **[sentry](docs/connectors/sentry.md)** — Sentry issue/error alerts (webhook source).
-- **[pagerduty](docs/connectors/pagerduty.md)** — PagerDuty incident webhooks (source).
+- **[pagerduty](docs/connectors/pagerduty.md)** — PagerDuty incident webhooks (source) + incident verbs: get, list, acknowledge, resolve, add_note, escalate.
 - **[alertmanager](docs/connectors/alertmanager.md)** — Prometheus / Grafana alerts (webhook source).
 - **[uptimekuma](docs/connectors/uptimekuma.md)** · **[uptimerobot](docs/connectors/uptimerobot.md)** · **[healthchecks](docs/connectors/healthchecks.md)** — uptime & cron monitoring.
 - **[aws-sns](docs/connectors/aws-sns.md)** — AWS SNS subscriber: auto-confirms and emits an event per message (source).

@@ -45,8 +45,22 @@ func TestPluginsDeclareKindAndManifest(t *testing.T) {
 			kind: "connectors", name: "pagerduty",
 			wantKind: plugin.KindConnector, wantType: "pagerduty",
 			check: func(t *testing.T, c plugin.Capabilities) {
-				if len(c.Egress) != 0 || len(c.Commands) != 0 || c.Spawns {
-					t.Fatalf("a source-only connector declared capabilities: %+v", c)
+				// The source listens; the incident verbs call the REST API —
+				// exactly that host, no commands, nothing spawned.
+				if len(c.Egress) != 1 || c.Egress[0] != "api.pagerduty.com:443" || len(c.Commands) != 0 || c.Spawns {
+					t.Fatalf("pagerduty should declare exactly api.pagerduty.com:443: %+v", c)
+				}
+			},
+		},
+		{
+			kind: "connectors", name: "aws-cost",
+			wantKind: plugin.KindConnector, wantType: "aws-cost",
+			check: func(t *testing.T, c plugin.Capabilities) {
+				// SDK-free HTTPS like the other AWS plugins: no commands, no
+				// spawn; the EC2 endpoint is region-derived, so egress is
+				// narrowed per instance with network: rather than declared.
+				if len(c.Commands) != 0 || c.Spawns {
+					t.Fatalf("aws-cost runs nothing: %+v", c)
 				}
 			},
 		},
