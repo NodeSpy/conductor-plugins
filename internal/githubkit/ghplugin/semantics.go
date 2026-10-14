@@ -18,7 +18,14 @@ func prTarget() plugin.EventSemantics {
 		Target: &plugin.TargetSemantics{
 			Key: "{{.repo}}#{{.number}}", URL: "url", Label: "pull request",
 			Assigned: json.RawMessage(`true`),
-			Scope:    []plugin.ScopeFact{{Dimension: "repo", Fact: "repo"}},
+			// The repo stays the dispatch's own; the PR/issue number and the
+			// PR's head branch are its own only while the target lives (see
+			// targetscope.go for the write options they gate).
+			Scope: []plugin.ScopeFact{
+				{Dimension: "repo", Fact: "repo"},
+				{Dimension: dimNumber, Fact: "number", Bound: true},
+				{Dimension: dimBranch, Fact: "head_ref", Bound: true},
+			},
 		},
 		Revision: &plugin.RevisionSemantics{Fact: "head", Branch: "head_ref", Base: "base"},
 		// A PR's code is its pull ref; work is pushed back to its head
@@ -78,6 +85,8 @@ func eventSemantics(name string) *plugin.EventSemantics {
 			Action: plugin.RemediateVerb{Verb: "rerun_run",
 				Args: map[string]string{"repo": "{{.repo}}", "run_id": "{{.run_id}}", "failed_only": "true"}},
 		}
+	case ReopenedEvent:
+		s.ReopensTarget = true
 	case ClosedEvent:
 		s.ClosesTarget = &plugin.ClosesTargetSemantics{
 			Outcome: &plugin.OutcomeMap{Fact: "merged", True: "accepted", False: "rejected"},
@@ -102,6 +111,10 @@ func eventSemantics(name string) *plugin.EventSemantics {
 
 // ClosedEvent is the event a PR's close emits: terminal for its target.
 const ClosedEvent = "_closed"
+
+// ReopenedEvent is the event a closed PR's reopening emits: the target is
+// live again (writes bound to it are its dispatches' own once more).
+const ReopenedEvent = "_reopened"
 
 // connSemantics are the connection-level declarations: the credentials an
 // agent dispatched on a github event receives. GH_TOKEN is YOUR token, so

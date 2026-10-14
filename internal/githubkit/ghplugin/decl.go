@@ -17,7 +17,7 @@ const Type = "github"
 //
 // The sweep verb is the name github's poll semantic gives the engine's "poll
 // this instance now" verb: the daemon answers it for either implementation.
-func Decl() plugin.Decl { return decl() }
+func Decl() plugin.Decl { return scopeTargetWrites(decl()) }
 
 // filterSchema turns the source's filter surface (fact/match-key name → value
 // kind, defined next to the code that computes and evaluates them) into a
@@ -180,6 +180,7 @@ func decl() plugin.Decl {
 			githubEvent(ClosedEvent, "a PR closed (merged or not) — terminal for the PR: runs on it stop, and the outcome is recorded",
 				plugin.Schema{"merged": {Type: "boolean"}, "reverts": {Type: "list", Desc: "PR numbers this one reverts"},
 					"reverts_corroborated": {Type: "boolean", Desc: "the revert claim is backed by the commit messages"}}, nil),
+			githubEvent(ReopenedEvent, "a closed PR was reopened — the PR is live again: writes bound to it are allowed once more", nil, nil),
 		},
 		Verbs: []plugin.Verb{
 			{
@@ -307,7 +308,7 @@ func decl() plugin.Decl {
 				},
 			},
 			{
-				Name: "pr_files", Desc: "changed files: [{path, status, additions, deletions, changes}] (100/page; pass page for more)",
+				Name: "pr_files", Desc: "changed files: [{path, status, additions, deletions, changes, patch}] — patch is the file's unified diff, \"\" where GitHub omits it (binary, or past its size cap) (100/page; pass page for more)",
 				Options: plugin.Schema{
 					"repo": {Type: "string", Required: true, Scope: "repo"}, "pr": {Type: "integer", Required: true},
 					"all": {Type: "boolean", Desc: "fetch every page (default: first 100)"},

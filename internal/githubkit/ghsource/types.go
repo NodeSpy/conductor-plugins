@@ -21,6 +21,12 @@ import (
 // closes_target (ghplugin.ClosedEvent).
 const KindClosed = "_closed"
 
+// KindReopened is the reserved kind emitted when a closed PR is reopened, so
+// the host engine treats the target as live again. It never dispatches an
+// action. It is the event the github declaration marks reopens_target
+// (ghplugin.ReopenedEvent).
+const KindReopened = "_reopened"
+
 // The two GitHub comment id sequences, published as `comment_kind` so the host
 // engine keeps a separate high-water mark per sequence: conversation comments
 // (issues/{n}/comments) and inline review comments (pulls/{n}/comments). Same
