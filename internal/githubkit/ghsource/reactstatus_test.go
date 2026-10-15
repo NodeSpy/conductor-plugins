@@ -235,7 +235,7 @@ func TestMeFactOnEvents(t *testing.T) {
 		Identity: Identity{WriteToken: "literal-write-tok"},
 		Rules:    baseConfig().Rules,
 	})
-	d.self = map[string]bool{}
+	d.self.Store(&map[string]bool{})
 	d.acting = ""
 	d.app = userStub(t, "Octocat")
 	d.discoverSelf(context.Background())

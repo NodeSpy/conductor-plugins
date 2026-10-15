@@ -297,7 +297,7 @@ func (g *Source) stuckPass(ctx context.Context, emit EmitFunc) {
 			return
 		}
 		for _, pr := range prs {
-			if !g.self[strings.ToLower(pr.User.Login)] {
+			if !g.isSelf(pr.User.Login) {
 				continue // your PRs only
 			}
 			t := g.target(repo, pr.Number, pr.Head.SHA, pr.Base.Ref, pr.HTMLURL)
@@ -426,7 +426,7 @@ func (g *Source) sweepRepo(ctx context.Context, emit EmitFunc, instID int64, own
 			emit(ctx, tr)
 		}
 
-		if !g.self[strings.ToLower(pr.User.Login)] {
+		if !g.isSelf(pr.User.Login) {
 			continue // conflict/behind autopilot is for PRs you authored
 		}
 		info, err := rest.pull(ctx, instID, owner, name, pr.Number)
@@ -559,7 +559,7 @@ const maxThreadReactions = 10
 func (g *Source) threadReviewerFacts(threads []unresolvedThread) map[string]any {
 	var bot *unresolvedThread
 	for i, th := range threads {
-		if th.Author == "" || g.self[strings.ToLower(th.Author)] {
+		if th.Author == "" || g.isSelf(th.Author) {
 			continue
 		}
 		if !th.AuthorIsBot {
@@ -609,7 +609,7 @@ func (g *Source) sweepMissedComments(ctx context.Context, instID int64, owner, n
 	var reviews []int64
 	for _, c := range comments {
 		author := strings.ToLower(c.User.Login)
-		if g.self[author] {
+		if g.isSelf(author) {
 			continue // our own comments never drive a fix
 		}
 		if !c.CreatedAt.IsZero() && c.CreatedAt.Before(cutoff) {

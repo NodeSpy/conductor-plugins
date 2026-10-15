@@ -39,6 +39,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -212,8 +213,11 @@ type Source struct {
 	rest     *restClient
 	// self = your GitHub login(s), used to ignore your own comments, detect your
 	// own PRs (self_review), and filter authored PRs during sweep. Built from
-	// `me:` if set anywhere, else falls back to reviewer/assignee logins.
-	self map[string]bool
+	// `me:` if set anywhere, else falls back to reviewer/assignee logins, else
+	// discovered from the write identity — possibly after the event goroutines
+	// start (discoverSelfLoop), so the set is published whole through the
+	// pointer and never mutated in place. Read via isSelf/hasSelf.
+	self atomic.Pointer[map[string]bool]
 	// projectMap is cfg.ProjectMap keyed lowercase for case-insensitive lookup.
 	projectMap map[string]string
 	// renew nudges the sweep to run now and reset its adaptive cadence — signaled by
@@ -280,7 +284,7 @@ func (g *Source) isOwnStatus(c string) bool {
 	g.ownMu.Lock()
 	own := g.ownStatus[c]
 	g.ownMu.Unlock()
-	return own || g.self[c]
+	return own || g.isSelf(c)
 }
 
 // SweepNow triggers an immediate catch-up sweep (and resets the adaptive cadence)
@@ -310,7 +314,7 @@ func New(name string, cfg Config) (*Source, error) {
 	if cfg.Identity.CommitAuthor == "" {
 		cfg.Identity.CommitAuthor = "self"
 	}
-	g := &Source{name: name, cfg: cfg, self: map[string]bool{},
+	g := &Source{name: name, cfg: cfg,
 		projectMap: map[string]string{}, renew: make(chan struct{}, 1)}
 	for k, v := range cfg.ProjectMap {
 		g.projectMap[strings.ToLower(k)] = v
@@ -318,18 +322,19 @@ func New(name string, cfg Config) (*Source, error) {
 	rules := append([]Rule{cfg.Defaults}, cfg.Rules...)
 
 	// Prefer an explicit `me:`; only fall back to reviewer/assignee if none set.
+	self := map[string]bool{}
 	for _, r := range rules {
 		for _, l := range r.Me.Logins {
-			g.self[strings.ToLower(l)] = true
+			self[strings.ToLower(l)] = true
 			if g.acting == "" {
 				g.acting = l // the first one you named; discovery overrides it
 			}
 		}
 	}
-	if len(g.self) == 0 {
+	if len(self) == 0 {
 		add := func(a Actors) {
 			for _, l := range a.Logins {
-				g.self[strings.ToLower(l)] = true
+				self[strings.ToLower(l)] = true
 				if g.acting == "" {
 					g.acting = l
 				}
@@ -346,7 +351,20 @@ func New(name string, cfg Config) (*Source, error) {
 			}
 		}
 	}
+	g.self.Store(&self)
 	return g, nil
+}
+
+// isSelf reports whether login is one of yours (case-insensitive).
+func (g *Source) isSelf(login string) bool {
+	m := g.self.Load()
+	return m != nil && (*m)[strings.ToLower(login)]
+}
+
+// hasSelf reports whether any identity is known yet.
+func (g *Source) hasSelf() bool {
+	m := g.self.Load()
+	return m != nil && len(*m) > 0
 }
 
 // Name returns the instance name.
@@ -426,43 +444,69 @@ func ghAuthToken() (string, error) {
 // when nothing else identified you — so `me.logins` is optional. Your writes run
 // as you (identity.write_token: `gh_auth` or a literal token, never the App), so
 // `GET /user` on that token returns your login. Runs only when `self` is otherwise
-// empty (an explicit `me:`, or a reviewer/assignee fallback, still wins), and is
-// best-effort: a failure leaves `self` empty (the prior behavior) with a hint,
-// never an error. Set `me.logins` to override — multiple accounts, or a write
+// empty (an explicit `me:`, or a reviewer/assignee fallback, still wins). Returns
+// nil once `self` is known; an error means it is still empty and worth retrying
+// (discoverSelfLoop) — credentials not resolvable yet, `gh` not logged in, or the
+// API unreachable. Set `me.logins` to override — multiple accounts, or a write
 // credential that isn't the human whose PRs/reviews you want tracked.
-func (g *Source) discoverSelf(ctx context.Context) {
-	if len(g.self) > 0 {
-		return
+func (g *Source) discoverSelf(ctx context.Context) error {
+	if g.hasSelf() {
+		return nil
 	}
 	if err := g.ensureClients(); err != nil {
 		// No credentials yet (a webhook-only instance with no app:/token:
-		// configured, say) — not an error, just nothing to discover from
-		// until one resolves some other way (a later sweep, once
-		// configured).
-		log.Printf("github[%s]: me: not set and no credentials yet (%v) — set me.logins to identify your PRs/reviews", g.name, err)
-		return
+		// configured, say) — nothing to discover from until one resolves.
+		return fmt.Errorf("no credentials yet (%w)", err)
 	}
 	tok := g.cfg.Identity.WriteToken
 	if tok == "" || tok == "gh_auth" {
 		t, err := ghAuthToken()
 		if err != nil {
-			log.Printf("github[%s]: me: not set and auto-discovery unavailable (%v) — set me.logins to identify your PRs/reviews", g.name, err)
-			return
+			return fmt.Errorf("auto-discovery unavailable (%w)", err)
 		}
 		tok = t
 	}
 	app := g.appAuth() // ensureClients succeeded above, so this is never nil
 	login, err := githubWhoami(ctx, app.httpc, app.apiBase, tok)
 	if err != nil {
-		log.Printf("github[%s]: me: auto-discovery failed (%v) — set me.logins to identify your PRs/reviews", g.name, err)
-		return
+		return fmt.Errorf("auto-discovery failed (%w)", err)
 	}
-	if login != "" {
-		g.ownMu.Lock()
-		g.acting = login
-		g.ownMu.Unlock()
-		g.self[strings.ToLower(login)] = true
-		log.Printf("github[%s]: me: auto-discovered as %q from the write identity — set me.logins to override", g.name, login)
+	if login == "" {
+		return fmt.Errorf("auto-discovery failed (GET /user returned no login)")
+	}
+	g.ownMu.Lock()
+	g.acting = login
+	g.ownMu.Unlock()
+	g.self.Store(&map[string]bool{strings.ToLower(login): true})
+	log.Printf("github[%s]: me: auto-discovered as %q from the write identity — set me.logins to override", g.name, login)
+	return nil
+}
+
+// Backoff bounds for discoverSelfLoop. Variables so tests can shorten them.
+var (
+	selfRetryMin = 30 * time.Second
+	selfRetryMax = 15 * time.Minute
+)
+
+// discoverSelfLoop retries discoverSelf with backoff until `self` is known or
+// ctx ends. Without it, a discovery that failed at Start (the network down
+// while the plugin restarted) left `self` empty for the life of the process:
+// no review request matched you and none of your PRs were recognised as yours,
+// silently, until a restart. On success it nudges a catch-up sweep, which
+// recovers whatever was missed while the identity was unknown.
+func (g *Source) discoverSelfLoop(ctx context.Context) {
+	delay := selfRetryMin
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(delay):
+		}
+		if g.discoverSelf(ctx) == nil {
+			g.SweepNow()
+			return
+		}
+		delay = min(delay*2, selfRetryMax)
 	}
 }
 

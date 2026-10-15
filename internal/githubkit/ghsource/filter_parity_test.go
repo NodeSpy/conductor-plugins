@@ -24,7 +24,9 @@ func testIntegration(selves ...string) *Source {
 	for _, s := range selves {
 		self[s] = true
 	}
-	return &Source{name: "parity", self: self}
+	g := &Source{name: "parity"}
+	g.self.Store(&self)
+	return g
 }
 
 // prCase is one PR the legacy and lowered paths are both asked about.

@@ -316,7 +316,7 @@ func (g *Source) reviewTriggers(ctx context.Context, repo string, p ghPayload) [
 	// A closed PR's review is dropped below (no branch to fix) — it must not
 	// claim the review either, or a redelivery after a reopen would find it
 	// already emitted.
-	if g.ownPR(p.PullRequest.User.Login) && !g.self[strings.ToLower(ri.Author)] && !prClosedInPayload(p) {
+	if g.ownPR(p.PullRequest.User.Login) && !g.isSelf(ri.Author) && !prClosedInPayload(p) {
 		// The review's ONE event, unless one of its comment deliveries
 		// already emitted it. A review with no inline comments emits nothing
 		// here unless it requested changes (its body alone never did); an
@@ -336,7 +336,7 @@ func (g *Source) ownPR(login string) bool {
 	if login == "" {
 		return false
 	}
-	return g.self[strings.ToLower(login)]
+	return g.isSelf(login)
 }
 
 // checkOwnPR resolves the PR author for a check event (whose payload omits it) via a
@@ -394,7 +394,7 @@ func (g *Source) commentTriggers(ctx context.Context, repo, eventType string, p 
 		return nil // new_comment autopilot is for PRs you authored (we push fixes)
 	}
 	author := strings.ToLower(p.Comment.User.Login)
-	if g.self[author] {
+	if g.isSelf(author) {
 		return nil // ignore our own comments
 	}
 	// An inline comment of a submitted review is part of that review's ONE
@@ -660,7 +660,7 @@ func (g *Source) pullRequestTriggers(ctx context.Context, repo string, p ghPaylo
 
 // selfReviewTriggers fires when you open/update your own PR (critique it).
 func (g *Source) selfReviewTriggers(repo string, pr *prPayload) []Trigger {
-	if !g.self[strings.ToLower(pr.User.Login)] {
+	if !g.isSelf(pr.User.Login) {
 		return nil // only your own PRs
 	}
 	t := g.prTarget(repo, pr)
@@ -1000,7 +1000,7 @@ func (g *Source) issueAssigneeMatch(repo string, act Action, assignees []string)
 // anySelf reports whether any login is a `me` identity.
 func (g *Source) anySelf(logins []string) bool {
 	for _, l := range logins {
-		if g.self[strings.ToLower(l)] {
+		if g.isSelf(l) {
 			return true
 		}
 	}
@@ -1014,7 +1014,7 @@ func (g *Source) soleSelf(logins []string) bool {
 		return false
 	}
 	for _, l := range logins {
-		if !g.self[strings.ToLower(l)] {
+		if !g.isSelf(l) {
 			return false
 		}
 	}
@@ -1217,7 +1217,7 @@ func (g *Source) reviewerInList(rev Actors, logins, teamSlugs []string) bool {
 	byDefault := len(rev.Logins) == 0 && len(rev.Teams) == 0
 	for _, l := range logins {
 		if byDefault {
-			if g.self[strings.ToLower(l)] {
+			if g.isSelf(l) {
 				return true
 			}
 		} else if rev.HasLogin(l) {
