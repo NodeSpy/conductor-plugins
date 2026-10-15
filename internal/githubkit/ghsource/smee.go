@@ -61,11 +61,15 @@ func (g *Source) Start(ctx context.Context, emit EmitFunc) error {
 		log.Printf("github[%s]: no credentials yet (%v) — continuing webhook-only; "+
 			"resolves lazily once one is available", g.name, err)
 	}
-	// Auto-discover me: from the write identity when it wasn't set
-	// (best-effort; runs before the sweep so `self` is populated for its
-	// first pass). A no-op log, not an error, if ensureClients just failed
-	// above and credentials still aren't available (see discoverSelf).
-	g.discoverSelf(ctx)
+	// Auto-discover me: from the write identity when it wasn't set (runs
+	// before the sweep so `self` is populated for its first pass). Not fatal:
+	// a failure is retried in the background until it succeeds — every
+	// review-request and own-PR match depends on it.
+	if err := g.discoverSelf(ctx); err != nil {
+		log.Printf("github[%s]: me: %v — no review request or PR is recognised as yours until this resolves; "+
+			"retrying in the background (set me.logins to skip discovery)", g.name, err)
+		go g.discoverSelfLoop(ctx)
+	}
 	if g.cfg.Webhook.Verify() && g.cfg.Webhook.SmeeURL != "" {
 		log.Printf("github[%s]: signature verification ON — note the smee re-serialization caveat; "+
 			"set webhook.verify_signature:false if valid deliveries are being dropped", g.name)
