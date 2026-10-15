@@ -646,7 +646,15 @@ func (g *Source) pullRequestTriggers(ctx context.Context, repo string, p ghPaylo
 						lowerReviewRequested(act))
 			})
 	case "opened", "reopened", "synchronize", "ready_for_review":
-		trs := g.mergeStateTriggers(ctx, repo, p, pr)
+		var trs []Trigger
+		if p.Action == "reopened" {
+			// The PR is live again: the host clears its closed mark. As with
+			// _closed, GitHub assigns the repo and number on a
+			// signature-verified delivery.
+			trs = append(trs, Trigger{Source: "github", Instance: g.name, Kind: KindReopened,
+				TargetTrusted: true, Target: g.prTarget(repo, pr)})
+		}
+		trs = append(trs, g.mergeStateTriggers(ctx, repo, p, pr)...)
 		trs = append(trs, g.selfReviewTriggers(repo, pr)...)
 		trs = append(trs, g.mergeReadyTriggers(ctx, repo, pr.Number, p)...)
 		if p.Action == "ready_for_review" {

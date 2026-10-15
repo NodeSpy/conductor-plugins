@@ -351,6 +351,26 @@ func TestPullRequestClosedEmitsKindClosed(t *testing.T) {
 	}
 }
 
+// A reopened PR emits _reopened (trusted: GitHub assigned the target) so the
+// host treats the target as live again — ahead of whatever else the reopen
+// fires.
+func TestPullRequestReopenedEmitsKindReopened(t *testing.T) {
+	g := newTestIntegration(t, richConfig())
+	body := `{"action":"reopened","repository":{"full_name":"acme/w","name":"w","owner":{"login":"acme"}},
+		"pull_request":{"number":6,"head":{"sha":"h","ref":"feature"},"base":{"ref":"main"}}}`
+	trs := g.triggersFor(context.Background(), "pull_request", []byte(body))
+	if len(trs) == 0 || trs[0].Kind != KindReopened || !trs[0].TargetTrusted || trs[0].Target.Number != 6 {
+		t.Fatalf("want a trusted _reopened for #6 first, got %+v", trs)
+	}
+	opened := `{"action":"opened","repository":{"full_name":"acme/w","name":"w","owner":{"login":"acme"}},
+		"pull_request":{"number":6,"head":{"sha":"h","ref":"feature"},"base":{"ref":"main"}}}`
+	for _, tr := range g.triggersFor(context.Background(), "pull_request", []byte(opened)) {
+		if tr.Kind == KindReopened {
+			t.Fatal("an opened PR is not a reopen")
+		}
+	}
+}
+
 func TestIssueMatchedStateBased(t *testing.T) {
 	g := newTestIntegration(t, richConfig()) // issue_matched: labels_any [Ready]
 	// Current state has the Ready label + assigned to me → matches.

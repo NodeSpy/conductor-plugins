@@ -302,14 +302,18 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 				Additions int    `json:"additions"`
 				Deletions int    `json:"deletions"`
 				Changes   int    `json:"changes"`
+				Patch     string `json:"patch"`
 			}
 			if err := json.Unmarshal(b, &raw); err != nil {
 				return 0, err
 			}
 			for _, f := range raw {
+				// patch is "" where GitHub omits it: a binary file, or one
+				// past its per-file diff size cap.
 				files = append(files, map[string]any{
 					"path": f.Filename, "status": f.Status,
 					"additions": f.Additions, "deletions": f.Deletions, "changes": f.Changes,
+					"patch": f.Patch,
 				})
 			}
 			return len(raw), nil

@@ -201,8 +201,8 @@ trigger's `assignee`).
 | `secret_scanning_alert` | a new secret-scanning alert | `secret_type` | — |
 
 Every event also takes `max_attempts_per_head`. Closing a PR emits conductor's
-`_closed` lifecycle event (merged or not, with revert facts) — no trigger is on
-it; the engine consumes it.
+`_closed` lifecycle event (merged or not, with revert facts), and reopening one
+emits `_reopened` — no trigger is on either; the engine consumes them.
 
 **Review folding.** A submitted review reaches GitHub's webhook as one
 `pull_request_review` plus one `pull_request_review_comment` per inline comment,
@@ -262,6 +262,15 @@ Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
   App is configured. Omitted below for brevity — every verb that mutates accepts it.
 - **`number` vs `pr`** — issue/PR verbs take `number`; PR-only verbs take `pr`.
   `comment`/`assign` accept either (`number`, alias `pr`).
+- **Bound to the dispatch's target** — for an agent calling a verb
+  (`conductor call`), every WRITE that addresses a PR or issue gates its
+  `pr`/`number` in the `number` scope dimension, and `put_file`/`delete_file`/
+  `create_branch` gate `branch` in `branch`. The dispatch's own PR/issue and
+  head branch need no grant; another needs the grant to name it
+  (`skill.verbs: { gh.comment: { pr: ["*"] } }`), and a `put_file` with no
+  branch names `@default-branch`. Once the PR merges or closes it is no longer
+  the dispatch's own (until it is reopened). Reads are not bound beyond the
+  repo.
 - **Pagination** — list verbs return the first page; pass `all: true` for every
   page, or `per_page` (max 100) to size it.
 - **`sweep`** — conductor-defined: the DAEMON answers it (a daemon-wide catch-up
@@ -295,7 +304,7 @@ flow on it passes `pr:` and names its own context.
 - **`update_pr`** — edit a PR. `repo`*, `pr`*, `state` (`open` | `closed` → reopen/close), `title`, `body`, `base` (retarget). → `number`, `state`.
 - **`pr_get`** — PR metadata. `repo`*, `pr`*. → `title`, `body`, `state`, `draft`, `author`, `base`, `head`, `head_sha`, `additions`, `deletions`, `changed_files`, `labels`, `url`.
 - **`pr_diff`** — the PR's unified diff (cached; GitHub caps the `.diff` type around 300 files). `repo`*, `pr`*. → `diff`.
-- **`pr_files`** — changed files: `[{path, status, additions, deletions, changes}]` (100/page). `repo`*, `pr`*, `all`. → `files`.
+- **`pr_files`** — changed files: `[{path, status, additions, deletions, changes, patch}]` (100/page); `patch` is the file's unified diff, `""` where GitHub omits it (a binary file, or one past its size cap). `repo`*, `pr`*, `all`. → `files`.
 - **`checks`** — check-run status for a ref: `[{name, status, conclusion, url}]`. `repo`*, `ref`* (branch/tag/sha). → `checks`.
 - **`ready_for_review`** — mark a draft PR ready. `repo`*, `pr`*. → `ok`.
 - **`convert_to_draft`** — convert a PR back to a draft. `repo`*, `pr`*. → `ok`.
