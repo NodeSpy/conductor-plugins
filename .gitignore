@@ -23,3 +23,4 @@ dist/
 !/README.md
 !/go.mod
 !/go.sum
+/connectors/aws-cost/aws-cost
