@@ -109,4 +109,4 @@ connectors:
 
 `acknowledge` is reversible (an acknowledged incident re-triggers on its
 timeout), which makes it a natural first action class to promote for an
-on-call member; `resolve` and `escalate` change who gets paged.
+on-call bot; `resolve` and `escalate` change who gets paged.

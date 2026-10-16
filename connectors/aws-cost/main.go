@@ -6,7 +6,7 @@
 // EC2 Reserved Instance offering.
 //
 // The purchase verbs carry a TYPED, REQUIRED total amount
-// (total_commitment_usd / total_cost_usd). Conductor's spend cap (a member's
+// (total_commitment_usd / total_cost_usd). Conductor's spend cap (a bot's
 // autonomy.spend_cap, keyed by autonomy.amounts) caps that number — so the
 // plugin does not trust it: before buying, it looks the offering up, derives
 // the real total commitment from the offering's own terms, and refuses unless

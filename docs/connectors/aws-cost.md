@@ -35,7 +35,7 @@ connectors:
 | `purchase_savings_plan` | `total_commitment_usd` | `commitment_per_hour × hours in the offering's term` |
 | `purchase_reserved_instances` | `total_cost_usd` | `instance_count × (upfront + (usage + hourly recurring) × term hours)` |
 
-That number is what a spend cap governs — conductor's member gate
+That number is what a spend cap governs — conductor's bot gate
 (`autonomy.amounts: { aws.purchase_savings_plan: total_commitment_usd }` under
 an `autonomy.spend_cap`) holds the purchase as a `commit_money` proposal and
 refuses an amount over the cap. The plugin does not trust the number: before
@@ -52,7 +52,7 @@ validate without buying.
 Credentials for an IAM principal with what you use: `ce:Get*` for the Cost
 Explorer reads, `savingsplans:Describe*` (+ `savingsplans:CreateSavingsPlan`
 to buy), `ec2:DescribeReservedInstances*` (+
-`ec2:PurchaseReservedInstancesOffering` to buy). Give a read-only member a
+`ec2:PurchaseReservedInstancesOffering` to buy). Give a read-only bot a
 principal without the purchase permissions. Credentials come from
 `access_key_id` / `secret_access_key` (+ `session_token`) or the standard
 `AWS_*` environment variables.
@@ -83,10 +83,10 @@ principal without the purchase permissions. Credentials come from
 | `purchase_savings_plan` | `offering_id`, `commitment_per_hour` (number), `total_commitment_usd` (number), `upfront_payment?`, `client_token?` | `savings_plan_id`, `total_commitment`, `currency` |
 | `purchase_reserved_instances` | `offering_id`, `instance_count`, `total_cost_usd` (number), `dry_run?` | `reserved_instances_id`, `total_cost`, `currency`, `dry_run` |
 
-## Using it from a member
+## Using it from a bot
 
 ```yaml
-members:
+bots:
   sre-acme:
     skill:
       verbs: [aws.cost_*, aws.reservation_*, aws.savings_plans*, aws.reserved_*, aws.purchase_*]
