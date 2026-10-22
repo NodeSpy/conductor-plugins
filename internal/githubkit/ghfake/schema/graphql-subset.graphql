@@ -3136,3 +3136,113 @@ type ConvertPullRequestToDraftPayload {
   clientMutationId: String
   pullRequest: PullRequest
 }
+
+input ResolveReviewThreadInput {
+  clientMutationId: String
+  threadId: ID!
+}
+
+type ResolveReviewThreadPayload {
+  clientMutationId: String
+  thread: PullRequestReviewThread
+}
+
+type Commit implements GitObject & Node & Subscribable & UniformResourceLocatable {
+  abbreviatedOid: String!
+  additions: Int!
+  associatedPullRequests(
+    after: String
+    before: String
+    first: Int
+    last: Int
+    orderBy: PullRequestOrder = {field: CREATED_AT, direction: ASC}
+  ): PullRequestConnection
+  author: GitActor
+  authoredByCommitter: Boolean!
+  authoredDate: DateTime!
+  authors(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): GitActorConnection!
+  blame(
+    path: String!
+  ): Blame!
+  changedFiles: Int!
+  changedFilesIfAvailable: Int
+  checkSuites(
+    after: String
+    before: String
+    filterBy: CheckSuiteFilter
+    first: Int
+    last: Int
+  ): CheckSuiteConnection
+  comments(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): CommitCommentConnection!
+  commitResourcePath: URI!
+  commitUrl: URI!
+  committedDate: DateTime!
+  committedViaWeb: Boolean!
+  committer: GitActor
+  deletions: Int!
+  deployments(
+    after: String
+    before: String
+    environments: [String!]
+    first: Int
+    last: Int
+    orderBy: DeploymentOrder = {field: CREATED_AT, direction: ASC}
+  ): DeploymentConnection
+  file(
+    path: String!
+  ): TreeEntry
+  history(
+    after: String
+    author: CommitAuthor
+    before: String
+    first: Int
+    last: Int
+    path: String
+    since: GitTimestamp
+    until: GitTimestamp
+  ): CommitHistoryConnection!
+  id: ID!
+  message: String!
+  messageBody: String!
+  messageBodyHTML: HTML!
+  messageHeadline: String!
+  messageHeadlineHTML: HTML!
+  oid: GitObjectID!
+  onBehalfOf: Organization
+  parents(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): CommitConnection!
+  pushedDate: DateTime
+  repository: Repository!
+  resourcePath: URI!
+  signature: GitSignature
+  status: Status
+  statusCheckRollup: StatusCheckRollup
+  submodules(
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): SubmoduleConnection!
+  tarballUrl: URI!
+  tree: Tree!
+  treeResourcePath: URI!
+  treeUrl: URI!
+  url: URI!
+  viewerCanSubscribe: Boolean!
+  viewerSubscription: SubscriptionState
+  zipballUrl: URI!
+}

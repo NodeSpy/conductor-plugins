@@ -25,6 +25,7 @@ LinkedBranchConnection PullRequestConnection
 AddReactionInput AddReactionPayload RemoveReactionInput RemoveReactionPayload Reaction ReactionContent
 MarkPullRequestReadyForReviewInput MarkPullRequestReadyForReviewPayload
 ConvertPullRequestToDraftInput ConvertPullRequestToDraftPayload
+ResolveReviewThreadInput ResolveReviewThreadPayload Commit
 """.split()
 
 def main(path):
