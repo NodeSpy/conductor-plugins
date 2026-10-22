@@ -96,6 +96,10 @@ func prEvent(action string, n int, author string) string {
 }
 
 // Cases returns the conformance table.
+// t1Comment is the one comment on the sweep case's open thread.
+var t1Comment = map[string]any{"databaseId": 3001, "author": map[string]any{"login": "rev", "__typename": "User"},
+	"path": "a.go", "line": 4, "body": "still wrong", "url": "u"}
+
 func Cases() []Case {
 	recent := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
 	stale := time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339)
@@ -319,6 +323,8 @@ func Cases() []Case {
 			Want: []Want{{Kind: "new_comment", Trigger: "human", Repo: repo, Number: 7, Context: map[string]any{"comment_id": 602}}},
 		},
 		{
+			// T1's one comment is both its opener and its most recent: the
+			// feedback query reads each thread's opener and its latest comments.
 			Name:       "the sweep recovers pending reviews, conflicts, open threads, missed comments",
 			Connection: withSweep,
 			Triggers: []Trigger{{On: "review_requested", Name: "rr"}, {On: "merge_conflict", Name: "mc"},
@@ -336,8 +342,7 @@ func Cases() []Case {
 					"repository": map[string]any{"pullRequest": map[string]any{
 						"latestOpinionatedReviews": map[string]any{"nodes": []any{}},
 						"reviewThreads": map[string]any{"nodes": []any{map[string]any{"id": "T1", "isResolved": false,
-							"comments": map[string]any{"nodes": []any{map[string]any{"databaseId": 3001, "author": map[string]any{"login": "rev", "__typename": "User"},
-								"path": "a.go", "line": 4, "body": "still wrong", "url": "u"}}}}}},
+							"opener": map[string]any{"nodes": []any{t1Comment}}, "recent": map[string]any{"nodes": []any{t1Comment}}}}},
 					}}}}},
 				{Method: "GET", Path: "/repos/" + repo + "/issues/7/comments", Body: []any{
 					map[string]any{"id": 4001, "body": "ping", "user": map[string]any{"login": "rev"}, "created_at": recent}}},
