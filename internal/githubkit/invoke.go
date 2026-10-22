@@ -144,6 +144,8 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 			return nil, c.remapTargetGone(ctx, tok, repo, key, err)
 		}
 		return map[string]any{"ok": true}, nil
+	case "resolve_threads":
+		return c.resolveThreads(ctx, tok, repo, number, opts)
 	case "submit_review":
 		if number == 0 {
 			return nil, fmt.Errorf("github.submit_review: options.pr is required")

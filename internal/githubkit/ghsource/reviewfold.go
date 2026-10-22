@@ -74,6 +74,7 @@ type reviewInfo struct {
 	Body        string
 	Author      string
 	AuthorIsBot bool
+	SubmittedAt time.Time
 }
 
 // reviewCache remembers submitted reviews' facts by id, and which reviews have
@@ -236,12 +237,10 @@ func (g *Source) reviewEvent(ctx context.Context, repo string, instID int64, pr 
 			"author": ri.Author, "author_is_bot": ri.AuthorIsBot,
 			"review_id": reviewID, "review_body": ri.Body, "review_state": ri.State,
 			"reaction_subjects": reactionSubjects(githubkit.SubjectReview, reviewID)}
-		if len(cs) > 0 {
-			// The review's inline comments ride this run; its highest id
-			// dispatches it once (the engine's comment high-water mark).
-			addReviewComments(extra, cs)
-			extra["comment_id"], extra["comment_kind"] = maxCommentID(cs), CommentKindReview
-		}
+		// Every unaddressed review on the PR rides this run, not only this
+		// one (feedback.go); the latest submission among them dispatches it
+		// once (the engine's cursor).
+		stampFold(extra, g.reviewFold(ctx, instID, repo, pr.Number, reviewID, ri, cs))
 		return g.emit(repo, "changes_requested", t,
 			fmt.Sprintf("changes requested on %s#%d", repo, pr.Number),
 			fmt.Sprintf("review:%d@%s", reviewID, pr.Head.SHA), extra,
@@ -347,6 +346,12 @@ func addReviewComments(ctx map[string]any, cs []reviewComment) {
 		}
 		budget -= len(body)
 		m := map[string]any{"author": c.Author, "path": c.Path, "body": body}
+		if c.ID > 0 {
+			m["id"] = c.ID
+		}
+		if c.Thread != "" {
+			m["thread_id"] = c.Thread
+		}
 		if c.Line > 0 {
 			m["line"] = c.Line
 		}

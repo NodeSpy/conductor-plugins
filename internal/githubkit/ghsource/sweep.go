@@ -8,8 +8,6 @@ import (
 	"path"
 	"strings"
 	"time"
-
-	"github.com/NodeSpy/conductor-plugins/internal/githubkit"
 )
 
 // sweepLoop runs the optional catch-up sweep on an ADAPTIVE cadence. It's off
@@ -476,104 +474,45 @@ func (g *Source) sweepRepo(ctx context.Context, emit EmitFunc, instID int64, own
 	}
 }
 
-// sweepUnresolvedComments reconciles outstanding review-comment threads on your
-// PR — recovering feedback no live webhook picked up — by emitting changes_requested
-// for the fixer to address. The dedup signature includes the set of unresolved
-// thread ids, so it re-fires when new threads appear and stops once they're
-// resolved (acted per state). Only runs when changes_requested is configured, to
-// avoid the extra GraphQL call otherwise.
+// sweepUnresolvedComments reconciles the review feedback still waiting on
+// you on your PR — recovering what no live webhook (or a held event lost to a
+// restart) brought in — as one changes_requested carrying all of it
+// (feedback.go). The dedup signature covers the head and the unaddressed
+// threads and reviews; the engine's cursor drops it when a run already
+// covered its latest submission. Only runs when changes_requested is
+// configured, to avoid the extra GraphQL call otherwise.
 //
 // A thread whose opener has since APPROVED is not outstanding: the reviewer
-// signed off, and threads are often left open after an approval. Counting them
-// launched a fresh changes_requested fixer on an approved PR every time the head
-// moved (the signature includes the head) — which then re-requested the
-// approver's review. Their comments still reach the new_comment autopilot.
+// signed off, and threads are often left open after an approval. Counting
+// them launched a fresh changes_requested fixer on an approved PR every time
+// the head moved — which then re-requested the approver's review. Their
+// comments still reach the new_comment autopilot.
 func (g *Source) sweepUnresolvedComments(ctx context.Context, instID int64, owner, name, repo string, t Target) []Trigger {
 	act, ok := g.actionFor(repo, "changes_requested")
 	if !ok || !act.IsEnabled() {
 		return nil
 	}
-	all, err := g.restClient().unresolvedThreads(ctx, instID, owner, name, t.Number)
-	if err != nil {
+	f, _, ok := g.readFold(ctx, instID, repo, t.Number)
+	if !ok || f.empty() {
 		return nil
 	}
-	var threads []unresolvedThread
-	for _, th := range all {
-		if !th.AuthorApproved {
-			threads = append(threads, th)
-		}
-	}
-	if len(threads) == 0 {
-		return nil
-	}
-	ids := make([]string, 0, len(threads))
-	for _, th := range threads {
-		ids = append(ids, th.ID)
+	ids := append([]string(nil), f.Threads...)
+	for _, r := range f.Reviews {
+		ids = append(ids, fmt.Sprintf("review:%d", r.ID))
 	}
 	sig := "threads:" + t.HeadSHA + ":" + threadSig(ids)
-	extra := g.threadReviewerFacts(threads)
+	extra := g.foldReviewerFacts(f)
 	if extra == nil {
 		extra = map[string]any{}
 	}
-	// The threads' opening comments are the feedback this run addresses —
-	// the same review_comments the webhook path carries for a review.
-	cs := make([]reviewComment, 0, len(threads))
-	for _, th := range threads {
-		cs = append(cs, reviewComment{ID: th.CommentID, Author: th.Author, Path: th.Path, Line: th.Line, Body: th.Body, URL: th.URL})
-	}
-	addReviewComments(extra, cs)
-	// What the run reacts on: each thread's opening comment, capped — a PR
-	// with dozens of open threads shouldn't fan out dozens of reactions twice.
-	openers := make([]int64, 0, len(cs))
-	for _, c := range cs {
-		if len(openers) == maxThreadReactions {
-			break
-		}
-		openers = append(openers, c.ID)
-	}
-	extra["reaction_subjects"] = reactionSubjects(githubkit.SubjectReviewComment, openers...)
-	// The threads' highest comment id gates this on the engine's comment
-	// high-water mark, the same mark the webhook's changes_requested for a
-	// review advances: a review already dispatched is not re-dispatched by a
-	// sweep still finding its threads unresolved (nor after the reviewer
-	// edits it), while a new review's threads are above the mark.
-	if id := maxCommentID(cs); id > 0 {
-		extra["comment_id"], extra["comment_kind"] = id, CommentKindReview
-	}
+	stampFold(extra, f)
 	return g.single(repo, "changes_requested", t,
-		fmt.Sprintf("sweep: %d unresolved comment thread(s) on %s#%d", len(ids), repo, t.Number), sig,
+		fmt.Sprintf("sweep: %d unresolved comment thread(s), %d changes-request(s) on %s#%d", len(f.Threads), len(f.Reviews), repo, t.Number), sig,
 		extra)
 }
 
 // maxThreadReactions caps the thread openers a sweep-recovered run reacts on.
 const maxThreadReactions = 10
-
-// threadReviewerFacts names the reviewer behind a sweep-recovered
-// changes_requested — the opener of the first unresolved thread that isn't
-// you, preferring a human over a bot — as the same `author`/`author_is_bot`
-// facts the webhook path carries, so a flow's "{{.author}}" (the re-request
-// step) pings a real reviewer. A review bot (Cursor Bugbot, Copilot, …) can't
-// be re-requested — GitHub 422s it as "not a collaborator" — so it is named
-// only when no human opened a thread, with author_is_bot telling the flow so.
-// nil when no thread names one (only self-authored threads, or ghost authors).
-func (g *Source) threadReviewerFacts(threads []unresolvedThread) map[string]any {
-	var bot *unresolvedThread
-	for i, th := range threads {
-		if th.Author == "" || g.isSelf(th.Author) {
-			continue
-		}
-		if !th.AuthorIsBot {
-			return map[string]any{"author": th.Author, "author_is_bot": false}
-		}
-		if bot == nil {
-			bot = &threads[i]
-		}
-	}
-	if bot != nil {
-		return map[string]any{"author": bot.Author, "author_is_bot": true}
-	}
-	return nil
-}
 
 // commentRecoveryWindow bounds the sweep's missed-comment recovery: a comment older
 // than this is never re-emitted. Recovery exists for comments whose webhook was

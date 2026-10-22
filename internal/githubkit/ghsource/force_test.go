@@ -106,17 +106,17 @@ func TestForceChangesRequestedAuthorIsReviewer(t *testing.T) {
 		want          any
 	}{
 		{"thread reviewer", `[
-			{"id":"t1","isResolved":false,"comments":{"nodes":[{"author":{"login":"me","__typename":"User"}}]}},
-			{"id":"t2","isResolved":false,"comments":{"nodes":[{"author":{"login":"dana","__typename":"User"}}]}}]`, "dana"},
+			{"id":"t1","isResolved":false,"opener":{"nodes":[{"author":{"login":"me","__typename":"User"}}]},"recent":{"nodes":[{"author":{"login":"me","__typename":"User"}}]}},
+			{"id":"t2","isResolved":false,"opener":{"nodes":[{"author":{"login":"dana","__typename":"User"}}]},"recent":{"nodes":[{"author":{"login":"dana","__typename":"User"}}]}}]`, "dana"},
 		// A review bot can't be re-requested (GitHub 422s it as "not a
 		// collaborator"): a human reviewer wins even behind an older bot thread.
 		{"human over bot", `[
-			{"id":"t1","isResolved":false,"comments":{"nodes":[{"author":{"login":"cursor","__typename":"Bot"}}]}},
-			{"id":"t2","isResolved":false,"comments":{"nodes":[{"author":{"login":"dana","__typename":"User"}}]}}]`, "dana"},
+			{"id":"t1","isResolved":false,"opener":{"nodes":[{"author":{"login":"cursor","__typename":"Bot"}}]},"recent":{"nodes":[{"author":{"login":"cursor","__typename":"Bot"}}]}},
+			{"id":"t2","isResolved":false,"opener":{"nodes":[{"author":{"login":"dana","__typename":"User"}}]},"recent":{"nodes":[{"author":{"login":"dana","__typename":"User"}}]}}]`, "dana"},
 		// Bot-only: still named (author_is_bot tells the flow), in the REST /
 		// webhook "[bot]" form rather than GraphQL's bare slug.
 		{"bot only", `[
-			{"id":"t1","isResolved":false,"comments":{"nodes":[{"author":{"login":"cursor","__typename":"Bot"}}]}}]`, "cursor[bot]"},
+			{"id":"t1","isResolved":false,"opener":{"nodes":[{"author":{"login":"cursor","__typename":"Bot"}}]},"recent":{"nodes":[{"author":{"login":"cursor","__typename":"Bot"}}]}}]`, "cursor[bot]"},
 		{"no reviewer", `[]`, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

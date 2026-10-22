@@ -186,7 +186,7 @@ trigger's `assignee`).
 | event | fires when | extra context | options |
 |-------|-----------|---------------|---------|
 | `review_requested` | your review was requested (webhook, a draft becoming ready, or the sweep finding it pending) | — | `reviewer` |
-| `changes_requested` | a review requested changes, or left inline comments without approving — ONE event per review; or (sweep) unresolved threads from a reviewer who hasn't since approved | `head_ref`, `author`, `author_is_bot`, `review_id`, `review_body`, `review_state`, `review_comments`, `review_comments_omitted`, `comment_id`, `comment_kind`, `reaction_subjects` | — |
+| `changes_requested` | a review requested changes, or left inline comments without approving — ONE event per review, carrying every review still waiting on you; or (sweep) that feedback when no webhook brought it | `head_ref`, `author`, `author_is_bot`, `review_id`, `review_body`, `review_state`, `review_comments`, `review_comments_omitted`, `outstanding_reviews`, `feedback_cursor`, `comment_id`, `comment_kind`, `reaction_subjects` | — |
 | `new_comment` | a standalone comment, or ONE submitted review no `changes_requested` trigger takes (always so for an approval) with all its inline comments; or (sweep) a comment the webhook missed | `author`, `author_is_bot`, `comment_body`, `head_ref`, `comment_id`, `comment_kind`, `review_*`, `reaction_subjects` | — |
 | `merge_conflict` | your PR became unmergeable | — | — |
 | `pr_behind` | your PR fell behind its base | — | — |
@@ -207,10 +207,39 @@ it; the engine consumes it.
 **Review folding.** A submitted review reaches GitHub's webhook as one
 `pull_request_review` plus one `pull_request_review_comment` per inline comment,
 in no fixed order. Whichever delivery arrives first emits the review's ONE
-event and claims it; the rest emit nothing. Its `comment_id` is the review's
-highest inline comment id, so conductor's comment high-water mark dispatches it
-once durably — a redelivery, a later sweep still seeing its threads, or an edited
-review all fall at or below the mark.
+event and claims it; the rest emit nothing.
+
+**What a `changes_requested` run carries.** Not only the review that fired it:
+every piece of review feedback on the PR still waiting on you, read when the
+event is built. Two reviews submitted moments apart, or one landing while a run
+is working, are covered by whichever event is handled, in either order. Waiting
+on you means:
+
+- an unresolved thread whose most recent comments are not yours — the comments
+  after your last reply in it ride as `review_comments` (with the thread's
+  opening comment for context); a thread you answered last is waiting on the
+  reviewer. A thread opened by a reviewer whose latest review approved is left
+  out.
+- a reviewer's latest review requesting changes on the PR's current head —
+  as `outstanding_reviews` (`{review_id, author, body, url}`). One on an older
+  commit is not: you pushed since.
+
+Each `review_comments` entry carries its `id` and `thread_id`, which is what an
+agent names when it reports the threads it addressed (`resolve_threads`).
+`reaction_subjects` covers the review that fired it and each thread's latest
+waiting comment (capped at 10).
+
+`feedback_cursor` is the latest review **submission** the run covers (its second,
+then the review id). Conductor dispatches each submission once on it: a
+redelivery, a later sweep, or an edited review falls at or below the mark. It is
+a submission, not a comment id, because GitHub numbers a review and its
+comments when they are drafted: a review drafted before another but submitted
+after it has the lower ids, and a mark over ids dropped it as handled.
+
+Upgrading from a release that keyed `changes_requested` on `comment_id`: the
+cursor starts fresh, so the first sweep after the upgrade fires once for each of
+your PRs with feedback still waiting on you by the rules above (including
+threads fixed in code but never replied to or resolved).
 
 ### Filtering
 
@@ -245,8 +274,8 @@ triggers:
 The sweep runs inside the plugin with the connector's credentials: on start,
 then on an adaptive cadence (`min_interval` → `interval`) when a webhook carries
 real time, or a fixed `min_interval` when it is the only source. It recovers
-pending review requests, merge conflicts / behind PRs, unresolved review threads
-(`changes_requested`), and comments a dropped webhook missed (`new_comment`,
+pending review requests, merge conflicts / behind PRs, review feedback still
+waiting on you (`changes_requested`, as above), and comments a dropped webhook missed (`new_comment`,
 within 24h) — each marked catch-up, so conductor skips a PR an agent is already
 working. `SIGUSR1`, `conductor sweep --now`, and the `sweep` verb nudge it
 (conductor calls the plugin's `plugin.nudge`); a smee reconnect resets the
@@ -276,6 +305,7 @@ Required options are marked `*`.
 - **`submit_review`** — submit a PR review: a summary + verdict, with optional inline comments. `repo`*, `pr`*, `event`* (`APPROVE` | `REQUEST_CHANGES` | `COMMENT`), `body` (the summary), `comments` (a list of `{path, line, body, side?, start_line?, start_side?}`; `line` is the file line, `side` defaults to `RIGHT`; every commented line **must** fall inside the PR diff or GitHub rejects the whole review). → `id`, `comments` (count posted).
 - **`request_review`** — request review from users/teams (also re-requests someone who already reviewed). `repo`*, `pr`*, `reviewers` (user logins), `team_reviewers` (team slugs). → `ok`.
 - **`rerequest_review`** — `request_review` for the re-review-after-a-fix flow, guarded. Same options, plus `only_outstanding` (default `true`): only reviewers whose latest review is `CHANGES_REQUESTED` on an older commit than the PR head, who aren't already requested, on an open PR, are pinged — never one who has since approved. State is read fresh; if it can't be read nobody is pinged. `only_outstanding: false` re-requests unconditionally. Review bots and the PR author are always dropped. `all_outstanding: true` adds every other reviewer whose latest review is `CHANGES_REQUESTED` to `reviewers` before those checks (and always applies them), so a flow fired by one reviewer's comment also pings a different reviewer whose changes-request still blocks the merge; `reviewers` may then be omitted. → `ok`, and `skipped` (the reason) when nobody was left to ping.
+- **`resolve_threads`** — resolve the PR's review threads a run addressed. `repo`*, `pr`*, `comments` (review comment ids — any comment in a thread names it), `threads` (thread node ids), `seen_through` (an event's `feedback_cursor`), `as`. Only named threads are touched, never every open one, and only threads on this PR. With `seen_through`, a thread someone other than you or the PR's author has commented in since that cursor is left open: that is feedback the run never saw. Already-resolved threads count as resolved. Naming nothing is a no-op. → `ok`, `resolved` (thread ids), `skipped` (why some were left).
 - **`remove_reviewer`** — cancel a pending review request. `repo`*, `pr`*, `reviewers`, `team_reviewers`. → `ok`.
 - **`review_comments`** — existing inline review comments on the PR: `[{path, line, body, user, id}]` (100/page). `repo`*, `pr`*, `all`. → `comments`.
 - **`react`** — add a reaction to comments or reviews, or with `remove: true` take yours of that content away (only yours, never anyone else's). `repo`*, `content`* (`+1` `-1` `laugh` `confused` `heart` `hooray` `rocket` `eyes`), and the subjects: `subjects` (`[{kind, id}]`, the shape of an event's `reaction_subjects`) or the `kind` + `id` shorthand. `kind` is `issue_comment`, `review_comment`, or `review`; a `review` subject also needs `pr` (a review is reachable only over GraphQL: `addReaction` / `removeReaction`). Idempotent both ways: a repeat isn't duplicated, and removing one that isn't there is a no-op. → `ok`, `reacted` / `removed`.

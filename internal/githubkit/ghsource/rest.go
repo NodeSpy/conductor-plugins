@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 )
@@ -257,106 +256,6 @@ type mergeGate struct {
 	Labels           []string
 }
 
-// unresolvedThread is one unresolved review thread as the sweep needs it: its
-// node id (for the dedup signature) and who opened it (the reviewer to ping
-// back once the feedback is addressed).
-type unresolvedThread struct {
-	ID          string
-	Author      string
-	AuthorIsBot bool
-	// AuthorApproved: the opener's latest opinionated review (APPROVED or
-	// CHANGES_REQUESTED) is APPROVED — they've signed off since leaving the
-	// thread, so it's not outstanding change-requested feedback.
-	AuthorApproved bool
-	// The thread's opening comment, so a sweep-recovered changes_requested
-	// run carries the feedback it is asked to address.
-	CommentID int64
-	Path      string
-	Line      int
-	Body      string
-	URL       string
-}
-
-// unresolvedThreads returns the PR's unresolved review threads (on App creds),
-// sorted by node id. Used by the sweep to reconcile outstanding review comments
-// that no live webhook recovered.
-func (c *restClient) unresolvedThreads(ctx context.Context, instID int64, owner, name string, number int) ([]unresolvedThread, error) {
-	const q = `query($o:String!,$n:String!,$num:Int!){
-	  repository(owner:$o,name:$n){ pullRequest(number:$num){
-	    reviewThreads(first:100){nodes{id isResolved comments(first:1){nodes{databaseId author{login __typename} path line originalLine body url}}}}
-	    latestOpinionatedReviews(first:50){nodes{state author{login}}}
-	  }}}`
-	var data struct {
-		Repository struct {
-			PullRequest struct {
-				LatestOpinionatedReviews struct {
-					Nodes []struct {
-						State  string `json:"state"`
-						Author *struct {
-							Login string `json:"login"`
-						} `json:"author"`
-					} `json:"nodes"`
-				} `json:"latestOpinionatedReviews"`
-				ReviewThreads struct {
-					Nodes []struct {
-						ID         string `json:"id"`
-						IsResolved bool   `json:"isResolved"`
-						Comments   struct {
-							Nodes []struct {
-								Author *struct {
-									Login    string `json:"login"`
-									Typename string `json:"__typename"`
-								} `json:"author"`
-								DatabaseID   int64  `json:"databaseId"`
-								Path         string `json:"path"`
-								Line         *int   `json:"line"`
-								OriginalLine *int   `json:"originalLine"`
-								Body         string `json:"body"`
-								URL          string `json:"url"`
-							} `json:"nodes"`
-						} `json:"comments"`
-					} `json:"nodes"`
-				} `json:"reviewThreads"`
-			} `json:"pullRequest"`
-		} `json:"repository"`
-	}
-	if err := c.graphql(ctx, instID, q, map[string]any{"o": owner, "n": name, "num": number}, &data); err != nil {
-		return nil, err
-	}
-	approved := map[string]bool{}
-	for _, r := range data.Repository.PullRequest.LatestOpinionatedReviews.Nodes {
-		if r.Author != nil && r.State == "APPROVED" {
-			approved[strings.ToLower(r.Author.Login)] = true
-		}
-	}
-	var out []unresolvedThread
-	for _, t := range data.Repository.PullRequest.ReviewThreads.Nodes {
-		if t.IsResolved {
-			continue
-		}
-		ut := unresolvedThread{ID: t.ID}
-		if cs := t.Comments.Nodes; len(cs) > 0 {
-			ut.CommentID, ut.Path, ut.Body, ut.URL = cs[0].DatabaseID, cs[0].Path, cs[0].Body, cs[0].URL
-			ut.Line = lineOf(cs[0].Line, cs[0].OriginalLine)
-		}
-		if cs := t.Comments.Nodes; len(cs) > 0 && cs[0].Author != nil {
-			ut.Author = cs[0].Author.Login
-			ut.AuthorIsBot = isBotActor(cs[0].Author.Typename, cs[0].Author.Login)
-			// GraphQL names a Bot actor by its bare slug ("cursor"); REST and
-			// webhooks say "cursor[bot]". Use the latter so sweep facts match
-			// the webhook's (filters, self, and the bare slug is a different —
-			// human — account to the REST API).
-			if ut.AuthorIsBot && !isBotLogin(ut.Author) {
-				ut.Author += "[bot]"
-			}
-			ut.AuthorApproved = approved[strings.ToLower(cs[0].Author.Login)]
-		}
-		out = append(out, ut)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out, nil
-}
-
 // prComment is a PR comment (issue-level or review-level) as the sweep needs it.
 type prComment struct {
 	ID   int64  `json:"id"`
@@ -409,9 +308,10 @@ func (c *restClient) recentComments(ctx context.Context, instID int64, owner, na
 func (c *restClient) review(ctx context.Context, instID int64, owner, name string, number int, reviewID int64) (reviewInfo, error) {
 	url := fmt.Sprintf("%s/repos/%s/%s/pulls/%d/reviews/%d", c.app.apiBase, owner, name, number, reviewID)
 	var r struct {
-		State string `json:"state"`
-		Body  string `json:"body"`
-		User  struct {
+		State       string    `json:"state"`
+		Body        string    `json:"body"`
+		SubmittedAt time.Time `json:"submitted_at"`
+		User        struct {
 			Login string `json:"login"`
 			Type  string `json:"type"`
 		} `json:"user"`
@@ -419,7 +319,7 @@ func (c *restClient) review(ctx context.Context, instID int64, owner, name strin
 	if err := c.get(ctx, instID, url, &r); err != nil {
 		return reviewInfo{}, err
 	}
-	return reviewInfo{State: strings.ToLower(r.State), Body: r.Body,
+	return reviewInfo{State: strings.ToLower(r.State), Body: r.Body, SubmittedAt: r.SubmittedAt,
 		Author: r.User.Login, AuthorIsBot: isBotActor(r.User.Type, r.User.Login)}, nil
 }
 
@@ -431,6 +331,7 @@ type reviewComment struct {
 	Line   int
 	Body   string
 	URL    string
+	Thread string // the review thread's node id, when known
 }
 
 // reviewComments returns a submitted review's inline comments (first page of

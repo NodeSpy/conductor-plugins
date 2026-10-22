@@ -49,10 +49,11 @@ type ghPayload struct {
 		} `json:"labels"` // the issue's CURRENT label set (for state-based matching)
 	} `json:"issue"`
 	Review *struct {
-		State string `json:"state"`
-		ID    int64  `json:"id"`
-		Body  string `json:"body"`
-		User  struct {
+		State       string    `json:"state"`
+		ID          int64     `json:"id"`
+		Body        string    `json:"body"`
+		SubmittedAt time.Time `json:"submitted_at"`
+		User        struct {
 			Login string `json:"login"`
 			Type  string `json:"type"` // "Bot" for app-authored reviews
 		} `json:"user"`
@@ -310,7 +311,8 @@ func (g *Source) reviewTriggers(ctx context.Context, repo string, p ghPayload) [
 	// Remember the review: its inline comments arrive as their own events
 	// and resolve to it (reviewCommentDelivery) without a REST read.
 	ri := reviewInfo{State: strings.ToLower(p.Review.State), Body: p.Review.Body,
-		Author: p.Review.User.Login, AuthorIsBot: isBotActor(p.Review.User.Type, p.Review.User.Login)}
+		Author: p.Review.User.Login, AuthorIsBot: isBotActor(p.Review.User.Type, p.Review.User.Login),
+		SubmittedAt: p.Review.SubmittedAt}
 	g.reviews.put(p.Review.ID, ri, time.Now())
 	var trs []Trigger
 	// A closed PR's review is dropped below (no branch to fix) — it must not

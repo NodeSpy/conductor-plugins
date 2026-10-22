@@ -47,10 +47,11 @@ func (g *Source) Force(ctx context.Context, kind, repo string, number int, emit 
 		// "{{.author}}" re-requests. The PR author is never it: GitHub 422s a
 		// review request to them. Resolve it the way the sweep does.
 		delete(extra, "author")
-		if threads, err := rest.unresolvedThreads(ctx, instID, owner, name, number); err == nil {
-			for k, v := range g.threadReviewerFacts(threads) {
+		if f, _, ok := g.readFold(ctx, instID, repo, number); ok {
+			for k, v := range g.foldReviewerFacts(f) {
 				extra[k] = v
 			}
+			stampFold(extra, f)
 		}
 	}
 	// keep=nil → every enabled variant of the kind, no applicability filter.

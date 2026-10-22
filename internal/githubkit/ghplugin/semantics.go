@@ -55,10 +55,12 @@ func eventSemantics(name string) *plugin.EventSemantics {
 	case "changes_requested":
 		s.BoundToTarget, s.Feedback = true, true
 		s.Completion = level(false)
-		// Its own cursor namespace: the review it folds is dispatched for
-		// different comments than new_comment's, and a shared mark would let
-		// one starve the other.
-		s.Cursor = &plugin.CursorSemantics{ID: "comment_id", Stream: "changes_requested:{{.comment_kind}}"}
+		// The latest review SUBMISSION the event covers (ghsource/feedback.go):
+		// GitHub numbers reviews and comments when they are drafted, so a mark
+		// over comment ids dropped a review drafted earlier but submitted
+		// later. Its own stream; a new name, so no mark kept over comment ids
+		// is ever compared with one.
+		s.Cursor = &plugin.CursorSemantics{ID: "feedback_cursor", Stream: "changes_requested:submitted"}
 	case "new_comment":
 		s.BoundToTarget, s.Feedback = true, true
 		s.Attempts = &plugin.AttemptsSemantics{Cap: "none"}
