@@ -2,6 +2,7 @@ package ghfake
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -86,8 +87,9 @@ func TestResolveThreadsResolvesOnlyWhatTheRunAddressed(t *testing.T) {
 	if got := len(out["resolved"].([]any)); got != 2 {
 		t.Fatalf("resolved = %v, want A and D", out["resolved"])
 	}
-	if out["skipped"] == nil {
-		t.Fatal("the skips (new feedback on B, a comment not on this PR) must be reported")
+	sk, _ := out["skipped"].(string)
+	if !strings.Contains(sk, "has new feedback") || !strings.Contains(sk, "not in this PR's threads") {
+		t.Fatalf("skipped = %q: both skips (new feedback on B, a comment not on this PR) must be reported", sk)
 	}
 
 	// Without seen_through, B's newer comment is not a reason to keep it.
