@@ -169,6 +169,16 @@ type Review struct {
 	Reactions   []*Reaction
 }
 
+// pending reports whether cm belongs to a review still being drafted.
+func (p *Pull) pending(cm *ReviewComment) bool {
+	for _, rv := range p.Reviews {
+		if rv.ID == cm.ReviewID {
+			return rv.State == "PENDING"
+		}
+	}
+	return false
+}
+
 // ReviewComment is an inline (diff) comment.
 type ReviewComment struct {
 	ID               int64

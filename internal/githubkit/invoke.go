@@ -93,9 +93,15 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 		if verb != "remove_reviewer" && len(rs) > 0 {
 			rs = dropPRAuthor(ctx, c, tok, base, repo, number, rs)
 		}
-		if verb == "rerequest_review" && len(rs) > 0 && optBool(opts, "only_outstanding", true) {
+		// all_outstanding: also ping every OTHER reviewer still blocking on
+		// changes — the event's reviewer is often not the one (a COMMENTED
+		// review, while someone else's changes-request on an older commit
+		// still blocks the merge). Discovery always applies the outstanding
+		// filter: it is what "outstanding" means.
+		discover := verb == "rerequest_review" && optBool(opts, "all_outstanding", false)
+		if verb == "rerequest_review" && (discover || len(rs) > 0 && optBool(opts, "only_outstanding", true)) {
 			var why string
-			if rs, why = outstandingReviewers(ctx, c, tok, base, repo, number, rs); len(rs) == 0 {
+			if rs, why = outstandingReviewers(ctx, c, tok, base, repo, number, rs, discover); len(rs) == 0 {
 				if len(reviewerLogins(opts["team_reviewers"])) == 0 {
 					return map[string]any{"ok": true, "skipped": why}, nil
 				}
@@ -138,6 +144,8 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 			return nil, c.remapTargetGone(ctx, tok, repo, key, err)
 		}
 		return map[string]any{"ok": true}, nil
+	case "resolve_threads":
+		return c.resolveThreads(ctx, tok, repo, number, opts)
 	case "submit_review":
 		if number == 0 {
 			return nil, fmt.Errorf("github.submit_review: options.pr is required")
@@ -1172,10 +1180,17 @@ func dropPRAuthor(ctx context.Context, c *Client, tok, base, repo string, number
 // guards against can land seconds before the call. A failed read keeps nobody —
 // the ping is a courtesy, never worth sending on a guess. The reason string says
 // why the list came back empty.
-func outstandingReviewers(ctx context.Context, c *Client, tok, base, repo string, number int, rs []string) ([]string, string) {
+//
+// discover adds every reviewer whose latest such review is CHANGES_REQUESTED to
+// rs before the narrowing, minus bots (GitHub can't request them) and the PR's
+// author.
+func outstandingReviewers(ctx context.Context, c *Client, tok, base, repo string, number int, rs []string, discover bool) ([]string, string) {
 	var pr struct {
 		State string `json:"state"`
-		Head  struct {
+		User  struct {
+			Login string `json:"login"`
+		} `json:"user"`
+		Head struct {
 			SHA string `json:"sha"`
 		} `json:"head"`
 		RequestedReviewers []struct {
@@ -1188,18 +1203,30 @@ func outstandingReviewers(ctx context.Context, c *Client, tok, base, repo string
 	if pr.State != "open" {
 		return nil, "PR is " + pr.State
 	}
-	var reviews []struct {
+	type review struct {
 		State    string `json:"state"`
 		CommitID string `json:"commit_id"`
 		User     struct {
 			Login string `json:"login"`
 		} `json:"user"`
 	}
-	// Reviews list oldest-first; the last page holds the latest. 100 per page
-	// covers any PR a human reviews; beyond that the newest may be missed and
-	// the reviewer is (safely) skipped.
-	if err := c.getFresh(ctx, tok, fmt.Sprintf("%s/repos/%s/pulls/%d/reviews?per_page=100", base, repo, number), &reviews); err != nil {
-		return nil, "couldn't read reviews: " + err.Error()
+	// Reviews list oldest-first, so a reviewer's latest verdict can be on any
+	// page: every reply in a thread is a review of its own, and a busy PR
+	// passes 100 quickly. Read every page (bounded); stopping at the first
+	// would take an approval on page two for a changes-request still standing.
+	var reviews []review
+	for page := 1; ; page++ {
+		if page > maxReviewPages {
+			return nil, fmt.Sprintf("more than %d reviews to read", maxReviewPages*100)
+		}
+		var batch []review
+		if err := c.getFresh(ctx, tok, fmt.Sprintf("%s/repos/%s/pulls/%d/reviews?per_page=100&page=%d", base, repo, number, page), &batch); err != nil {
+			return nil, "couldn't read reviews: " + err.Error()
+		}
+		reviews = append(reviews, batch...)
+		if len(batch) < 100 {
+			break
+		}
 	}
 	type verdict struct{ state, commit string }
 	latest := map[string]verdict{}
@@ -1213,10 +1240,34 @@ func outstandingReviewers(ctx context.Context, c *Client, tok, base, repo string
 	for _, u := range pr.RequestedReviewers {
 		pending[strings.ToLower(u.Login)] = true
 	}
+	if discover {
+		// In review order, so the result is stable.
+		seen := map[string]bool{}
+		for _, r := range rs {
+			seen[strings.ToLower(r)] = true
+		}
+		for _, r := range reviews {
+			l := strings.ToLower(r.User.Login)
+			if seen[l] || latest[l].state != "CHANGES_REQUESTED" || strings.EqualFold(l, pr.User.Login) {
+				continue
+			}
+			seen[l] = true
+			rs = append(rs, r.User.Login)
+		}
+		rs = dropBots(rs)
+		if len(rs) == 0 {
+			return nil, "no reviewer has changes outstanding"
+		}
+	}
 	kept := rs[:0:0]
 	var why []string
+	seen := map[string]bool{}
 	for _, r := range rs {
 		l := strings.ToLower(r)
+		if seen[l] {
+			continue
+		}
+		seen[l] = true
 		v := latest[l]
 		switch {
 		case pending[l]:
@@ -1235,6 +1286,11 @@ func outstandingReviewers(ctx context.Context, c *Client, tok, base, repo string
 	}
 	return kept, strings.Join(why, "; ")
 }
+
+// maxReviewPages bounds outstandingReviewers' read of a PR's reviews (100 per
+// page). Past it nobody is pinged: the ping is a courtesy, never sent on a
+// partial read.
+const maxReviewPages = 10
 
 // dropBots removes bot accounts ("…[bot]" logins) from a reviewer list.
 func dropBots(rs []string) []string {

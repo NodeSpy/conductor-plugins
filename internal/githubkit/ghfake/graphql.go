@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 )
 
@@ -767,6 +768,17 @@ func (q *gqlRoot) field(name string, args map[string]any) (any, error) {
 			*rs = kept
 		}
 		return &gObj{"AddReactionPayload", map[string]any{"reaction": &gObj{"Reaction", map[string]any{"content": content}}}}, nil
+	case "resolveReviewThread":
+		in, _ := args["input"].(map[string]any)
+		id, _ := in["threadId"].(string)
+		gt, ok := f.nodeByID(id).(*gThread)
+		if !ok {
+			return nil, gqlNotFound{fmt.Sprintf("Could not resolve to a node with the global id of '%s'", id)}
+		}
+		if !gt.th.Resolved {
+			f.resolveThread(gt.r, gt.p, gt.th, q.x.who.user, true)
+		}
+		return &gObj{"ResolveReviewThreadPayload", map[string]any{"clientMutationId": nil, "thread": gt}}, nil
 	case "markPullRequestReadyForReview", "convertPullRequestToDraft":
 		in, _ := args["input"].(map[string]any)
 		id, _ := in["pullRequestId"].(string)
@@ -810,6 +822,20 @@ func (o *gObj) field(name string, _ map[string]any) (any, error) {
 
 func conn(t string, nodes []gqlNode, total int) gqlNode {
 	return &gObj{t, map[string]any{"nodes": nodes, "totalCount": total}}
+}
+
+// page applies a connection's first/last window (first wins when both are
+// set; neither means the fake's default of 100 from the front).
+func page(ns []gqlNode, args map[string]any) []gqlNode {
+	if _, ok := args["first"]; !ok {
+		if l, ok := args["last"].(float64); ok {
+			if n := int(l); n >= 0 && len(ns) > n {
+				return ns[len(ns)-n:]
+			}
+			return ns
+		}
+	}
+	return limit(ns, first(args))
 }
 
 func limit(ns []gqlNode, n int) []gqlNode {
@@ -932,13 +958,16 @@ func (g *gPull) field(name string, args map[string]any) (any, error) {
 		for _, l := range p.Issue.Labels {
 			ns = append(ns, &gObj{"Label", map[string]any{"name": l}})
 		}
-		return conn("LabelConnection", limit(ns, first(args)), len(ns)), nil
+		return conn("LabelConnection", page(ns, args), len(ns)), nil
 	case "reviewThreads":
 		var ns []gqlNode
 		for _, th := range p.Threads {
+			if p.pending(th.Comments[0]) { // a draft is visible to nobody else
+				continue
+			}
 			ns = append(ns, &gThread{f, g.r, p, th})
 		}
-		return conn("PullRequestReviewThreadConnection", limit(ns, first(args)), len(ns)), nil
+		return conn("PullRequestReviewThreadConnection", page(ns, args), len(ns)), nil
 	case "reviews":
 		states := map[string]bool{}
 		for _, s := range strsOf(args["states"]) {
@@ -951,7 +980,7 @@ func (g *gPull) field(name string, args map[string]any) (any, error) {
 			}
 			ns = append(ns, &gReview{f, rv})
 		}
-		return conn("PullRequestReviewConnection", limit(ns, first(args)), len(ns)), nil
+		return conn("PullRequestReviewConnection", page(ns, args), len(ns)), nil
 	case "latestOpinionatedReviews":
 		var ns []gqlNode
 		for _, rv := range p.Reviews { // in submission order, latest per author
@@ -959,7 +988,7 @@ func (g *gPull) field(name string, args map[string]any) (any, error) {
 				ns = append(ns, &gReview{f, rv})
 			}
 		}
-		return conn("PullRequestReviewConnection", limit(ns, first(args)), len(ns)), nil
+		return conn("PullRequestReviewConnection", page(ns, args), len(ns)), nil
 	}
 	return nil, nil
 }
@@ -994,6 +1023,18 @@ func (g *gReview) field(name string, _ map[string]any) (any, error) {
 		return g.rv.ID, nil
 	case "body":
 		return g.rv.Body, nil
+	case "submittedAt":
+		if g.rv.SubmittedAt.IsZero() {
+			return nil, nil
+		}
+		return g.rv.SubmittedAt.UTC().Format(time.RFC3339), nil
+	case "commit":
+		if g.rv.CommitID == "" {
+			return nil, nil
+		}
+		return &gObj{"Commit", map[string]any{"oid": g.rv.CommitID}}, nil
+	case "url":
+		return fmt.Sprintf("%s/pull/review/%d", htmlBase, g.rv.ID), nil
 	}
 	return nil, nil
 }
@@ -1019,9 +1060,12 @@ func (g *gThread) field(name string, args map[string]any) (any, error) {
 	case "comments":
 		var ns []gqlNode
 		for _, cm := range g.th.Comments {
+			if g.p.pending(cm) {
+				continue
+			}
 			ns = append(ns, &gComment{g.f, g.r, g.p, cm})
 		}
-		return conn("PullRequestReviewCommentConnection", limit(ns, first(args)), len(ns)), nil
+		return conn("PullRequestReviewCommentConnection", page(ns, args), len(ns)), nil
 	}
 	return nil, nil
 }
@@ -1056,6 +1100,15 @@ func (g *gComment) field(name string, _ map[string]any) (any, error) {
 		return cm.Body, nil
 	case "url":
 		return fmt.Sprintf("%s/%s/pull/%d#discussion_r%d", htmlBase, g.r.FullName(), g.p.Issue.Number, cm.ID), nil
+	case "pullRequestReview":
+		for _, rv := range g.p.Reviews {
+			if rv.ID == cm.ReviewID {
+				return &gReview{g.f, rv}, nil
+			}
+		}
+		return nil, nil
+	case "createdAt":
+		return cm.CreatedAt.UTC().Format(time.RFC3339), nil
 	}
 	return nil, nil
 }
@@ -1085,7 +1138,7 @@ func (g *gIssue) field(name string, args map[string]any) (any, error) {
 		for _, l := range is.Labels {
 			ns = append(ns, &gObj{"Label", map[string]any{"name": l}})
 		}
-		return conn("LabelConnection", limit(ns, first(args)), len(ns)), nil
+		return conn("LabelConnection", page(ns, args), len(ns)), nil
 	case "assignees":
 		var ns []gqlNode
 		for _, a := range is.Assignees {
@@ -1093,7 +1146,7 @@ func (g *gIssue) field(name string, args map[string]any) (any, error) {
 				ns = append(ns, &gUser{f, u})
 			}
 		}
-		return conn("UserConnection", limit(ns, first(args)), len(ns)), nil
+		return conn("UserConnection", page(ns, args), len(ns)), nil
 	case "linkedBranches":
 		return conn("LinkedBranchConnection", nil, len(is.LinkedBranches)), nil
 	case "closedByPullRequestsReferences":
@@ -1103,7 +1156,7 @@ func (g *gIssue) field(name string, args map[string]any) (any, error) {
 		if len(is.ProjectFields) > 0 {
 			ns = append(ns, &gItem{f, g.r, is})
 		}
-		return conn("ProjectV2ItemConnection", limit(ns, first(args)), len(ns)), nil
+		return conn("ProjectV2ItemConnection", page(ns, args), len(ns)), nil
 	}
 	return nil, nil
 }
@@ -1134,7 +1187,7 @@ func (g *gItem) field(name string, args map[string]any) (any, error) {
 		for _, k := range sortedKeys(g.is.ProjectFields) {
 			ns = append(ns, fieldValue(k, g.is.ProjectFields[k]))
 		}
-		return conn("ProjectV2ItemFieldValueConnection", limit(ns, first(args)), len(ns)), nil
+		return conn("ProjectV2ItemFieldValueConnection", page(ns, args), len(ns)), nil
 	}
 	return nil, nil
 }
@@ -1170,6 +1223,14 @@ func (f *Fake) nodeByID(id string) gqlNode {
 					for _, rv := range is.Pull.Reviews {
 						if rv.ID == num {
 							return &gReview{f, rv}
+						}
+					}
+				}
+			case "PRRT":
+				if is.Pull != nil {
+					for _, th := range is.Pull.Threads {
+						if th.ID == num {
+							return &gThread{f, r, is.Pull, th}
 						}
 					}
 				}

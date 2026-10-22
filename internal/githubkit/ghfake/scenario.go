@@ -183,20 +183,46 @@ func (f *Fake) ResolveThread(repo string, n int, commentID int64, by string, res
 		if th.Comments[0].ID != commentID {
 			continue
 		}
-		th.Resolved = resolved
-		th.ResolvedBy = f.mustUser(by)
-		p.touched()
-		action := "resolved"
-		if !resolved {
-			action = "unresolved"
-		}
-		var comments []any
-		for _, cm := range th.Comments {
-			comments = append(comments, f.reviewCommentJSON(r, p, cm, "pull-request-review-comment"))
-		}
-		f.emit(r, "pull_request_review_thread", action, th.ResolvedBy, map[string]any{
-			"thread": map[string]any{"node_id": nodeID("PRRT", th.ID), "comments": comments}, "pull_request": f.pullWebhook(r, p)})
+		f.resolveThread(r, p, th, f.mustUser(by), resolved)
 		return
+	}
+	panic("ghfake: no thread opened by " + fmt.Sprint(commentID))
+}
+
+// SubmitPending submits a review left PENDING by SubmitReview: its id and
+// its comments' ids were assigned when it was drafted, before any review
+// submitted since. Delivers it as SubmitReview does.
+func (f *Fake) SubmitPending(repo string, n int, reviewID int64, state string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	r, p := f.mustPull(repo, n)
+	for _, rv := range p.Reviews {
+		if rv.ID != reviewID || rv.State != "PENDING" {
+			continue
+		}
+		rv.State, rv.SubmittedAt = state, f.now()
+		p.touched()
+		review := f.prepare(r, "pull_request_review", "submitted", rv.User, map[string]any{"review": f.reviewWebhook(r, p, rv), "pull_request": f.pullWebhook(r, p)})
+		var comments []*Delivery
+		for _, cm := range rv.Comments {
+			comments = append(comments, f.prepare(r, "pull_request_review_comment", "created", rv.User,
+				map[string]any{"comment": f.reviewCommentJSON(r, p, cm, "pull-request-review-comment"), "pull_request": f.pullWebhook(r, p)})...)
+		}
+		f.enqueue(f.order(review, comments)...)
+		return
+	}
+	panic("ghfake: no pending review " + fmt.Sprint(reviewID))
+}
+
+// ThreadResolved reports whether the thread a comment opened is resolved.
+func (f *Fake) ThreadResolved(repo string, n int, commentID int64) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, p := f.mustPull(repo, n)
+	for _, th := range p.Threads {
+		if th.Comments[0].ID == commentID {
+			return th.Resolved
+		}
 	}
 	panic("ghfake: no thread opened by " + fmt.Sprint(commentID))
 }

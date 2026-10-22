@@ -96,7 +96,7 @@ func sweepThreadsRig(t *testing.T, n int, actions map[string]Action) ([]Trigger,
 	t.Helper()
 	var nodes []string
 	for i := 1; i <= n; i++ {
-		nodes = append(nodes, fmt.Sprintf(`{"id":"t%d","isResolved":false,"comments":{"nodes":[{"databaseId":%d,"author":{"login":"dana","__typename":"User"},"path":"f.go","line":%d,"body":"b"}]}}`, i, 500+i, i))
+		nodes = append(nodes, fmt.Sprintf(`{"id":"t%d","isResolved":false,"opener":{"nodes":[{"databaseId":%d,"author":{"login":"dana","__typename":"User"},"path":"f.go","line":%d,"body":"b"}]},"recent":{"nodes":[{"databaseId":%d,"author":{"login":"dana","__typename":"User"},"path":"f.go","line":%d,"body":"b"}]}}`, i, 500+i, i, 500+i, i))
 	}
 	statusReads := new(int)
 	mux := http.NewServeMux()

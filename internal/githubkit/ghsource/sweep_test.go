@@ -108,9 +108,9 @@ func TestSweepUnresolvedComments(t *testing.T) {
 	})
 	mux.HandleFunc("/graphql", func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, `{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[
-			{"id":"t1","isResolved":false,"comments":{"nodes":[{"author":{"login":"me","__typename":"User"}}]}},
-			{"id":"t2","isResolved":true,"comments":{"nodes":[{"author":{"login":"carol","__typename":"User"}}]}},
-			{"id":"t3","isResolved":false,"comments":{"nodes":[{"author":{"login":"dana","__typename":"User"}}]}}]}}}}}`)
+			{"id":"t1","isResolved":false,"opener":{"nodes":[{"author":{"login":"me","__typename":"User"}}]},"recent":{"nodes":[{"author":{"login":"me","__typename":"User"}}]}},
+			{"id":"t2","isResolved":true,"opener":{"nodes":[{"author":{"login":"carol","__typename":"User"}}]},"recent":{"nodes":[{"author":{"login":"carol","__typename":"User"}}]}},
+			{"id":"t3","isResolved":false,"opener":{"nodes":[{"author":{"login":"dana","__typename":"User"}}]},"recent":{"nodes":[{"author":{"login":"dana","__typename":"User"}}]}}]}}}}}`)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -137,9 +137,10 @@ func TestSweepUnresolvedComments(t *testing.T) {
 	if len(got) != 1 || got[0].Kind != "changes_requested" || got[0].Target.Number != 9 {
 		t.Fatalf("want one changes_requested on #9 for unresolved threads, got %+v", got)
 	}
-	// Signature carries the head + 2 unresolved threads, so it re-fires on change
-	// and stops once resolved.
-	if !strings.HasPrefix(got[0].Dedup, "threads:h9:2:") {
+	// Signature carries the head + the 1 unresolved thread waiting on you (t1's
+	// last comment is yours: it waits on the reviewer; t2 is resolved), so it
+	// re-fires on change and stops once resolved.
+	if !strings.HasPrefix(got[0].Dedup, "threads:h9:1:") {
 		t.Fatalf("unexpected dedup signature: %q", got[0].Dedup)
 	}
 	// The reviewer to ping back is the opener of the first unresolved thread
@@ -190,7 +191,7 @@ func TestSweepUnresolvedCommentsSkipsApprovers(t *testing.T) {
 				fmt.Fprintf(w, `{"data":{"repository":{"pullRequest":{
 					"latestOpinionatedReviews":{"nodes":%s},
 					"reviewThreads":{"nodes":[
-					{"id":"t3","isResolved":false,"comments":{"nodes":[{"author":{"login":"dana","__typename":"User"}}]}}]}}}}}`, tc.reviews)
+					{"id":"t3","isResolved":false,"opener":{"nodes":[{"author":{"login":"dana","__typename":"User"}}]},"recent":{"nodes":[{"author":{"login":"dana","__typename":"User"}}]}}]}}}}}`, tc.reviews)
 			})
 			srv := httptest.NewServer(mux)
 			t.Cleanup(srv.Close)

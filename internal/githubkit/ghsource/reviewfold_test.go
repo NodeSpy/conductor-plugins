@@ -458,10 +458,10 @@ func sweepStubCounting(t *testing.T, reviewGets, listGets *atomic.Int32) *appAut
 		fmt.Fprint(w, `{"data":{"repository":{"pullRequest":{
 			"latestOpinionatedReviews":{"nodes":[{"state":"APPROVED","author":{"login":"carol"}}]},
 			"reviewThreads":{"nodes":[
-			{"id":"t1","isResolved":false,"comments":{"nodes":[{"databaseId":3918412100,"author":{"login":"cursor","__typename":"Bot"},"path":"a.go","line":3,"body":"a","url":"ua"}]}},
-			{"id":"t2","isResolved":false,"comments":{"nodes":[{"databaseId":3918412101,"author":{"login":"cursor","__typename":"Bot"},"path":"b.go","originalLine":8,"body":"b","url":"ub"}]}},
-			{"id":"t3","isResolved":false,"comments":{"nodes":[{"databaseId":3918412102,"author":{"login":"cursor","__typename":"Bot"},"path":"c.go","line":5,"body":"c","url":"uc"}]}},
-			{"id":"t4","isResolved":false,"comments":{"nodes":[{"databaseId":3918412104,"author":{"login":"carol","__typename":"User"},"path":"x.go","line":1,"body":"nit 1","url":"ux"}]}}]}}}}}`)
+			{"id":"t1","isResolved":false,"opener":{"nodes":[{"databaseId":3918412100,"author":{"login":"cursor","__typename":"Bot"},"path":"a.go","line":3,"body":"a","url":"ua"}]},"recent":{"nodes":[{"databaseId":3918412100,"author":{"login":"cursor","__typename":"Bot"},"path":"a.go","line":3,"body":"a","url":"ua"}]}},
+			{"id":"t2","isResolved":false,"opener":{"nodes":[{"databaseId":3918412101,"author":{"login":"cursor","__typename":"Bot"},"path":"b.go","originalLine":8,"body":"b","url":"ub"}]},"recent":{"nodes":[{"databaseId":3918412101,"author":{"login":"cursor","__typename":"Bot"},"path":"b.go","originalLine":8,"body":"b","url":"ub"}]}},
+			{"id":"t3","isResolved":false,"opener":{"nodes":[{"databaseId":3918412102,"author":{"login":"cursor","__typename":"Bot"},"path":"c.go","line":5,"body":"c","url":"uc"}]},"recent":{"nodes":[{"databaseId":3918412102,"author":{"login":"cursor","__typename":"Bot"},"path":"c.go","line":5,"body":"c","url":"uc"}]}},
+			{"id":"t4","isResolved":false,"opener":{"nodes":[{"databaseId":3918412104,"author":{"login":"carol","__typename":"User"},"path":"x.go","line":1,"body":"nit 1","url":"ux"}]},"recent":{"nodes":[{"databaseId":3918412104,"author":{"login":"carol","__typename":"User"},"path":"x.go","line":1,"body":"nit 1","url":"ux"}]}}]}}}}}`)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)

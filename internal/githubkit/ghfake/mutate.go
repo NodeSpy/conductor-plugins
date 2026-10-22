@@ -213,6 +213,24 @@ func (f *Fake) submitReview(r *Repo, p *Pull, by *User, state, body string, inli
 	return rv
 }
 
+// resolveThread sets a thread's resolution as by and delivers
+// pull_request_review_thread resolved/unresolved.
+func (f *Fake) resolveThread(r *Repo, p *Pull, th *Thread, by *User, resolved bool) {
+	th.Resolved = resolved
+	th.ResolvedBy = by
+	p.touched()
+	action := "resolved"
+	if !resolved {
+		action = "unresolved"
+	}
+	var comments []any
+	for _, cm := range th.Comments {
+		comments = append(comments, f.reviewCommentJSON(r, p, cm, "pull-request-review-comment"))
+	}
+	f.emit(r, "pull_request_review_thread", action, by, map[string]any{
+		"thread": map[string]any{"node_id": nodeID("PRRT", th.ID), "comments": comments}, "pull_request": f.pullWebhook(r, p)})
+}
+
 func (f *Fake) reply(r *Repo, p *Pull, parent *ReviewComment, by *User, body string) *ReviewComment {
 	now := f.now()
 	cm := &ReviewComment{ID: f.id(), User: by, Body: body, Path: parent.Path, Line: parent.Line, OriginalLine: parent.OriginalLine,
