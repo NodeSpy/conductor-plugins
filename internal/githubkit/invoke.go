@@ -1203,18 +1203,30 @@ func outstandingReviewers(ctx context.Context, c *Client, tok, base, repo string
 	if pr.State != "open" {
 		return nil, "PR is " + pr.State
 	}
-	var reviews []struct {
+	type review struct {
 		State    string `json:"state"`
 		CommitID string `json:"commit_id"`
 		User     struct {
 			Login string `json:"login"`
 		} `json:"user"`
 	}
-	// Reviews list oldest-first; the last page holds the latest. 100 per page
-	// covers any PR a human reviews; beyond that the newest may be missed and
-	// the reviewer is (safely) skipped.
-	if err := c.getFresh(ctx, tok, fmt.Sprintf("%s/repos/%s/pulls/%d/reviews?per_page=100", base, repo, number), &reviews); err != nil {
-		return nil, "couldn't read reviews: " + err.Error()
+	// Reviews list oldest-first, so a reviewer's latest verdict can be on any
+	// page: every reply in a thread is a review of its own, and a busy PR
+	// passes 100 quickly. Read every page (bounded); stopping at the first
+	// would take an approval on page two for a changes-request still standing.
+	var reviews []review
+	for page := 1; ; page++ {
+		if page > maxReviewPages {
+			return nil, fmt.Sprintf("more than %d reviews to read", maxReviewPages*100)
+		}
+		var batch []review
+		if err := c.getFresh(ctx, tok, fmt.Sprintf("%s/repos/%s/pulls/%d/reviews?per_page=100&page=%d", base, repo, number, page), &batch); err != nil {
+			return nil, "couldn't read reviews: " + err.Error()
+		}
+		reviews = append(reviews, batch...)
+		if len(batch) < 100 {
+			break
+		}
 	}
 	type verdict struct{ state, commit string }
 	latest := map[string]verdict{}
@@ -1274,6 +1286,11 @@ func outstandingReviewers(ctx context.Context, c *Client, tok, base, repo string
 	}
 	return kept, strings.Join(why, "; ")
 }
+
+// maxReviewPages bounds outstandingReviewers' read of a PR's reviews (100 per
+// page). Past it nobody is pinged: the ping is a courtesy, never sent on a
+// partial read.
+const maxReviewPages = 10
 
 // dropBots removes bot accounts ("…[bot]" logins) from a reviewer list.
 func dropBots(rs []string) []string {

@@ -74,3 +74,34 @@ func TestRerequestAllOutstanding(t *testing.T) {
 		t.Fatalf("want a skip with nothing new to request, got %v", out)
 	}
 }
+
+// A reviewer's latest verdict can be past the first page of reviews (every
+// thread reply is a review of its own). Reading one page took an approval on
+// page two for the changes-request on page one, and re-requested an approver.
+func TestRerequestReadsEveryPageOfReviews(t *testing.T) {
+	f, _, n := world(t, Options{})
+	f.AddUser("blocker", "User")
+	f.AddCollaborator("acme/w", "blocker")
+	f.SubmitReview("acme/w", n, "blocker", "CHANGES_REQUESTED", "fix the leak")
+	for i := 0; i < 105; i++ {
+		f.SubmitReview("acme/w", n, "rev", "COMMENTED", "noise")
+	}
+	f.Push("acme/w", "feat", "me", "fix")
+	f.SubmitReview("acme/w", n, "blocker", "APPROVED", "ok")
+	f.Flush()
+	kit, err := githubkit.NewClient(githubkit.Config{WriteToken: "tok-me", APIBase: f.URL()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, opts := range []map[string]any{
+		{"repo": "acme/w", "pr": n, "all_outstanding": true},
+		{"repo": "acme/w", "pr": n, "reviewers": []any{"blocker"}},
+	} {
+		if _, err := kit.Invoke(context.Background(), "rerequest_review", opts); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if c := f.ReviewRequestsOf("acme/w", n, "blocker"); c != 0 {
+		t.Fatalf("the blocker approved (on the second page of reviews) and was re-requested %d times", c)
+	}
+}
