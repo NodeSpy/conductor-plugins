@@ -220,9 +220,42 @@ func TestReviewDraftedEarlierSubmittedLaterIsNew(t *testing.T) {
 	if dc[0] >= qc[0] {
 		t.Fatalf("rig: the draft's comment id %d must be below the other's %d", dc[0], qc[0])
 	}
-	if c1, c2 := cursorOf(t, first[0]), cursorOf(t, second[0]); c2 <= c1 {
+	c1, c2 := cursorOf(t, first[0]), cursorOf(t, second[0])
+	if c2 <= c1 {
 		t.Fatalf("the later submission's cursor %d must be above the earlier run's %d", c2, c1)
 	}
+	// A sweep recovering the same feedback (a restart lost what was held)
+	// keys it on the same submissions: at the latest one, so above the
+	// earlier run's mark.
+	var swept []Trigger
+	if err := r.g.sweep(context.Background(), func(_ context.Context, tr Trigger) {
+		if tr.Kind == "changes_requested" {
+			swept = append(swept, tr)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(swept) != 1 {
+		t.Fatalf("sweep emitted %d changes_requested, want 1", len(swept))
+	}
+	if c := cursorOf(t, swept[0]); c != c2 {
+		t.Fatalf("the sweep's cursor %d must be the latest submission's %d", c, c2)
+	}
+}
+
+// When the PR's feedback can't be read, a review still dispatches on its
+// own comments, keyed on its own submission.
+func TestReviewEventWithoutTheFeedbackRead(t *testing.T) {
+	r := newFakeRig(t)
+	mark := len(r.f.Deliveries())
+	r.f.SubmitReview("acme/w", r.n, "rev", "CHANGES_REQUESTED", "rework the cache")
+	ds := r.deliveriesSince(mark)
+	r.g.rest = nil // every REST/GraphQL read now fails
+	got := r.feed(ds)
+	if len(got) != 1 {
+		t.Fatalf("want 1 changes_requested, got %d", len(got))
+	}
+	cursorOf(t, got[0])
 }
 
 // What is NOT waiting on you: a thread you answered last, a resolved thread,
