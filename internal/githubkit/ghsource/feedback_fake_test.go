@@ -2,6 +2,7 @@ package ghsource
 
 import (
 	"context"
+	"fmt"
 	"crypto/rand"
 	"crypto/rsa"
 	"net/http"
@@ -105,6 +106,9 @@ func commentIDs(tr Trigger) map[int64]bool {
 	for _, c := range cs {
 		if m, ok := c.(map[string]any); ok {
 			if id, ok := m["id"].(int64); ok {
+				if out[id] {
+					panic(fmt.Sprintf("comment %d rides the run twice", id))
+				}
 				out[id] = true
 			}
 		}
