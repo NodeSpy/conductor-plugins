@@ -44,7 +44,7 @@ func newFakeRig(t *testing.T) *fakeRig {
 	r.f.AddRepo("acme/w")
 	r.f.Install("acme")
 	r.f.UserToken("me", "tok-me")
-	for _, u := range []string{"rev", "rev2"} {
+	for _, u := range []string{"rev", "rev2", "rev3"} {
 		r.f.AddUser(u, "User")
 		r.f.AddCollaborator("acme/w", u)
 	}
@@ -233,7 +233,8 @@ func TestFoldLeavesOutWhatIsNotWaitingOnYou(t *testing.T) {
 	r.f.ResolveThread("acme/w", r.n, resolved[0], "me", true)
 	_, signed := r.f.SubmitReview("acme/w", r.n, "rev2", "CHANGES_REQUESTED", "old ask", ghfake.InlineComment{Body: "approver's"})
 	r.f.SubmitReview("acme/w", r.n, "rev2", "APPROVED", "fine")
-	r.f.SubmitReview("acme/w", r.n, "rev", "CHANGES_REQUESTED", "stale ask")
+	// rev3's latest review asks for changes, on a commit you have pushed past.
+	r.f.SubmitReview("acme/w", r.n, "rev3", "CHANGES_REQUESTED", "stale ask")
 	r.f.Push("acme/w", "feat", "me", "fix")
 	cr, _ := r.f.SubmitReview("acme/w", r.n, "rev", "CHANGES_REQUESTED", "current ask")
 	_, bot := r.f.SubmitReview("acme/w", r.n, "cursor[bot]", "COMMENTED", "", ghfake.InlineComment{Body: "bot finding"})
