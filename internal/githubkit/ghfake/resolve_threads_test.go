@@ -44,13 +44,23 @@ func reviewKey(t *testing.T, f *Fake, repo string, n int, reviewID int64) int64 
 func TestResolveThreadsResolvesOnlyWhatTheRunAddressed(t *testing.T) {
 	f, _, n := world(t, Options{Now: steppingClock()})
 	rv, cs := f.SubmitReview("acme/w", n, "rev", "CHANGES_REQUESTED", "a few things",
-		InlineComment{Body: "fix A"}, InlineComment{Body: "fix B"}, InlineComment{Body: "fix C"}, InlineComment{Body: "fix D"})
+		InlineComment{Body: "fix A"}, InlineComment{Body: "fix B"}, InlineComment{Body: "fix C"}, InlineComment{Body: "fix D"}, InlineComment{Body: "fix E"})
 	cursor := reviewKey(t, f, "acme/w", n, rv)
 	// While the run worked: it replied on A; the reviewer added to B.
 	reA := f.Reply("acme/w", n, cs[0], "me", "done")
 	f.Reply("acme/w", n, cs[1], "rev", "and also rename it")
 	// D is resolved by hand already.
 	f.ResolveThread("acme/w", n, cs[3], "rev", true)
+	// E's line has since changed: the thread is outdated, still open.
+	ec := cs[4:]
+	f.mu.Lock()
+	_, p := f.mustPull("acme/w", n)
+	for _, th := range p.Threads {
+		if th.Comments[0].ID == ec[0] {
+			th.Outdated = true
+		}
+	}
+	f.mu.Unlock()
 	// Another PR's thread, named by mistake.
 	n2 := f.OpenPR("acme/w", "me", PROpts{Title: "other", Head: "other"})
 	_, other := f.SubmitReview("acme/w", n2, "rev", "COMMENTED", "", InlineComment{Body: "elsewhere"})
@@ -64,7 +74,7 @@ func TestResolveThreadsResolvesOnlyWhatTheRunAddressed(t *testing.T) {
 		"repo": "acme/w", "pr": n, "seen_through": cursor,
 		// A by its reply's id, B by its opener, D already resolved, the other
 		// PR's comment. C is not named: the run only argued there.
-		"comments": []any{reA, cs[1], float64(cs[3]), other[0]},
+		"comments": []any{reA, cs[1], float64(cs[3]), other[0], ec[0]},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -84,8 +94,11 @@ func TestResolveThreadsResolvesOnlyWhatTheRunAddressed(t *testing.T) {
 	if f.ThreadResolved("acme/w", n2, other[0]) {
 		t.Fatal("a thread on another PR must never be resolved")
 	}
-	if got := len(out["resolved"].([]any)); got != 2 {
-		t.Fatalf("resolved = %v, want A and D", out["resolved"])
+	if !f.ThreadResolved("acme/w", n, ec[0]) {
+		t.Fatal("E is outdated but was addressed and named: it must be resolved")
+	}
+	if got := len(out["resolved"].([]any)); got != 3 {
+		t.Fatalf("resolved = %v, want A, D and E", out["resolved"])
 	}
 	sk, _ := out["skipped"].(string)
 	if !strings.Contains(sk, "has new feedback") || !strings.Contains(sk, "not in this PR's threads") {
