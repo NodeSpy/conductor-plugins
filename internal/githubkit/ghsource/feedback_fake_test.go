@@ -112,6 +112,19 @@ func commentIDs(tr Trigger) map[int64]bool {
 	return out
 }
 
+func commentBodies(tr Trigger) map[string]bool {
+	out := map[string]bool{}
+	cs, _ := tr.Context["review_comments"].([]any)
+	for _, c := range cs {
+		if m, ok := c.(map[string]any); ok {
+			if b, ok := m["body"].(string); ok {
+				out[b] = true
+			}
+		}
+	}
+	return out
+}
+
 func cursorOf(t *testing.T, tr Trigger) int64 {
 	t.Helper()
 	c, ok := tr.Context["feedback_cursor"].(int64)
@@ -146,9 +159,12 @@ func TestTwoReviewsSecondsApartAreOneRun(t *testing.T) {
 	if len(gotY) != 1 {
 		t.Fatalf("Y emitted %d changes_requested, want 1", len(gotY))
 	}
+	if bs := commentBodies(gotY[0]); !bs["handle the nil case"] || !bs["that does not answer it"] {
+		t.Fatalf("Y's run must carry X's comment and Y's reply, got %v", bs)
+	}
 	ids := commentIDs(gotY[0])
 	if !ids[yc] || !ids[xc[0]] {
-		t.Fatalf("Y's run must carry X's comment %d and Y's reply %d, got %v", xc[0], yc, ids)
+		t.Fatalf("Y's run must name X's comment %d and Y's reply %d, got %v", xc[0], yc, ids)
 	}
 	if ids[old[0]] != true {
 		t.Fatal("the reply's thread opener rides along for context")
