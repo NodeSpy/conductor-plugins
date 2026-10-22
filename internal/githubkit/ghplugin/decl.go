@@ -227,6 +227,7 @@ func decl() plugin.Decl {
 					"team_reviewers":   {Type: "list", Desc: "team slugs"},
 					"as":               {Type: "string", Enum: []string{"me", "bot"}},
 					"only_outstanding": {Type: "boolean", Desc: "default true: ping only reviewers whose latest review is CHANGES_REQUESTED on an older commit and who aren't already requested, on an open PR; false re-requests unconditionally"},
+					"all_outstanding":  {Type: "boolean", Desc: "default false: also ping every other reviewer whose latest review is CHANGES_REQUESTED, through the same only_outstanding checks (bots and the PR author are never requested); reviewers may then be empty"},
 				},
 				Outputs: plugin.Schema{"ok": {Type: "boolean"}, "skipped": {Type: "string"}},
 			},
