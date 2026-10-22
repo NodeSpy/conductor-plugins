@@ -226,8 +226,9 @@ on you means:
 
 Each `review_comments` entry carries its `id` and `thread_id`, which is what an
 agent names when it reports the threads it addressed (`resolve_threads`).
-`reaction_subjects` covers the review that fired it and each thread's latest
-waiting comment (capped at 10).
+`reaction_subjects` covers the review that fired it (as a whole, not its
+comments one by one), each other thread's latest waiting comment, and each
+outstanding changes-request (capped at 10).
 
 `feedback_cursor` is the latest review **submission** the run covers (its second,
 then the review id). Conductor dispatches each submission once on it: a

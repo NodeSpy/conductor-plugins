@@ -186,8 +186,12 @@ func TestTwoReviewsSecondsApartAreOneRun(t *testing.T) {
 	if !found[xc[0]] && !found[xID] {
 		t.Fatalf("X is not among Y's reaction subjects %v", subs)
 	}
-	if !found[yc] {
-		t.Fatalf("Y's reply is not among its reaction subjects %v", subs)
+	yID, _ := gotY[0].Context["review_id"].(int64)
+	if yID == 0 || !found[yID] {
+		t.Fatalf("Y (the review that fired) is not among its reaction subjects %v", subs)
+	}
+	if found[yc] {
+		t.Fatalf("Y is reacted on as a whole; its own comment %d must not be a second subject: %v", yc, subs)
 	}
 }
 

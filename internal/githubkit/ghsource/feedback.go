@@ -197,8 +197,9 @@ func (c *restClient) prFeedback(ctx context.Context, instID int64, owner, name s
 
 // subject is one reaction subject (a reaction_subjects entry).
 type subject struct {
-	kind string
-	id   int64
+	kind   string
+	id     int64
+	review int64 // the review a comment subject belongs to (0: a review subject)
 }
 
 // fold is the unaddressed feedback on a PR, ready to ride an event.
@@ -263,14 +264,14 @@ func (g *Source) foldFeedback(fb prFeedback) fold {
 			}
 		}
 		last := tail[len(tail)-1]
-		out.Subjects = append(out.Subjects, subject{githubkit.SubjectReviewComment, last.ID})
+		out.Subjects = append(out.Subjects, subject{githubkit.SubjectReviewComment, last.ID, last.ReviewID})
 	}
 	for _, r := range fb.Latest {
 		if r.State != "CHANGES_REQUESTED" || g.isSelf(r.Author) || (fb.Head != "" && r.Commit != fb.Head) {
 			continue
 		}
 		out.Reviews = append(out.Reviews, r)
-		out.Subjects = append(out.Subjects, subject{githubkit.SubjectReview, r.ID})
+		out.Subjects = append(out.Subjects, subject{githubkit.SubjectReview, r.ID, 0})
 		if k := submissionKey(r.SubmittedAt, r.ID); k > out.Cursor {
 			out.Cursor = k
 		}
@@ -331,6 +332,15 @@ func (g *Source) reviewFold(ctx context.Context, instID int64, repo string, numb
 	if k := submissionKey(ri.SubmittedAt, reviewID); k > f.Cursor {
 		f.Cursor = k
 	}
+	// The review that fired is reacted on as a whole: none of its own
+	// comments (nor itself again) as separate subjects.
+	kept := f.Subjects[:0]
+	for _, sj := range f.Subjects {
+		if sj.review != reviewID && !(sj.kind == githubkit.SubjectReview && sj.id == reviewID) {
+			kept = append(kept, sj)
+		}
+	}
+	f.Subjects = kept
 	return f
 }
 
@@ -351,20 +361,24 @@ func stampFold(extra map[string]any, f fold) {
 		extra["outstanding_reviews"] = rs
 	}
 	subjects, _ := extra["reaction_subjects"].([]any)
-	seen := map[subject]bool{}
+	type key struct {
+		kind string
+		id   int64
+	}
+	seen := map[key]bool{}
 	for _, s := range subjects {
 		if m, ok := s.(map[string]any); ok {
 			k, _ := m["kind"].(string)
 			id, _ := m["id"].(int64)
-			seen[subject{k, id}] = true
+			seen[key{k, id}] = true
 		}
 	}
 	for _, s := range f.Subjects {
 		if len(subjects) >= maxThreadReactions {
 			break
 		}
-		if !seen[s] {
-			seen[s] = true
+		if k := (key{s.kind, s.id}); !seen[k] {
+			seen[k] = true
 			subjects = append(subjects, map[string]any{"kind": s.kind, "id": s.id})
 		}
 	}
