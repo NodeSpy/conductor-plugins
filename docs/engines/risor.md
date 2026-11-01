@@ -60,7 +60,8 @@ round trip per call:
   `index`, `slice`, `len`, `pop`
 - `sql(name)` — a defined SQL store: `query`, `exec`
 - `memory` — the shared agent memory module: `remember`, `recall`,
-  `forget`, `list`
+  `forget`, `list`, `key(template, facts)` (conductor's scope-key renderer,
+  `{key, ok, reason}`)
 
 Every op is authorized by conductor against the step's own data-plane guard,
 same as an in-binary `run: risor` step — a script written for one runs

@@ -93,7 +93,9 @@ reaching conductor's data plane one host round trip per call:
   handle with `Query(query string, args []any) ([]any, error)` and
   `Exec(query string, args []any) (map[string]any, error)`
 - `import "conductor/memory"` — package-level `memory.Remember(text, tags,
-  scope)`, `memory.Recall(query)`, `memory.Forget(id)`, `memory.List()`
+  scope)`, `memory.Recall(query)`, `memory.Forget(id)`, `memory.List()`,
+  `memory.Key(template, facts)` (conductor's scope-key renderer:
+  `{key, ok, reason}`)
 
 `store.Use`/`sql.Use` always return a handle (there's no local registry to
 consult for an eager name check); an undefined store surfaces conductor's

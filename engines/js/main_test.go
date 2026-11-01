@@ -165,3 +165,33 @@ return {
 		t.Fatalf("the kv bridge is %v, want function", out["kv"])
 	}
 }
+
+// ctx.memory.key is one host round trip — (template, facts) — and hands the
+// step conductor's {key, ok, reason} answer as an object; a key that does not
+// apply is an answer, not a throw.
+func TestCtxMemoryKeyRoutesToHost(t *testing.T) {
+	h := &hosttest.Host{Reply: func(c hosttest.Call) (any, error) {
+		if facts, _ := c.Args[1].(map[string]any); facts["team"] == "payments" {
+			return map[string]any{"key": "team:payments", "ok": true, "reason": ""}, nil
+		}
+		return map[string]any{"key": "", "ok": false, "reason": "reads a fact this step has no value for"}, nil
+	}}
+	out, err := execJS(context.Background(), `
+const k = ctx.memory.key("team:{{.team}}", { team: "payments", pr: 7 });
+const d = ctx.memory.key("team:{{.team}}", {});
+return { key: k.key, ok: k.ok, dropped: d.ok, why: d.reason };
+`, nil, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out["key"] != "team:payments" || out["ok"] != true || out["dropped"] != false || out["why"] == "" {
+		t.Fatalf("outputs = %#v", out)
+	}
+	want := []hosttest.Call{
+		{Kind: "memory", Op: "key", Args: []any{"team:{{.team}}", map[string]any{"team": "payments", "pr": float64(7)}}},
+		{Kind: "memory", Op: "key", Args: []any{"team:{{.team}}", map[string]any{}}},
+	}
+	if got := h.Calls(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("host calls = %v, want %v", got, want)
+	}
+}

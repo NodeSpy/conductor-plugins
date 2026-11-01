@@ -224,3 +224,27 @@ func run(ctx map[string]any) (any, error) { return nil, errors.New("nope") }
 		t.Fatalf("err = %v, want the snippet's error", err)
 	}
 }
+
+// memory.Key reaches the host's scope-key renderer.
+func TestMemoryKeyRoutesToHost(t *testing.T) {
+	h := &hosttest.Host{Reply: func(c hosttest.Call) (any, error) {
+		return map[string]any{"key": "team:payments", "ok": true, "reason": ""}, nil
+	}}
+	out, err := execGoEmbed(context.Background(), `
+import "conductor/memory"
+
+func run(ctx map[string]any) (any, error) {
+	return memory.Key("team:{{.team}}", map[string]any{"team": "payments"})
+}
+`, nil, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out["key"] != "team:payments" || out["ok"] != true {
+		t.Fatalf("outputs = %#v", out)
+	}
+	want := []hosttest.Call{{Kind: "memory", Op: "key", Args: []any{"team:{{.team}}", map[string]any{"team": "payments"}}}}
+	if got := h.Calls(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("host calls = %v, want %v", got, want)
+	}
+}

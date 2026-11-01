@@ -69,8 +69,10 @@ var KVOps = []string{
 // SQLOps is the ctx.sql method set (internal/code sqlOps).
 var SQLOps = []string{"query", "exec"}
 
-// MemOps is the ctx.memory method set (internal/code memOps).
-var MemOps = []string{"remember", "recall", "forget", "list"}
+// MemOps is the ctx.memory method set (internal/code memOps). key is core's
+// scope-key renderer — ctx.memory.key(template, facts?) → {key, ok, reason}
+// — served host-side like every other op, so no engine re-implements it.
+var MemOps = []string{"remember", "recall", "forget", "list", "key"}
 
 func inSet(ops []string, op string) bool {
 	for _, o := range ops {
