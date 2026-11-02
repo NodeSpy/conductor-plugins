@@ -71,6 +71,9 @@ func eventSemantics(name string) *plugin.EventSemantics {
 	case "pr_behind":
 		s.BoundToTarget = true
 	case "failing_checks":
+		// Plumbing for a step that reads the failures (check_failures'
+		// ignore), not something the agent is asked to act on.
+		s.Private = append(s.Private, "ignore_checks")
 		s.BoundToTarget = true
 		s.VerificationFailed = true
 		s.Remediate = &plugin.RemediateSemantics{

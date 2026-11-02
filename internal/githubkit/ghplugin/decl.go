@@ -91,10 +91,14 @@ func decl() plugin.Decl {
 		// Cloud with data residency, and the smee relay. A GHES host on its
 		// own domain, or a test double, is outside it — an INSTALLED plugin
 		// is confined to this list; a local development build is not.
+		// check_failures reads an Actions job's log, which GitHub serves by
+		// redirecting to a signed URL on its log hosts: the results service's
+		// blob storage, and the older pipelines host.
 		// gh: the write chain's `gh auth token` (Q8); its token variables, for a
 		// box that authenticates gh through the environment rather than its
 		// config file.
-		Capabilities: plugin.Capabilities{Egress: []string{"api.github.com:443", "*.ghe.com:443", "smee.io:443"}, Commands: []string{"gh"},
+		Capabilities: plugin.Capabilities{Egress: []string{"api.github.com:443", "*.ghe.com:443", "smee.io:443",
+			"productionresultssa*.blob.core.windows.net:443", "*.actions.githubusercontent.com:443"}, Commands: []string{"gh"},
 			Env: []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_HOST", "GH_CONFIG_DIR"}},
 		Desc: "GitHub: PR/issue/check/release events in; comments, reviews, and review requests out.",
 		Connection: plugin.Schema{
@@ -148,7 +152,8 @@ func decl() plugin.Decl {
 			githubEvent("merge_conflict", "your PR became unmergeable", nil, nil),
 			githubEvent("pr_behind", "your PR fell behind its base", nil, nil),
 			githubEvent("failing_checks", "CI concluded failing on your PR",
-				plugin.Schema{"failing_check": {Type: "string"}, "run_id": {Type: "integer"}},
+				plugin.Schema{"failing_check": {Type: "string"}, "run_id": {Type: "integer"},
+					"ignore_checks": {Type: "list", Desc: "the trigger's ignore_checks (absent when none) — for a step that reads the failures itself: github.check_failures' ignore"}},
 				plugin.Schema{
 					"flaky_rerun": {Type: "map", Desc: "rerun failed jobs once before dispatching: { enabled, max }"},
 					// Per-CHECK suppression, not a trigger predicate: it decides
@@ -580,6 +585,28 @@ func decl() plugin.Decl {
 					"as":       {Type: "string", Enum: []string{"me", "bot"}},
 				},
 				Outputs: plugin.Schema{"total": {Type: "integer"}, "items": {Type: "list"}},
+			},
+			{
+				Name: "check_failures", Desc: "what failed on a PR's head (or a ref, or one workflow run): each failing check run's output and annotations, and for a GitHub Actions job its failed step and the log excerpt showing the failure — bounded, cleaned, and other people's text (fence it as data before an agent reads it)",
+				Options: plugin.Schema{
+					"repo":      {Type: "string", Required: true, Scope: "repo"},
+					"pr":        {Type: "integer", Desc: "the PR whose CURRENT head to read (read fresh: after a push, the new commit)"},
+					"ref":       {Type: "string", Desc: "a sha, branch, or tag instead of a PR"},
+					"run_id":    {Type: "integer", Desc: "one workflow run instead: its jobs' check runs"},
+					"ignore":    {Type: "list", Desc: "check names to leave out (case-insensitive), e.g. the failing_checks event's ignore_checks"},
+					"log_bytes": {Type: "integer", Desc: "bytes of one failed job's log excerpt (default 8192, max 65536)"},
+					"max_bytes": {Type: "integer", Desc: "bytes of all the text returned — outputs, annotations, logs (default 32768, max 262144)"},
+					"as":        {Type: "string", Enum: []string{"me", "bot"}},
+				},
+				Outputs: plugin.Schema{
+					"sha":       {Type: "string", Desc: "the commit read"},
+					"failures":  {Type: "list", Desc: "failing check runs by name: {name, conclusion, url, app, title, summary, text, annotations [{path, start_line, end_line, level, title, message}], annotations_omitted} and for Actions {job_id, run_id, failed_step, log, log_truncated}; a read that failed is noted (annotations_error, log_error), not fatal"},
+					"pending":   {Type: "list", Desc: "names of checks still queued or running"},
+					"passing":   {Type: "integer", Desc: "checks that completed without failing"},
+					"ignored":   {Type: "integer", Desc: "checks left out by ignore"},
+					"omitted":   {Type: "integer", Desc: "failing checks past the first 20, not described"},
+					"truncated": {Type: "boolean", Desc: "a size cap cut something"},
+				},
 			},
 			{
 				Name: "checks", Desc: "check-run status for a ref: [{name, status, conclusion, url}]",

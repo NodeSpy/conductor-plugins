@@ -937,6 +937,10 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 			return nil, err
 		}
 		return map[string]any{"total": total, "items": items}, nil
+	case "check_failures":
+		// A gone PR is remapped where its head is read (PRHead); a missing
+		// ref or run is not the target going away.
+		return c.checkFailures(ctx, as, tok, base, repo, number, opts)
 	case "checks":
 		ref, _ := opts["ref"].(string)
 		if ref == "" {

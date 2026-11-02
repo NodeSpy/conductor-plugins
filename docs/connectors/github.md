@@ -17,7 +17,9 @@ proves the two fire the same triggers ([parity](#parity-with-the-bundled-connect
 - **Kind:** connector (verbs **and** source), connector ABI 1
 - **Source:** [`connectors/github/main.go`](../../connectors/github/main.go)
 - **Provides:** `github`
-- **Capabilities:** egress to `api.github.com:443`, `*.ghe.com:443`, `smee.io:443`
+- **Capabilities:** egress to `api.github.com:443`, `*.ghe.com:443`, `smee.io:443`,
+  and GitHub's Actions log hosts (`productionresultssa*.blob.core.windows.net:443`,
+  `*.actions.githubusercontent.com:443`)
 
 ```yaml
 connectors:
@@ -190,7 +192,7 @@ trigger's `assignee`).
 | `new_comment` | a standalone comment, or ONE submitted review no `changes_requested` trigger takes (always so for an approval) with all its inline comments; or (sweep) a comment the webhook missed | `author`, `author_is_bot`, `comment_body`, `head_ref`, `comment_id`, `comment_kind`, `review_*`, `reaction_subjects` | — |
 | `merge_conflict` | your PR became unmergeable | — | — |
 | `pr_behind` | your PR fell behind its base | — | — |
-| `failing_checks` | CI concluded failing | `failing_check`, `run_id` | `flaky_rerun`, `ignore_checks` |
+| `failing_checks` | CI concluded failing | `failing_check`, `run_id`, `ignore_checks` (private: the trigger's own list, for `check_failures`' `ignore`) | `flaky_rerun`, `ignore_checks` (per trigger) |
 | `stuck_checks` | a run has been in progress too long (own poller) | `run_id`, `run_name`, `run_status` | `stuck_after` (30m), `poll_interval` (15m) |
 | `merge_ready` | your PR turned all-green (clean, approved by someone else, threads resolved, not draft) | — | — |
 | `self_review` | you opened/updated your own PR | — | — |
@@ -328,6 +330,15 @@ flow on it passes `pr:` and names its own context.
 - **`pr_diff`** — the PR's unified diff (cached; GitHub caps the `.diff` type around 300 files). `repo`*, `pr`*. → `diff`.
 - **`pr_files`** — changed files: `[{path, status, additions, deletions, changes}]` (100/page). `repo`*, `pr`*, `all`. → `files`.
 - **`checks`** — check-run status for a ref: `[{name, status, conclusion, url}]`. `repo`*, `ref`* (branch/tag/sha). → `checks`.
+- **`check_failures`** — what failed, in a form an agent can diagnose from with no GitHub access of its own. `repo`*, and one of `pr` (the PR's head **as of now**, read fresh — after a push, the commit pushed), `ref` (a sha/branch/tag), or `run_id` (one workflow run's jobs). `ignore` (check names to leave out, case-insensitive — pass a `failing_checks` event's `{{.ignore_checks}}`), `log_bytes` (one job's log excerpt, default 8192, max 65536), `max_bytes` (all text returned, default 32768, max 262144). Check runs of every app are covered (a re-run reports its latest attempt); commit statuses are not — like `failing_checks`, it reads check runs. → `sha`, `failures` (by name, at most 20), `pending` (names still queued/running), `passing`, `ignored`, `omitted` (failing past 20), `truncated` (a cap cut something). Each failure: `name`, `conclusion`, `url`, `app`, the check's `title` / `summary` / `text` and `annotations` (`[{path, start_line, end_line, level, title, message}]`, failures first, at most 20; `annotations_omitted`). A GitHub Actions job adds `job_id`, `run_id`, `failed_step`, and `log`: the step that printed the first `##[error]`, from its `Run …` header to where the next step starts, its end kept when it does not fit (`log_truncated`); a log with no error gives its tail. Log lines lose their timestamps, ANSI escapes, progress-bar redraws, control and invisible format characters. A read that fails is noted on its entry — `log_error` (e.g. a credential without Actions read, or a log past retention), `annotations_error` — and the rest of the answer stands.
+
+  The text is other people's (a test prints whatever it likes, including
+  text addressed to an agent): bounded and cleaned, not made safe to follow.
+  Fence it as data before an agent reads it, as the pr-autopilot pack does.
+  The job log is fetched from the signed URL GitHub redirects to; the GitHub
+  credential is dropped the moment a redirect leaves the API's origin (a port
+  change included — `net/http` alone only drops it on a host-name change), and
+  a redirect from https to http is refused.
 - **`ready_for_review`** — mark a draft PR ready. `repo`*, `pr`*. → `ok`.
 - **`convert_to_draft`** — convert a PR back to a draft. `repo`*, `pr`*. → `ok`.
 
@@ -374,7 +385,11 @@ flow on it passes `pr:` and names its own context.
 ## Capabilities & security
 
 Declares egress to `api.github.com:443`, `*.ghe.com:443`, and `smee.io:443`,
-and spawns nothing it names (the `gh auth token` fallback shells out to `gh`).
+plus the two hosts GitHub serves Actions job logs from
+(`productionresultssa*.blob.core.windows.net:443` — the results service's
+storage — and `*.actions.githubusercontent.com:443`), which only
+`check_failures` reaches, by following the logs endpoint's signed redirect
+without the GitHub credential; and spawns nothing it names (the `gh auth token` fallback shells out to `gh`).
 An installed build is confined to that list; narrow it per instance with
 `network:`. A GitHub Enterprise Server on its own domain is outside the
 declaration — see [gaps](#known-gaps). Write attribution is
@@ -398,6 +413,7 @@ runs with every github connector on the plugin (`make e2e-plugin`).
 | approval with suggestions → one `new_comment` | ✓ | ✓ | conformance "an approval with suggestions is ONE new_comment" |
 | closed-PR drop; `_closed` on close | ✓ | ✓ | conformance "a closed PR's feedback is dropped; closing emits _closed" |
 | `failing_checks` + `ignore_checks`, `run_id` from details_url | ✓ | ✓ | conformance "failing_checks on your PR, minus ignore_checks" |
+| `ignore_checks` per trigger, carried on the event | ✓ | ✓ | conformance "failing_checks: ignore_checks per trigger" |
 | `merge_conflict` / `pr_behind` from merge state, own PRs only | ✓ | ✓ | conformance "merge_conflict and pr_behind …" |
 | `merge_ready` gate | ✓ | ✓ | conformance "merge_ready when all-green, held by a failing gate" |
 | `self_review` | ✓ | ✓ | conformance "self_review when you open a PR" |

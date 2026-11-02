@@ -210,7 +210,21 @@ func Cases() []Case {
 				{Event: "check_run", Body: checkRun(7, "unit", "success", 79)},
 			},
 			Want: []Want{{Kind: "failing_checks", Trigger: "fc", Repo: repo, Number: 7, Context: map[string]any{
-				"failing_check": "lint", "run_id": 77, "head_ref": "feat-7"}}},
+				"failing_check": "lint", "run_id": 77, "head_ref": "feat-7", "ignore_checks": []any{"docs"}}}},
+		},
+		{
+			// ignore_checks is each trigger's own: one that does not list
+			// docs fires on it, and an event carries only its trigger's list.
+			Name:       "failing_checks: ignore_checks per trigger",
+			Connection: base,
+			Triggers: []Trigger{
+				{On: "failing_checks", Name: "fc", Options: map[string]any{"ignore_checks": []any{"docs"}}},
+				{On: "failing_checks", Name: "all"},
+			},
+			Routes: []Route{pull(7, "me", "open", "clean")},
+			Steps:  []Step{{Event: "check_run", Body: checkRun(7, "docs", "failure", 78)}},
+			Want: []Want{{Kind: "failing_checks", Trigger: "all", Repo: repo, Number: 7,
+				Context: map[string]any{"failing_check": "docs"}, Absent: []string{"ignore_checks"}}},
 		},
 		{
 			Name:       "merge_conflict and pr_behind from the PR's merge state",
