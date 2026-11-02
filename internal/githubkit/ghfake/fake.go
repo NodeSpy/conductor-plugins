@@ -46,6 +46,7 @@
 package ghfake
 
 import (
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/hex"
@@ -153,6 +154,13 @@ type Fake struct {
 	srv     *httptest.Server
 	baseURL string
 	closed  bool
+
+	// The Actions job-log host: GitHub answers a job's logs endpoint with a
+	// 302 to a short-lived signed URL on ANOTHER host (logs.go).
+	logsSrv  *httptest.Server
+	logsURL  string
+	logKey   []byte
+	logReads []LogRead
 }
 
 // New returns an empty fake.
@@ -174,17 +182,22 @@ func New(opts Options) *Fake {
 		gists: map[string]*Gist{},
 		queue: make(chan *Delivery, 4096),
 	}
+	f.logKey = make([]byte, 32)
+	_, _ = rand.Read(f.logKey)
 	go f.deliverLoop()
 	return f
 }
 
 func (f *Fake) now() time.Time { return f.opts.Now().UTC().Truncate(time.Second) }
 
-// Start serves the fake on a local test server and returns its base URL.
+// Start serves the fake on a local test server and returns its base URL. The
+// job-log host gets a server of its own (a different origin, as on GitHub).
 func (f *Fake) Start() string {
 	f.srv = httptest.NewServer(f.Handler())
+	f.logsSrv = httptest.NewServer(f.LogsHandler())
 	f.mu.Lock()
 	f.baseURL = f.srv.URL
+	f.logsURL = f.logsSrv.URL
 	f.mu.Unlock()
 	return f.srv.URL
 }
@@ -216,6 +229,9 @@ func (f *Fake) Close() {
 	f.mu.Unlock()
 	if f.srv != nil {
 		f.srv.Close()
+	}
+	if f.logsSrv != nil {
+		f.logsSrv.Close()
 	}
 }
 

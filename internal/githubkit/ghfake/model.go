@@ -249,7 +249,8 @@ type CheckSuite struct {
 	CreatedAt  time.Time
 }
 
-// CheckRun is one check (for Actions: one job's check).
+// CheckRun is one check (for Actions: one job's check — GitHub gives the job
+// and its check run the same id).
 type CheckRun struct {
 	ID          int64
 	SuiteID     int64
@@ -261,6 +262,28 @@ type CheckRun struct {
 	JobID       int64
 	StartedAt   time.Time
 	CompletedAt time.Time
+	// App is the slug of the app that owns the check: "" for GitHub Actions
+	// (every workflow job's check), else another app (a third-party CI
+	// reporting through the Checks API).
+	App string
+	// Output is what the check reported — the Checks API's output object —
+	// and Annotations its file/line findings.
+	Output      CheckOutput
+	Annotations []Annotation
+}
+
+// CheckOutput is a check run's output object.
+type CheckOutput struct {
+	Title, Summary, Text string
+}
+
+// Annotation is one check-run annotation.
+type Annotation struct {
+	Path               string
+	StartLine, EndLine int
+	Level              string // notice | warning | failure
+	Title, Message     string
+	RawDetails         string
 }
 
 // WorkflowRun is one Actions run.
@@ -282,15 +305,33 @@ type WorkflowRun struct {
 	UpdatedAt    time.Time
 }
 
-// Job is one Actions job (its check run is CheckRunID).
+// Job is one Actions job attempt (its check run is CheckRunID, the same id).
+// A re-run makes a NEW job for each job it re-runs and supersedes the old one,
+// as GitHub does: the old attempt keeps its id, steps and log.
 type Job struct {
-	ID         int64
-	RunID      int64
+	ID          int64
+	RunID       int64
+	Name        string
+	Status      string
+	Conclusion  string
+	CheckRunID  int64
+	StartedAt   time.Time
+	CompletedAt time.Time
+	Attempt     int
+	Superseded  bool
+	// Steps are the job's steps; Log is its raw log as the logs endpoint
+	// serves it (timestamped lines, ##[group]/##[error] markers, ANSI).
+	Steps []JobStep
+	Log   string
+	// plan is a re-run attempt's step conclusions should it fail again (the
+	// superseded attempt's), applied when the attempt completes.
+	plan []string
+}
+
+// JobStep is one step of a job.
+type JobStep struct {
 	Name       string
-	Status     string
-	Conclusion string
-	CheckRunID int64
-	StartedAt  time.Time
+	Conclusion string // success | failure | skipped | … ("" while running)
 }
 
 // Release is a published release.
@@ -349,6 +390,15 @@ func lower(s string) string { return strings.ToLower(s) }
 func (f *Fake) user(login string) *User { return f.users[lower(login)] }
 
 func (f *Fake) repo(full string) *Repo { return f.repos[lower(full)] }
+
+func (r *Repo) checkRun(id int64) *CheckRun {
+	for _, c := range r.CheckRuns {
+		if c.ID == id {
+			return c
+		}
+	}
+	return nil
+}
 
 func (r *Repo) pull(n int) *Pull {
 	if is := r.Issues[n]; is != nil {

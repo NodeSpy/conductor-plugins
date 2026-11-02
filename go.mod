@@ -22,7 +22,7 @@ go 1.26.3
 // (pkg/githubkit/ghsource, ghplugin), which are not in a conductor release yet.
 // This pseudo-version is the head of the conductor change that adds them; it
 // MUST be bumped to that change's release tag before this merges.
-require github.com/NodeSpy/conductor v0.65.1-0.20261022174500-fa0fd7c638d5
+require github.com/NodeSpy/conductor v0.70.1-0.20261102191731-be1beed2fb4a
 
 // The interpreters the four step engines embed. These are the SAME versions
 // conductor pinned while the engines lived in its binary, so the port is a
@@ -83,11 +83,11 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.6 // indirect
 	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948 // indirect
-	golang.org/x/mod v0.40.0 // indirect
+	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240826202546-f6391c0de4c7 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240826202546-f6391c0de4c7 // indirect

@@ -10,7 +10,9 @@ variant that carries the webhook payload schemas as well as the REST ones).
     python3 extract_schemas.py /tmp/api.31.json | python3 -c "import json,sys;json.dump(json.load(sys.stdin),sys.stdout,separators=(',',':'),sort_keys=True)" > openapi-subset.json
 
 The output keeps, for each REST operation the fake implements, its 2xx
-response schema(s), and for each webhook it emits, its payload schema — plus
+response schema(s) — or, for an operation that has no 2xx, its 3xx (the
+job-logs endpoint's only answer is a bodiless 302 to the log host) — and for
+each webhook it emits, its payload schema — plus
 the transitive closure of every #/components/schemas entry they reference.
 Nothing is edited: schemas are copied verbatim.
 """
@@ -66,9 +68,12 @@ REST = [
     ("get", "/repos/{owner}/{repo}/commits/{ref}/status"),
     ("get", "/repos/{owner}/{repo}/commits/{ref}/statuses"),
     ("get", "/repos/{owner}/{repo}/commits/{ref}/check-runs"),
+    ("get", "/repos/{owner}/{repo}/check-suites/{check_suite_id}/check-runs"),
+    ("get", "/repos/{owner}/{repo}/check-runs/{check_run_id}/annotations"),
     ("get", "/repos/{owner}/{repo}/actions/runs"),
     ("get", "/repos/{owner}/{repo}/actions/runs/{run_id}"),
     ("get", "/repos/{owner}/{repo}/actions/jobs/{job_id}"),
+    ("get", "/repos/{owner}/{repo}/actions/jobs/{job_id}/logs"),
     ("get", "/repos/{owner}/{repo}/contents/{path}"),
     ("put", "/repos/{owner}/{repo}/contents/{path}"),
     ("delete", "/repos/{owner}/{repo}/contents/{path}"),
@@ -140,8 +145,10 @@ def main(path):
     for method, p in REST:
         op = d["paths"][p][method]
         got = {}
+        # An operation whose success IS a redirect (no 2xx) keeps its 3xx.
+        keep = ("2",) if any(c.startswith("2") for c in op["responses"]) else ("3",)
         for code, r in op["responses"].items():
-            if not code.startswith("2"):
+            if not code.startswith(keep):
                 continue
             r = resolve_resp(r)
             c = r.get("content") or {}

@@ -466,6 +466,8 @@ func routes() []route {
 		{"GET", "/repos/{owner}/{repo}/commits/{ref}/status", "repo", hCombinedStatus},
 		{"GET", "/repos/{owner}/{repo}/commits/{ref}/statuses", "repo", hListStatuses},
 		{"GET", "/repos/{owner}/{repo}/commits/{ref}/check-runs", "repo", hCheckRunsForRef},
+		{"GET", "/repos/{owner}/{repo}/check-suites/{check_suite_id}/check-runs", "repo", hCheckRunsForSuite},
+		{"GET", "/repos/{owner}/{repo}/check-runs/{check_run_id}/annotations", "repo", hAnnotations},
 		// --- actions ---
 		{"GET", "/repos/{owner}/{repo}/actions/runs", "repo", hListRuns},
 		{"GET", "/repos/{owner}/{repo}/actions/runs/{run_id}", "repo", hGetRun},
@@ -473,6 +475,7 @@ func routes() []route {
 		{"POST", "/repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs", "repo", hRerun(true)},
 		{"POST", "/repos/{owner}/{repo}/actions/runs/{run_id}/cancel", "repo", hCancelRun},
 		{"GET", "/repos/{owner}/{repo}/actions/jobs/{job_id}", "repo", hGetJob},
+		{"GET", "/repos/{owner}/{repo}/actions/jobs/{job_id}/logs", "repo", hJobLogs},
 		{"POST", "/repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches", "repo", hDispatch},
 		// --- contents, refs, releases ---
 		{"GET", "/repos/{owner}/{repo}/contents/{path}", "repo", hGetContent},
@@ -1362,22 +1365,72 @@ func hCheckRunsForRef(c *call) (int, any) {
 	if sha == "" {
 		return notFound()
 	}
+	return c.checkRunList(func(cr *CheckRun) bool { return cr.HeadSHA == sha })
+}
+
+func hCheckRunsForSuite(c *call) (int, any) {
+	id := c.i64("check_suite_id")
+	found := false
+	for _, s := range c.repo.Suites {
+		found = found || s.ID == id
+	}
+	if !found {
+		return notFound()
+	}
+	return c.checkRunList(func(cr *CheckRun) bool { return cr.SuiteID == id })
+}
+
+// checkRunList is a check-runs list response over the runs in: filter=latest
+// (GitHub's default) keeps each name's most recent run, filter=all keeps
+// every attempt; check_name and status narrow it.
+func (c *call) checkRunList(in func(*CheckRun) bool) (int, any) {
+	q := c.r.URL.Query()
+	filter := q.Get("filter")
+	if filter != "" && filter != "latest" && filter != "all" {
+		return invalid("CheckRun", "filter", "invalid", "")
+	}
 	latest := map[string]*CheckRun{}
 	var order []string
-	for _, cr := range c.repo.CheckRuns { // filter=latest is GitHub's default
-		if cr.HeadSHA != sha {
+	var all []*CheckRun
+	for _, cr := range c.repo.CheckRuns {
+		if !in(cr) {
 			continue
 		}
+		if v := q.Get("check_name"); v != "" && cr.Name != v {
+			continue
+		}
+		if v := q.Get("status"); v != "" && cr.Status != v {
+			continue
+		}
+		all = append(all, cr)
 		if _, seen := latest[cr.Name]; !seen {
 			order = append(order, cr.Name)
 		}
 		latest[cr.Name] = cr
 	}
 	out := []any{}
-	for _, n := range order {
-		out = append(out, c.f.checkRunJSON(c.repo, latest[n]))
+	if filter == "all" {
+		for _, cr := range all {
+			out = append(out, c.f.checkRunJSON(c.repo, cr))
+		}
+	} else {
+		for _, n := range order {
+			out = append(out, c.f.checkRunJSON(c.repo, latest[n]))
+		}
 	}
 	return 200, map[string]any{"total_count": len(out), "check_runs": c.paginate(out)}
+}
+
+func hAnnotations(c *call) (int, any) {
+	cr := c.repo.checkRun(c.i64("check_run_id"))
+	if cr == nil {
+		return notFound()
+	}
+	out := []any{}
+	for _, a := range cr.Annotations {
+		out = append(out, c.f.annotationJSON(c.repo, cr, a))
+	}
+	return 200, c.paginate(out)
 }
 
 // --- actions -------------------------------------------------------------------

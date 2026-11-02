@@ -392,9 +392,41 @@ func (f *Fake) checkRunJSON(r *Repo, c *CheckRun) map[string]any {
 		"external_id": "", "url": f.api("/repos/%s/check-runs/%d", r.FullName(), c.ID), "html_url": html,
 		"details_url": details, "status": c.Status, "conclusion": nullable(c.Conclusion),
 		"started_at": ts(c.StartedAt), "completed_at": ts(c.CompletedAt),
-		"output": map[string]any{"title": nil, "summary": nil, "text": nil, "annotations_count": 0,
-			"annotations_url": f.api("/repos/%s/check-runs/%d/annotations", r.FullName(), c.ID)},
-		"check_suite": f.suiteJSON(r, suite), "app": f.appJSON(), "pull_requests": f.prRefs(r, c.HeadSHA),
+		"output": map[string]any{"title": nullable(c.Output.Title), "summary": nullable(c.Output.Summary), "text": nullable(c.Output.Text),
+			"annotations_count": len(c.Annotations), "annotations_url": f.api("/repos/%s/check-runs/%d/annotations", r.FullName(), c.ID)},
+		"check_suite": f.suiteJSON(r, suite), "app": f.checkAppJSON(c), "pull_requests": f.prRefs(r, c.HeadSHA),
+	})
+}
+
+// checkAppJSON is the app that owns a check run: GitHub Actions for a
+// workflow job's check, else the third-party app it names (the fake's own
+// App when that is the one named).
+func (f *Fake) checkAppJSON(c *CheckRun) map[string]any {
+	switch {
+	case c.App == "" && c.RunID != 0:
+		return f.integrationJSON(15368, "github-actions", "GitHub Actions", &User{ID: 9919, Login: "github", Type: "Organization"})
+	case c.App == "" || f.app != nil && c.App == f.app.Slug:
+		return f.appJSON()
+	}
+	return f.integrationJSON(int64(5000+len(c.App)), c.App, c.App, &User{ID: int64(6000 + len(c.App)), Login: c.App, Type: "Organization"})
+}
+
+func (f *Fake) integrationJSON(id int64, slug, name string, owner *User) map[string]any {
+	return ShapeOf("integration", map[string]any{
+		"id": id, "slug": slug, "node_id": nodeID("A", id), "name": name, "owner": f.userJSON(owner),
+		"description": nil, "external_url": htmlBase, "html_url": htmlBase + "/apps/" + slug,
+		"created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+		"permissions": map[string]any{"checks": "write"}, "events": []any{"check_run"},
+	})
+}
+
+// annotationJSON is one check-run annotation (GitHub's check-annotation).
+func (f *Fake) annotationJSON(r *Repo, c *CheckRun, a Annotation) map[string]any {
+	return ShapeOf("check-annotation", map[string]any{
+		"path": a.Path, "start_line": a.StartLine, "end_line": a.EndLine, "start_column": nil, "end_column": nil,
+		"annotation_level": nullable(a.Level), "title": nullable(a.Title), "message": nullable(a.Message),
+		"raw_details": nullable(a.RawDetails),
+		"blob_href":   fmt.Sprintf("%s/%s/blob/%s/%s", htmlBase, r.FullName(), c.HeadSHA, a.Path),
 	})
 }
 
@@ -446,10 +478,30 @@ func (f *Fake) jobJSON(r *Repo, j *Job) map[string]any {
 		"conclusion": nullable(j.Conclusion), "url": f.api("/repos/%s/actions/jobs/%d", r.FullName(), j.ID),
 		"html_url":      fmt.Sprintf("%s/%s/actions/runs/%d/job/%d", htmlBase, r.FullName(), j.RunID, j.ID),
 		"check_run_url": f.api("/repos/%s/check-runs/%d", r.FullName(), j.CheckRunID),
-		"started_at":    ts(j.StartedAt), "completed_at": nil, "labels": []any{"ubuntu-latest"},
+		"started_at":    ts(j.StartedAt), "completed_at": ts(j.CompletedAt), "labels": []any{"ubuntu-latest"},
 		"runner_id": nil, "runner_name": nil, "runner_group_id": nil, "runner_group_name": nil,
 		"workflow_name": nil, "head_branch": nil, "created_at": ts(j.StartedAt),
+		"run_attempt": j.Attempt, "steps": jobStepsJSON(j),
 	})
+}
+
+// jobStepsJSON is a job's steps: completed once concluded, the first open
+// one in progress while the job runs, the rest queued.
+func jobStepsJSON(j *Job) []any {
+	out := []any{}
+	running := false
+	for i, st := range j.Steps {
+		status := "completed"
+		if st.Conclusion == "" {
+			status = "queued"
+			if !running && j.Status != "completed" {
+				status, running = "in_progress", true
+			}
+		}
+		out = append(out, map[string]any{"name": st.Name, "status": status, "conclusion": nullable(st.Conclusion), "number": i + 1,
+			"started_at": nil, "completed_at": nil})
+	}
+	return out
 }
 
 func (f *Fake) commitJSON(r *Repo, c *Commit) map[string]any {

@@ -11,11 +11,9 @@ import (
 	"github.com/NodeSpy/conductor-plugins/internal/githubkit"
 )
 
-// failureConclusions are check conclusions we treat as "failing".
-var failureConclusions = map[string]bool{
-	"failure": true, "timed_out": true, "cancelled": true,
-	"startup_failure": true, "stale": true, "action_required": true,
-}
+// failureConclusions are check conclusions we treat as "failing" — the same
+// set check_failures reports.
+var failureConclusions = githubkit.FailureConclusions
 
 type ghPayload struct {
 	Action       string `json:"action"`
@@ -535,14 +533,28 @@ func (g *Source) checkTriggers(ctx context.Context, repo string, p ghPayload) []
 	var trs []Trigger
 	if failureConclusions[c.Conclusion] && g.checkOwnPR(ctx, p, num) {
 		// Suppress a fixer for a check the user opted to ignore (ignore_checks) — e.g.
-		// a PR-title convention gate they don't follow. Logged so ignores are visible.
-		if act, ok := g.actionFor(repo, "failing_checks"); ok && containsFold(act.IgnoreChecks, c.Name) {
-			log.Printf("github[%s]: %s#%d failing check %q ignored (ignore_checks)", g.name, repo, num, c.Name)
-		} else {
+		// a PR-title convention gate they don't follow — per trigger: each fires
+		// unless ITS list names the check. Logged so ignores are visible.
+		notIgnored := func(act Action) bool { return !containsFold(act.IgnoreChecks, c.Name) }
+		for _, act := range g.actionsFor(repo, "failing_checks") {
+			if act.IsEnabled() && !notIgnored(act) {
+				log.Printf("github[%s]: %s#%d failing check %q ignored (ignore_checks of %s)", g.name, repo, num, c.Name, act.Name)
+			}
+		}
+		if g.wouldEmit(repo, "failing_checks", notIgnored) {
 			t := g.target(repo, num, c.HeadSHA, "", "")
 			extra := map[string]any{"failing_check": c.Name, "run_id": g.workflowRunID(ctx, p, c)}
-			trs = append(trs, g.single(repo, "failing_checks", t,
-				fmt.Sprintf("failing checks on %s#%d", repo, num), "fail@"+c.HeadSHA, extra)...)
+			fired := g.emit(repo, "failing_checks", t,
+				fmt.Sprintf("failing checks on %s#%d", repo, num), "fail@"+c.HeadSHA, extra, notIgnored)
+			// Each trigger's own list rides its event, for a step that reads
+			// every failure on the head (check_failures' ignore) and must
+			// leave out what this trigger ignores.
+			for i := range fired {
+				if act, ok := fired[i].Action.(Action); ok && len(act.IgnoreChecks) > 0 {
+					fired[i].Context["ignore_checks"] = append([]string(nil), act.IgnoreChecks...)
+				}
+			}
+			trs = append(trs, fired...)
 		}
 	}
 	// A completed check (pass or fail) may have made the PR merge-ready.
