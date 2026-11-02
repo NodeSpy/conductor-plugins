@@ -143,3 +143,23 @@ func TestHostErrorFailsTheStep(t *testing.T) {
 type errRefused struct{}
 
 func (errRefused) Error() string { return "refused by conductor: kv.get: not allowed" }
+
+// memory.key reaches the host like every memory op.
+func TestMemoryKeyRoutesToHost(t *testing.T) {
+	h := &hosttest.Host{Reply: func(c hosttest.Call) (any, error) {
+		return map[string]any{"key": "team:payments", "ok": true, "reason": ""}, nil
+	}}
+	out, err := execRisor(context.Background(), `
+k := memory.key("team:{{.team}}", {"team": "payments"})
+{"key": k["key"]}
+`, nil, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out["key"] != "team:payments" {
+		t.Fatalf("outputs = %#v", out)
+	}
+	if got := h.Calls(); len(got) != 1 || got[0].Op != "key" || got[0].Args[0] != "team:{{.team}}" {
+		t.Fatalf("host calls = %v", got)
+	}
+}

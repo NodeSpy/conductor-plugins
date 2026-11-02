@@ -250,6 +250,17 @@ func (h MemHandle) List() ([]any, error) {
 	return l, nil
 }
 
+// Key renders a memory scope key with conductor's renderer over facts:
+// {key, ok, reason}, ok false (with reason) when the key does not apply.
+func (h MemHandle) Key(template string, facts map[string]any) (map[string]any, error) {
+	r, err := enginekit.Memory(h.ctx, h.host, "key", []any{template, facts})
+	if err != nil {
+		return nil, err
+	}
+	m, _ := r.(map[string]any)
+	return m, nil
+}
+
 // memGoEmbedExports is the `import "conductor/memory"` virtual package.
 func memGoEmbedExports(ctx context.Context, host enginekit.Host) map[string]map[string]reflect.Value {
 	h := MemHandle{ctx: ctx, host: host}
@@ -259,6 +270,7 @@ func memGoEmbedExports(ctx context.Context, host enginekit.Host) map[string]map[
 			"Recall":   reflect.ValueOf(h.Recall),
 			"Forget":   reflect.ValueOf(h.Forget),
 			"List":     reflect.ValueOf(h.List),
+			"Key":      reflect.ValueOf(h.Key),
 		},
 	}
 }

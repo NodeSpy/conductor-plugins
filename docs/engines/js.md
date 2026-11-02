@@ -57,7 +57,17 @@ throws a JS `Error` built from `{err}`.
   `first`, `last`, `index`, `slice`, `len`, `pop`
 - `ctx.sql(name)` — a defined SQL store, with `query` and `exec`
 - `ctx.memory` — the shared agent memory, with `remember`, `recall`,
-  `forget`, `list`
+  `forget`, `list`, and `key(template, facts?)` → `{key, ok, reason}`:
+  conductor's own scope-key renderer, so a snippet never re-implements the
+  template grammar. A key that does not apply (a fact with no value, a
+  construct a key may not use) is `ok: false` with a reason, not a throw. It
+  reads no memory and works without a `memory:` section. Requires a
+  conductor with `ctx.memory.key` (see conductor's Memory docs)
+
+```js
+const k = ctx.memory.key("team:{{.inputs.team}}", { inputs: { team: ctx.team } });
+if (k.ok) ctx.memory.remember("prefers small PRs", ["style"], k.key);
+```
 
 Every op is authorized by conductor against the step's own data-plane guard,
 same as an in-binary `run: js` step — a snippet written for one runs
