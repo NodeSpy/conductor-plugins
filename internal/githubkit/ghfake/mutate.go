@@ -330,13 +330,20 @@ func (f *Fake) startRun(r *Repo, sha, branch, workflow, event string) *WorkflowR
 }
 
 func (f *Fake) addJob(r *Repo, w *WorkflowRun, name string) *CheckRun {
+	cr, _ := f.newJob(r, w, name)
+	return cr
+}
+
+// newJob adds one job attempt to w and its check run, under ONE id: on GitHub
+// an Actions job's id is its check run's id.
+func (f *Fake) newJob(r *Repo, w *WorkflowRun, name string) (*CheckRun, *Job) {
 	now := f.now()
-	cr := &CheckRun{ID: f.id(), SuiteID: w.SuiteID, Name: name, HeadSHA: w.HeadSHA, Status: "in_progress", RunID: w.ID, StartedAt: now}
-	j := &Job{ID: f.id(), RunID: w.ID, Name: name, Status: "in_progress", CheckRunID: cr.ID, StartedAt: now}
-	cr.JobID = j.ID
+	id := f.id()
+	cr := &CheckRun{ID: id, SuiteID: w.SuiteID, Name: name, HeadSHA: w.HeadSHA, Status: "in_progress", RunID: w.ID, JobID: id, StartedAt: now}
+	j := &Job{ID: id, RunID: w.ID, Name: name, Status: "in_progress", CheckRunID: id, StartedAt: now, Attempt: w.RunAttempt}
 	r.CheckRuns = append(r.CheckRuns, cr)
 	r.Jobs = append(r.Jobs, j)
-	return cr
+	return cr, j
 }
 
 // completeCheck finishes a check run and, when it was the run's last open
@@ -347,7 +354,8 @@ func (f *Fake) completeCheck(r *Repo, cr *CheckRun, conclusion string) {
 	cr.Status, cr.Conclusion, cr.CompletedAt = "completed", conclusion, now
 	for _, j := range r.Jobs {
 		if j.CheckRunID == cr.ID {
-			j.Status, j.Conclusion = "completed", conclusion
+			j.Status, j.Conclusion, j.CompletedAt = "completed", conclusion, now
+			j.finishSteps(conclusion)
 		}
 	}
 	for _, is := range r.Issues {
@@ -367,7 +375,7 @@ func (f *Fake) completeCheck(r *Repo, cr *CheckRun, conclusion string) {
 	}
 	open, worst := false, "success"
 	for _, j := range r.Jobs {
-		if j.RunID != w.ID {
+		if j.RunID != w.ID || j.Superseded {
 			continue
 		}
 		if j.Status != "completed" {
@@ -381,6 +389,25 @@ func (f *Fake) completeCheck(r *Repo, cr *CheckRun, conclusion string) {
 	}
 }
 
+// finishSteps concludes the steps a completing job left open: all of them
+// success when the job succeeded, else what the attempt was planned to do
+// (a re-run fails the way the attempt it re-ran did), else skipped.
+func (j *Job) finishSteps(conclusion string) {
+	for i := range j.Steps {
+		if j.Steps[i].Conclusion != "" {
+			continue
+		}
+		switch {
+		case conclusion == "success":
+			j.Steps[i].Conclusion = "success"
+		case i < len(j.plan) && j.plan[i] != "":
+			j.Steps[i].Conclusion = j.plan[i]
+		default:
+			j.Steps[i].Conclusion = "skipped"
+		}
+	}
+}
+
 func (f *Fake) completeRun(r *Repo, w *WorkflowRun, conclusion string) {
 	now := f.now()
 	w.Status, w.Conclusion, w.UpdatedAt = "completed", conclusion, now
@@ -391,7 +418,8 @@ func (f *Fake) completeRun(r *Repo, w *WorkflowRun, conclusion string) {
 	}
 	for _, j := range r.Jobs {
 		if j.RunID == w.ID && j.Status != "completed" {
-			j.Status, j.Conclusion = "completed", conclusion
+			j.Status, j.Conclusion, j.CompletedAt = "completed", conclusion, now
+			j.finishSteps(conclusion)
 		}
 	}
 	for _, s := range r.Suites {
@@ -404,19 +432,28 @@ func (f *Fake) completeRun(r *Repo, w *WorkflowRun, conclusion string) {
 }
 
 // rerun re-runs a completed workflow run: every job (or only the failed
-// ones) gets a FRESH check run on the same head, and the run's attempt
-// counter moves.
+// ones) gets a FRESH job attempt and check run on the same head, superseding
+// the old attempt, and the run's attempt counter moves. The new attempt runs
+// the same steps and, until something completes it, carries the same output
+// and log — a re-run of the same commit fails the same way unless it was a
+// flake.
 func (f *Fake) rerun(r *Repo, w *WorkflowRun, failedOnly bool, by *User) {
 	w.RunAttempt++
 	w.Status, w.Conclusion, w.UpdatedAt = "in_progress", "", f.now()
 	for _, j := range append([]*Job(nil), r.Jobs...) {
-		if j.RunID != w.ID || (failedOnly && (j.Conclusion == "success" || j.Conclusion == "skipped")) {
+		if j.RunID != w.ID || j.Superseded || (failedOnly && (j.Conclusion == "success" || j.Conclusion == "skipped")) {
 			continue
 		}
-		j.Status, j.Conclusion = "in_progress", ""
-		cr := &CheckRun{ID: f.id(), SuiteID: w.SuiteID, Name: j.Name, HeadSHA: w.HeadSHA, Status: "in_progress", RunID: w.ID, JobID: j.ID, StartedAt: f.now()}
-		j.CheckRunID = cr.ID
-		r.CheckRuns = append(r.CheckRuns, cr)
+		j.Superseded = true
+		cr, nj := f.newJob(r, w, j.Name)
+		nj.Log = j.Log
+		for _, st := range j.Steps {
+			nj.Steps = append(nj.Steps, JobStep{Name: st.Name})
+			nj.plan = append(nj.plan, st.Conclusion)
+		}
+		if old := r.checkRun(j.CheckRunID); old != nil {
+			cr.App, cr.Output, cr.Annotations = old.App, old.Output, append([]Annotation(nil), old.Annotations...)
+		}
 	}
 	for _, s := range r.Suites {
 		if s.ID == w.SuiteID {

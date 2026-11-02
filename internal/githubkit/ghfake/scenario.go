@@ -241,13 +241,54 @@ func (f *Fake) RequestReview(repo string, n int, by, reviewer string) {
 // job): check_run, check_suite and workflow_run completed. Returns the
 // workflow run id and the check run id.
 func (f *Fake) Check(repo, sha, name, conclusion string) (runID, checkID int64) {
+	return f.CheckWith(repo, sha, name, CheckOpts{Conclusion: conclusion})
+}
+
+// CheckOpts is what a check reports as it completes (CheckWith).
+type CheckOpts struct {
+	Conclusion string
+	// App is "" for a GitHub Actions workflow job, else the slug of the
+	// third-party app that owns the check: a non-Actions check, with no
+	// workflow run, job, or log — only its output and annotations.
+	App         string
+	Output      CheckOutput
+	Annotations []Annotation
+	// Steps (with the conclusion each ends with) and Log, the raw log the
+	// logs endpoint serves: Actions only.
+	Steps []JobStep
+	Log   string
+}
+
+// CheckWith runs one check to completion on sha, reporting o: for Actions a
+// workflow run with one job (check_run, check_suite and workflow_run
+// completed), else a third-party app's check (check_run completed). Returns
+// the workflow run id (0 for a non-Actions check) and the check run id —
+// for Actions also the job id.
+func (f *Fake) CheckWith(repo, sha, name string, o CheckOpts) (runID, checkID int64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	r := f.mustRepo(repo)
-	w := f.startRun(r, sha, f.branchOf(r, sha), name, "pull_request")
-	cr := f.addJob(r, w, name)
-	f.completeCheck(r, cr, conclusion)
-	return w.ID, cr.ID
+	var cr *CheckRun
+	if o.App == "" {
+		w := f.startRun(r, sha, f.branchOf(r, sha), name, "pull_request")
+		var j *Job
+		cr, j = f.newJob(r, w, name)
+		j.Log = o.Log
+		for _, st := range o.Steps {
+			j.Steps = append(j.Steps, JobStep{Name: st.Name})
+			j.plan = append(j.plan, st.Conclusion)
+		}
+		runID = w.ID
+	} else {
+		suite := &CheckSuite{ID: f.id(), HeadSHA: sha, HeadBranch: f.branchOf(r, sha), Status: "in_progress", CreatedAt: f.now()}
+		r.Suites = append(r.Suites, suite)
+		cr = &CheckRun{ID: f.id(), SuiteID: suite.ID, Name: name, HeadSHA: sha, Status: "in_progress", StartedAt: f.now(), App: o.App}
+		r.CheckRuns = append(r.CheckRuns, cr)
+		defer func() { suite.Status, suite.Conclusion = "completed", o.Conclusion }()
+	}
+	cr.Output, cr.Annotations = o.Output, append([]Annotation(nil), o.Annotations...)
+	f.completeCheck(r, cr, o.Conclusion)
+	return runID, cr.ID
 }
 
 // StartCheck starts a check that does not finish (a stuck run), created at
