@@ -745,21 +745,46 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 			return nil, fmt.Errorf("github.get_run: options.run_id is required")
 		}
 		var run struct {
-			ID         int64  `json:"id"`
-			Name       string `json:"name"`
-			Status     string `json:"status"`
-			Conclusion string `json:"conclusion"`
-			HeadBranch string `json:"head_branch"`
-			HeadSHA    string `json:"head_sha"`
-			HTMLURL    string `json:"html_url"`
+			ID           int64  `json:"id"`
+			Name         string `json:"name"`
+			Status       string `json:"status"`
+			Conclusion   string `json:"conclusion"`
+			HeadBranch   string `json:"head_branch"`
+			HeadSHA      string `json:"head_sha"`
+			HTMLURL      string `json:"html_url"`
+			CheckSuiteID int64  `json:"check_suite_id"`
 		}
-		if err := c.get(ctx, tok, fmt.Sprintf("%s/repos/%s/actions/runs/%d", base, repo, runID), &run); err != nil {
+		// Uncached: a run's state is what a caller polls for (a remediation
+		// waits on it), and a cached body could still say in_progress after
+		// the completion that prompted the read.
+		if err := c.getFresh(ctx, tok, fmt.Sprintf("%s/repos/%s/actions/runs/%d", base, repo, runID), &run); err != nil {
 			return nil, err
 		}
-		return map[string]any{
+		out := map[string]any{
 			"run_id": run.ID, "name": run.Name, "status": run.Status, "conclusion": run.Conclusion,
 			"head_branch": run.HeadBranch, "head_sha": run.HeadSHA, "url": run.HTMLURL,
-		}, nil
+		}
+		// pr: is this run still for the PR's head? A run for an older commit
+		// is stale. Its PR has moved on, and the head's own run reports.
+		if pr := toInt(opts["pr"]); pr > 0 {
+			head, _, err := c.PRHead(ctx, as, repo, pr)
+			if err != nil {
+				return nil, err
+			}
+			out["pr_head_sha"] = head
+			out["stale"] = head != "" && head != run.HeadSHA
+		}
+		// diagnose: did a finished, failed run fail because a job lost its
+		// runner? Only read when the answer could matter: the run failed,
+		// and it is not stale.
+		if d, _ := opts["diagnose"].(bool); d {
+			lost := false
+			if run.Status == "completed" && FailureConclusions[run.Conclusion] && run.Conclusion != "cancelled" && out["stale"] != true {
+				lost = c.runnerLost(ctx, tok, base, repo, run.CheckSuiteID)
+			}
+			out["runner_lost"] = lost
+		}
+		return out, nil
 	case "create_release":
 		tag, _ := opts["tag"].(string)
 		if tag == "" {

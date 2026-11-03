@@ -303,6 +303,10 @@ type WorkflowRun struct {
 	CreatedAt    time.Time
 	RunStartedAt time.Time
 	UpdatedAt    time.Time
+	// Concurrency is the run's concurrency group, with cancel-in-progress:
+	// when the run starts or is re-run, every other in-progress run in the
+	// group is cancelled. "" is none.
+	Concurrency string
 }
 
 // Job is one Actions job attempt (its check run is CheckRunID, the same id).
