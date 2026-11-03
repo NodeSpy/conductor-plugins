@@ -192,7 +192,7 @@ trigger's `assignee`).
 | `new_comment` | a standalone comment, or ONE submitted review no `changes_requested` trigger takes (always so for an approval) with all its inline comments; or (sweep) a comment the webhook missed | `author`, `author_is_bot`, `comment_body`, `head_ref`, `comment_id`, `comment_kind`, `review_*`, `reaction_subjects` | — |
 | `merge_conflict` | your PR became unmergeable | — | — |
 | `pr_behind` | your PR fell behind its base | — | — |
-| `failing_checks` | CI concluded failing | `failing_check`, `run_id`, `ignore_checks` (private: the trigger's own list, for `check_failures`' `ignore`) | `flaky_rerun`, `ignore_checks` (per trigger) |
+| `failing_checks` | CI concluded failing (not `cancelled`: see below) | `failing_check`, `run_id`, `ignore_checks` (private: the trigger's own list, for `check_failures`' `ignore`) | `flaky_rerun`, `ignore_checks` (per trigger) |
 | `stuck_checks` | a run has been in progress too long (own poller) | `run_id`, `run_name`, `run_status` | `stuck_after` (30m), `poll_interval` (15m) |
 | `merge_ready` | your PR turned all-green (clean, approved by someone else, threads resolved, not draft) | — | — |
 | `self_review` | you opened/updated your own PR | — | — |
@@ -205,6 +205,26 @@ trigger's `assignee`).
 Every event also takes `max_attempts_per_head`. Closing a PR emits conductor's
 `_closed` lifecycle event (merged or not, with revert facts) — no trigger is on
 it; the engine consumes it.
+
+**`failing_checks` and `flaky_rerun`.** A check that concluded `cancelled`
+raises no `failing_checks`. A newer run superseded it (a workflow concurrency
+group with `cancel-in-progress` cancels the older run) or someone stopped it.
+With `flaky_rerun: {enabled: true, max: N}` on the trigger, conductor waits for
+the run to finish, reads it with `get_run` (`pr` and `diagnose` set), and
+sorts it by the event's declared `remediate_triage`:
+
+- **stale** (the PR's head has moved past the run's commit) or
+  **`cancelled`**: no re-run, no fixer, nothing spent. Re-running a stale run
+  would put it back in its concurrency group and cancel the run for the real
+  head.
+- **`runner_lost`** (a failed job's annotation says its runner shut down or
+  lost contact with GitHub): re-run without spending `max`, at most twice per
+  head. Past that, it counts as an ordinary failure.
+- anything else: re-run the failed jobs up to `max` times per head (default
+  1), then dispatch the fixer.
+
+A conductor that predates `remediate_triage` ignores it (the plugin lists it
+`optional`) and re-runs every finished run up to `max`, as before.
 
 **Review folding.** A submitted review reaches GitHub's webhook as one
 `pull_request_review` plus one `pull_request_review_comment` per inline comment,
@@ -365,6 +385,7 @@ flow on it passes `pr:` and names its own context.
 
 - **`dispatch_workflow`** — trigger a `workflow_dispatch` run. `repo`*, `workflow`* (file name like `ci.yml`, or numeric id), `ref`* (branch/tag to run on), `inputs` (map of `workflow_dispatch` inputs). → `ok`.
 - **`list_runs`** — recent workflow runs: `[{id, name, status, conclusion, head_branch, head_sha, url}]`. `repo`*, `branch`, `status` (`queued` | `in_progress` | `completed` | `success` | `failure` | …), `per_page` (default 20, max 100), `all`. → `runs`.
+- **`get_run`** — one workflow run: `{run_id, name, status, conclusion, head_branch, head_sha, url}`. `repo`*, `run_id`*, `pr` (adds `pr_head_sha`, plus `stale` when the run isn't for that PR's head), `diagnose` (adds `runner_lost`: true when a failed job's annotations say its runner shut down or lost contact with GitHub; read only for a finished, failed, non-stale run). Always read uncached.
 - **`rerun_run`** — re-run a workflow run. `repo`*, `run_id`*, `failed_only` (re-run only failed jobs). → `ok`.
 - **`cancel_run`** — cancel a workflow run. `repo`*, `run_id`*. → `ok`.
 

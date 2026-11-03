@@ -460,6 +460,22 @@ func (f *Fake) rerun(r *Repo, w *WorkflowRun, failedOnly bool, by *User) {
 			s.Status, s.Conclusion = "in_progress", ""
 		}
 	}
+	f.supersede(r, w)
+}
+
+// supersede applies w's concurrency group as w (re)starts: GitHub cancels
+// every other in-progress run in a cancel-in-progress group, whichever
+// commit each was for. Re-running an OLD run therefore cancels the run for
+// the newest commit.
+func (f *Fake) supersede(r *Repo, w *WorkflowRun) {
+	if w.Concurrency == "" {
+		return
+	}
+	for _, x := range r.Runs {
+		if x != w && x.Concurrency == w.Concurrency && x.Status != "completed" {
+			f.completeRun(r, x, "cancelled")
+		}
+	}
 }
 
 func (f *Fake) publishRelease(r *Repo, by *User, o ReleaseOpts) *Release {

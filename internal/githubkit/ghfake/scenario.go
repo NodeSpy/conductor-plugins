@@ -303,6 +303,48 @@ func (f *Fake) StartCheck(repo, sha, name string, startedAt time.Time) int64 {
 	return w.ID
 }
 
+// StartRun starts an Actions workflow run with one job on sha that does not
+// finish until CompleteRun, in concurrency group (cancel-in-progress; ""
+// for none): starting it cancels the group's other in-progress runs.
+// Returns the workflow run id and the job's check run id.
+func (f *Fake) StartRun(repo, sha, name, group string) (runID, checkID int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	r := f.mustRepo(repo)
+	w := f.startRun(r, sha, f.branchOf(r, sha), name, "pull_request")
+	w.Concurrency = group
+	cr := f.addJob(r, w, name)
+	f.supersede(r, w)
+	return w.ID, cr.ID
+}
+
+// CompleteRun finishes a workflow run's open jobs (its latest attempt) with
+// conclusion, each reporting annotations — what GitHub writes on a job, a
+// lost runner's message included.
+func (f *Fake) CompleteRun(repo string, runID int64, conclusion string, annotations ...Annotation) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	r := f.mustRepo(repo)
+	for _, cr := range append([]*CheckRun(nil), r.CheckRuns...) {
+		if cr.RunID == runID && cr.Status != "completed" {
+			cr.Annotations = append([]Annotation(nil), annotations...)
+			f.completeCheck(r, cr, conclusion)
+		}
+	}
+}
+
+// Run is a workflow run's state: status, conclusion and attempt.
+func (f *Fake) Run(repo string, runID int64) (status, conclusion string, attempt int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, w := range f.mustRepo(repo).Runs {
+		if w.ID == runID {
+			return w.Status, w.Conclusion, w.RunAttempt
+		}
+	}
+	return "", "", 0
+}
+
 // CompleteRerun finishes a re-run workflow run's open checks.
 func (f *Fake) CompleteRerun(repo string, runID int64, conclusion string) {
 	f.mu.Lock()

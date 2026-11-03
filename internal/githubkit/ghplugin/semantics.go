@@ -79,10 +79,21 @@ func eventSemantics(name string) *plugin.EventSemantics {
 		s.Remediate = &plugin.RemediateSemantics{
 			Option: "flaky_rerun", Run: "run_id", Budget: 1,
 			Status: plugin.RemediateCheck{Verb: "get_run", DoneWhen: "status == 'completed'",
-				Args: map[string]string{"repo": "{{.repo}}", "run_id": "{{.run_id}}"}},
+				Args: map[string]string{"repo": "{{.repo}}", "run_id": "{{.run_id}}", "pr": "{{.number}}", "diagnose": "true"}},
 			Action: plugin.RemediateVerb{Verb: "rerun_run",
 				Args: map[string]string{"repo": "{{.repo}}", "run_id": "{{.run_id}}", "failed_only": "true"}},
 		}
+		// A stale run (its PR has moved on) or a cancelled one (superseded,
+		// or stopped on purpose) is no failure to re-run or fix: re-running
+		// a stale run puts it back in its concurrency group, where it cancels
+		// the run for the PR's real head. A job that lost its runner is
+		// re-run outside the flaky budget, at most twice per head. Optional:
+		// a conductor that predates it re-runs as before.
+		s.RemediateTriage = &plugin.RemediateTriage{
+			SkipWhen: "stale || conclusion == 'cancelled'",
+			Infra:    &plugin.RemediateInfra{When: "runner_lost", Budget: 2},
+		}
+		s.Optional = append(s.Optional, "remediate_triage")
 	case ClosedEvent:
 		s.ClosesTarget = &plugin.ClosesTargetSemantics{
 			Outcome: &plugin.OutcomeMap{Fact: "merged", True: "accepted", False: "rejected"},

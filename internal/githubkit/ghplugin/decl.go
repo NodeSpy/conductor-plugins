@@ -527,14 +527,17 @@ func decl() plugin.Decl {
 			{
 				Name: "get_run", Desc: "one workflow run by id: {run_id, name, status, conclusion, head_branch, head_sha, url}",
 				Options: plugin.Schema{
-					"repo":   {Type: "string", Required: true, Scope: "repo"},
-					"run_id": {Type: "integer", Required: true},
-					"as":     {Type: "string", Enum: []string{"me", "bot"}},
+					"repo":     {Type: "string", Required: true, Scope: "repo"},
+					"run_id":   {Type: "integer", Required: true},
+					"pr":       {Type: "integer", Desc: "the PR the run is for: adds pr_head_sha, and stale when the run is not for the PR's head"},
+					"diagnose": {Type: "boolean", Desc: "adds runner_lost: a failed job lost its runner (shut down, or lost contact with GitHub)"},
+					"as":       {Type: "string", Enum: []string{"me", "bot"}},
 				},
 				Outputs: plugin.Schema{
 					"run_id": {Type: "integer"}, "name": {Type: "string"}, "status": {Type: "string"},
 					"conclusion": {Type: "string"}, "head_branch": {Type: "string"},
 					"head_sha": {Type: "string"}, "url": {Type: "string"},
+					"pr_head_sha": {Type: "string"}, "stale": {Type: "boolean"}, "runner_lost": {Type: "boolean"},
 				},
 			},
 			{

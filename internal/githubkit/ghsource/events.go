@@ -531,7 +531,10 @@ func (g *Source) checkTriggers(ctx context.Context, repo string, p ghPayload) []
 	}
 	num := c.PullRequests[0].Number
 	var trs []Trigger
-	if failureConclusions[c.Conclusion] && g.checkOwnPR(ctx, p, num) {
+	// A cancelled check is not a failure to fix: a newer run superseded it
+	// (a workflow concurrency group cancels the older run) or someone
+	// stopped it on purpose. check_failures still lists it as failing.
+	if failureConclusions[c.Conclusion] && c.Conclusion != "cancelled" && g.checkOwnPR(ctx, p, num) {
 		// Suppress a fixer for a check the user opted to ignore (ignore_checks) — e.g.
 		// a PR-title convention gate they don't follow — per trigger: each fires
 		// unless ITS list names the check. Logged so ignores are visible.
