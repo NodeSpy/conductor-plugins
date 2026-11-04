@@ -62,6 +62,11 @@ func (logwatchPlugin) Describe() plugin.Decl {
 				"groups": {Type: "map", Desc: "named regexp capture groups from the match"},
 			},
 		}},
+		// A path watch follows the file with tail. A command watch runs
+		// whatever the operator names, which no declaration can list: under
+		// the host's default jail it needs that command declared, so such an
+		// entry runs with trust: full.
+		Capabilities: plugin.Capabilities{Commands: []string{"tail"}, Spawns: true},
 	}
 }
 

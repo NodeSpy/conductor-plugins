@@ -113,9 +113,10 @@ func (sqsPlugin) Describe() plugin.Decl {
 				},
 			},
 		},
-		// The endpoint is region-derived (or an operator override), so no fixed
-		// egress is declared — narrow it per instance with network:. Spawns nothing.
-		Capabilities: plugin.Capabilities{Spawns: false},
+		// The endpoint is region-derived: any region's SQS endpoint. An
+		// operator override (endpoint:, queue_url:) is allowed as a config
+		// target by the host. Spawns nothing.
+		Capabilities: plugin.Capabilities{Egress: []string{"sqs.*.amazonaws.com:443"}, Spawns: false},
 	}
 }
 

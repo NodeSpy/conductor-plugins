@@ -180,8 +180,8 @@ func TestDescribe(t *testing.T) {
 	if !contains(d.Capabilities.Commands, "aws") || !d.Capabilities.Spawns {
 		t.Fatalf("capabilities: %#v", d.Capabilities)
 	}
-	if len(d.Capabilities.Egress) != 0 {
-		t.Fatalf("expected no declared egress, got %#v", d.Capabilities.Egress)
+	if len(d.Capabilities.Egress) != 1 || d.Capabilities.Egress[0] != "*.amazonaws.com:443" {
+		t.Fatalf("expected the AWS endpoints as declared egress, got %#v", d.Capabilities.Egress)
 	}
 	want := []string{"run", "s3", "lambda_invoke", "sts_identity", "cli"}
 	got := map[string]bool{}

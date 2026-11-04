@@ -43,7 +43,7 @@ func (awsPlugin) Describe() plugin.Decl {
 			"timeout":      {Type: "duration", Desc: "default per-verb timeout (default 10m); a verb's timeout option overrides it"},
 		},
 		Verbs:        awsVerbs(),
-		Capabilities: plugin.Capabilities{Commands: []string{"aws"}, Spawns: true},
+		Capabilities: plugin.Capabilities{Commands: []string{"aws"}, Spawns: true, Egress: []string{"*.amazonaws.com:443"}},
 	}
 }
 
