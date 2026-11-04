@@ -88,7 +88,9 @@ func (p *cloudflaredPlugin) Describe() plugin.Decl {
 			exposurekit.OpenVerb("start a Cloudflare quick or named tunnel to a local address"),
 			exposurekit.CloseVerb(),
 		},
-		Capabilities: plugin.Capabilities{Commands: []string{"cloudflared"}, Spawns: true},
+		Capabilities: plugin.Capabilities{Commands: []string{"cloudflared"}, Spawns: true,
+			// cloudflared's login (cert.pem) and tunnel credentials, read-only.
+			FS: []string{"~/.cloudflared"}},
 	}
 }
 

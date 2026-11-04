@@ -42,8 +42,10 @@ func (kubernetesPlugin) Describe() plugin.Decl {
 			"env":        {Type: "map", Desc: "default process environment for every invocation"},
 			"timeout":    {Type: "duration", Desc: "default per-verb timeout (default 10m); a verb's timeout option overrides it"},
 		},
-		Verbs:        kubernetesVerbs(),
-		Capabilities: plugin.Capabilities{Commands: []string{"kubectl"}, Spawns: true},
+		Verbs: kubernetesVerbs(),
+		Capabilities: plugin.Capabilities{Commands: []string{"kubectl"}, Spawns: true,
+			// The default kubeconfig, read-only; kubectl's cache stays its own.
+			FS: []string{"~/.kube/config"}},
 	}
 }
 

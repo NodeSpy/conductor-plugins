@@ -82,7 +82,9 @@ func (p *sshtunnelPlugin) Describe() plugin.Decl {
 			exposurekit.OpenVerb("open an ssh reverse tunnel to a local address"),
 			exposurekit.CloseVerb(),
 		},
-		Capabilities: plugin.Capabilities{Commands: []string{"ssh"}, Spawns: true},
+		Capabilities: plugin.Capabilities{Commands: []string{"ssh"}, Spawns: true,
+			// The operator's known hosts, read-only.
+			FS: []string{"~/.ssh/known_hosts"}},
 	}
 }
 

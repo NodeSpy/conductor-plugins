@@ -44,8 +44,11 @@ func (dockerPlugin) Describe() plugin.Decl {
 			"env":         {Type: "map", Desc: "default process environment for every invocation"},
 			"timeout":     {Type: "duration", Desc: "default per-verb timeout (default 10m); a verb's timeout option overrides it"},
 		},
-		Verbs:        dockerVerbs(),
-		Capabilities: plugin.Capabilities{Commands: []string{"docker", "podman"}, Spawns: true},
+		Verbs: dockerVerbs(),
+		Capabilities: plugin.Capabilities{Commands: []string{"docker", "podman"}, Spawns: true,
+			// The local engine's socket, and the operator's registry logins
+			// and contexts, read-only.
+			FS: []string{"/var/run/docker.sock", "~/.docker/config.json", "~/.docker/contexts"}},
 	}
 }
 

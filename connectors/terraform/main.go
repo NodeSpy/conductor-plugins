@@ -47,8 +47,10 @@ func (terraformPlugin) Describe() plugin.Decl {
 			"env":     {Type: "map", Desc: "process environment for every invocation, e.g. TF_VAR_*, AWS_*"},
 			"timeout": {Type: "duration", Desc: "default per-verb timeout (default 10m); a verb's timeout option overrides it"},
 		},
-		Verbs:        terraformVerbs(),
-		Capabilities: plugin.Capabilities{Commands: []string{"terraform"}, Spawns: true},
+		Verbs: terraformVerbs(),
+		Capabilities: plugin.Capabilities{Commands: []string{"terraform"}, Spawns: true,
+			// The CLI config and `terraform login` credentials, read-only.
+			FS: []string{"~/.terraformrc", "~/.terraform.d/credentials.tfrc.json"}},
 	}
 }
 

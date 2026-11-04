@@ -69,7 +69,9 @@ func (p *ngrokPlugin) Describe() plugin.Decl {
 			exposurekit.OpenVerb("start an ngrok tunnel to a local address"),
 			exposurekit.CloseVerb(),
 		},
-		Capabilities: plugin.Capabilities{Commands: []string{"ngrok"}, Spawns: true},
+		Capabilities: plugin.Capabilities{Commands: []string{"ngrok"}, Spawns: true,
+			// ngrok's config with its default authtoken, read-only (Linux, macOS).
+			FS: []string{"~/.config/ngrok", "~/Library/Application Support/ngrok"}},
 	}
 }
 

@@ -57,11 +57,12 @@ func (gitPlugin) Describe() plugin.Decl {
 		Capabilities: plugin.Capabilities{
 			Commands: []string{"git", "ssh"},
 			Spawns:   true,
-			// No declared egress: git's own transport (the remote URL / SSH
-			// host) reaches the network on the default, un-isolated path —
-			// same reasoning as the docker connector's docker_host. Under OS
-			// isolation a connector instance's `network:` can only narrow.
+			// No declared egress: a remote is per call, so the operator names
+			// its hosts in the entry's `network:` (an SSH remote needs
+			// `network: [host]`; the egress proxy carries HTTP(S) only).
 			Egress: []string{},
+			// The operator's git identity and known hosts, read-only.
+			FS: []string{"~/.gitconfig", "~/.config/git/config", "~/.ssh/known_hosts"},
 		},
 	}
 }

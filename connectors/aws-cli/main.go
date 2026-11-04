@@ -42,8 +42,10 @@ func (awsPlugin) Describe() plugin.Decl {
 			"env":          {Type: "map", Desc: "default process environment for every invocation, e.g. AWS_PROFILE/AWS_ACCESS_KEY_ID"},
 			"timeout":      {Type: "duration", Desc: "default per-verb timeout (default 10m); a verb's timeout option overrides it"},
 		},
-		Verbs:        awsVerbs(),
-		Capabilities: plugin.Capabilities{Commands: []string{"aws"}, Spawns: true, Egress: []string{"*.amazonaws.com:443"}},
+		Verbs: awsVerbs(),
+		Capabilities: plugin.Capabilities{Commands: []string{"aws"}, Spawns: true, Egress: []string{"*.amazonaws.com:443"},
+			// The operator's aws login, read-only; its caches stay its own.
+			FS: []string{"~/.aws/config", "~/.aws/credentials", "~/.aws/sso/cache"}},
 	}
 }
 

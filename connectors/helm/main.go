@@ -42,8 +42,12 @@ func (helmPlugin) Describe() plugin.Decl {
 			"env":          {Type: "map", Desc: "default process environment for every invocation"},
 			"timeout":      {Type: "duration", Desc: "default per-verb timeout (default 10m); a verb's timeout option overrides it"},
 		},
-		Verbs:        helmVerbs(),
-		Capabilities: plugin.Capabilities{Commands: []string{"helm"}, Spawns: true},
+		Verbs: helmVerbs(),
+		Capabilities: plugin.Capabilities{Commands: []string{"helm"}, Spawns: true,
+			// The default kubeconfig and helm's repositories and registry
+			// logins, read-only; its chart cache, which repo_update and
+			// installs write, read-write.
+			FS: []string{"~/.kube/config", "~/.config/helm", "~/.cache/helm:rw"}},
 	}
 }
 

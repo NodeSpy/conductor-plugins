@@ -99,6 +99,8 @@ func decl() plugin.Decl {
 		// config file.
 		Capabilities: plugin.Capabilities{Egress: []string{"api.github.com:443", "*.ghe.com:443", "smee.io:443",
 			"productionresultssa*.blob.core.windows.net:443", "*.actions.githubusercontent.com:443"}, Commands: []string{"gh"},
+			// The operator's gh login, read-only: gh reads it from $HOME/.config/gh.
+			FS:  []string{"~/.config/gh"},
 			Env: []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_HOST", "GH_CONFIG_DIR"}},
 		Desc: "GitHub: PR/issue/check/release events in; comments, reviews, and review requests out.",
 		Connection: plugin.Schema{

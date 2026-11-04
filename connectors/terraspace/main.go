@@ -40,8 +40,10 @@ func (terraspacePlugin) Describe() plugin.Decl {
 			"env":     {Type: "map", Desc: "extra process environment for every invocation"},
 			"timeout": {Type: "duration", Desc: "default per-verb timeout (default 10m); a verb's timeout option overrides it"},
 		},
-		Verbs:        terraspaceVerbs(),
-		Capabilities: plugin.Capabilities{Commands: []string{"terraspace", "terraform", "tofu"}, Spawns: true, Egress: []string{}},
+		Verbs: terraspaceVerbs(),
+		Capabilities: plugin.Capabilities{Commands: []string{"terraspace", "terraform", "tofu"}, Spawns: true, Egress: []string{},
+			// The terraform CLI config and `terraform login` credentials, read-only.
+			FS: []string{"~/.terraformrc", "~/.terraform.d/credentials.tfrc.json"}},
 	}
 }
 
