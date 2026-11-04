@@ -282,7 +282,7 @@ func (p *synologyPlugin) sessionFor(c synConn) *synologySession {
 	if s, ok := p.sessions[key]; ok {
 		return s
 	}
-	transport := &http.Transport{}
+	transport := &http.Transport{Proxy: http.ProxyFromEnvironment}
 	if c.insecureSkipVerify {
 		// Per-connection tls.Config, never process-wide: this only affects
 		// requests made through THIS session's client.

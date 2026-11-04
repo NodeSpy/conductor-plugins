@@ -260,7 +260,7 @@ func httpClientFor(conn piholeConn) *http.Client {
 	}
 	return &http.Client{
 		Timeout:   30 * time.Second,
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec // opt-in per connection, for self-signed home-lab certs
+		Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec // opt-in per connection, for self-signed home-lab certs
 	}
 }
 

@@ -277,7 +277,7 @@ func (c keycloakConn) tokenURL() string {
 func (c keycloakConn) httpClient() *http.Client {
 	client := &http.Client{Timeout: 30 * time.Second}
 	if c.insecureSkipVerify {
-		client.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+		client.Transport = &http.Transport{Proxy: http.ProxyFromEnvironment, TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	}
 	return client
 }

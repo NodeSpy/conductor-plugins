@@ -252,7 +252,7 @@ func (p *protectPlugin) clientFor(conn protectConn) *http.Client {
 	if c, ok := p.clients[key]; ok {
 		return c
 	}
-	transport := &http.Transport{}
+	transport := &http.Transport{Proxy: http.ProxyFromEnvironment}
 	if conn.insecureSkipVerify {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402 -- opt-in per connection for self-signed consoles
 	}

@@ -339,7 +339,7 @@ func (p *unifiPlugin) sessionFor(c unifiConn) *unifiSession {
 		return s
 	}
 	jar, _ := cookiejar.New(nil)
-	transport := &http.Transport{}
+	transport := &http.Transport{Proxy: http.ProxyFromEnvironment}
 	if c.insecureSkipVerify {
 		// Per-connection tls.Config, never process-wide: this only affects
 		// requests made through THIS session's client.

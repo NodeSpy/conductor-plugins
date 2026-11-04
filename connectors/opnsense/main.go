@@ -497,6 +497,7 @@ func (p *opnsensePlugin) clientFor(conn opnsenseConn) *http.Client {
 	client := &http.Client{Timeout: 30 * time.Second}
 	if conn.insecureSkipVerify {
 		client.Transport = &http.Transport{
+			Proxy:           http.ProxyFromEnvironment,
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- explicit, documented opt-out for self-signed LAN instances
 		}
 	}
