@@ -101,7 +101,8 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 		discover := verb == "rerequest_review" && optBool(opts, "all_outstanding", false)
 		if verb == "rerequest_review" && (discover || len(rs) > 0 && optBool(opts, "only_outstanding", true)) {
 			var why string
-			if rs, why = outstandingReviewers(ctx, c, tok, base, repo, number, rs, discover); len(rs) == 0 {
+			head, _ := opts["head"].(string)
+			if rs, why = outstandingReviewers(ctx, c, tok, base, repo, number, rs, discover, head); len(rs) == 0 {
 				if len(reviewerLogins(opts["team_reviewers"])) == 0 {
 					return map[string]any{"ok": true, "skipped": why}, nil
 				}
@@ -1213,7 +1214,13 @@ func dropPRAuthor(ctx context.Context, c *Client, tok, base, repo string, number
 // discover adds every reviewer whose latest such review is CHANGES_REQUESTED to
 // rs before the narrowing, minus bots (GitHub can't request them) and the PR's
 // author.
-func outstandingReviewers(ctx context.Context, c *Client, tok, base, repo string, number int, rs []string, discover bool) ([]string, string) {
+//
+// head is the PR head the caller knows of — typically the commit it just
+// pushed. GitHub's PR head.sha lags a push by seconds, so a re-request made
+// right after one read the reviewed commit as still current and skipped the
+// reviewer. A review counts as having nothing new only when its commit is the
+// head by every account: GitHub's, and the caller's when given.
+func outstandingReviewers(ctx context.Context, c *Client, tok, base, repo string, number int, rs []string, discover bool, head string) ([]string, string) {
 	var pr struct {
 		State string `json:"state"`
 		User  struct {
@@ -1307,7 +1314,7 @@ func outstandingReviewers(ctx context.Context, c *Client, tok, base, repo string
 				st = "not requested changes"
 			}
 			why = append(why, r+" "+st)
-		case v.commit != "" && v.commit == pr.Head.SHA:
+		case v.commit != "" && v.commit == pr.Head.SHA && (head == "" || v.commit == head):
 			why = append(why, r+" has no new commits to review")
 		default:
 			kept = append(kept, r)
