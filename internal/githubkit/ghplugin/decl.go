@@ -235,6 +235,7 @@ func decl() plugin.Decl {
 					"as":               {Type: "string", Enum: []string{"me", "bot"}},
 					"only_outstanding": {Type: "boolean", Desc: "default true: ping only reviewers whose latest review is CHANGES_REQUESTED on an older commit and who aren't already requested, on an open PR; false re-requests unconditionally"},
 					"all_outstanding":  {Type: "boolean", Desc: "default false: also ping every other reviewer whose latest review is CHANGES_REQUESTED, through the same only_outstanding checks (bots and the PR author are never requested); reviewers may then be empty"},
+					"head":             {Type: "string", Desc: "the PR head the caller knows of, e.g. the commit it just pushed: GitHub's PR head lags a push by seconds, so a review on a different commit than this has something new to look at; empty uses GitHub's head alone"},
 				},
 				Outputs: plugin.Schema{"ok": {Type: "boolean"}, "skipped": {Type: "string"}},
 			},

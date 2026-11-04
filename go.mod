@@ -17,11 +17,11 @@ go 1.26.3
 // surface runtimes/jev is built on — Decl.Protocols, ProtocolSystemOneV1,
 // VerbDecide/VerbModels — arrived with conductor v0.54.0's decide: steps.
 //
-// PRE-RELEASE PIN: the github connector's failing_checks declares
-// remediate_triage (plugin.RemediateTriage), which is not in a conductor
-// release yet. This pseudo-version is the head of the conductor change that
-// adds it; it MUST be bumped to that change's release tag before this merges.
-require github.com/NodeSpy/conductor v0.73.1-0.20261103191829-81a3933298e5
+// PRE-RELEASE PIN: the github connector's rerequest_review declares head,
+// and conductor's forge-decl.json snapshot with it is not merged yet. This
+// pseudo-version is the head of the conductor change that regenerates it; it
+// MUST be re-pinned to that change's merge commit before this merges.
+require github.com/NodeSpy/conductor v0.77.1-0.20261104212719-c5631595698c
 
 // The interpreters the four step engines embed. These are the SAME versions
 // conductor pinned while the engines lived in its binary, so the port is a

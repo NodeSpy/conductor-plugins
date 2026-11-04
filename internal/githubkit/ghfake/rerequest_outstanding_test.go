@@ -105,3 +105,68 @@ func TestRerequestReadsEveryPageOfReviews(t *testing.T) {
 		t.Fatalf("the blocker approved (on the second page of reviews) and was re-requested %d times", c)
 	}
 }
+
+// GitHub's PR head.sha lags a push by seconds. The flow re-requests right after
+// conductor pushes the fix, so the read still showed the reviewed commit as the
+// head and skipped the reviewer as having nothing new. head is the commit the
+// caller just pushed: a review on any other commit has something new to see.
+// Here the fake never learns of the push, as GitHub hadn't yet.
+func TestRerequestUsesTheHeadTheCallerPushed(t *testing.T) {
+	f, _, n := world(t, Options{})
+	f.SubmitReview("acme/w", n, "rev", "CHANGES_REQUESTED", "fix the leak")
+	f.Flush()
+	reviewed := f.HeadSHA("acme/w", n)
+	kit, err := githubkit.NewClient(githubkit.Config{WriteToken: "tok-me", APIBase: f.URL()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rerequest := func(head string) map[string]any {
+		t.Helper()
+		opts := map[string]any{"repo": "acme/w", "pr": n, "reviewers": []any{"rev"}}
+		if head != "" {
+			opts["head"] = head
+		}
+		out, err := kit.Invoke(context.Background(), "rerequest_review", opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+
+	// Without head, or with the reviewed commit (nothing was pushed): nothing new.
+	for _, head := range []string{"", reviewed} {
+		if out := rerequest(head); out["skipped"] != "rev has no new commits to review" {
+			t.Fatalf("head %q: skipped = %v", head, out["skipped"])
+		}
+	}
+	// The pushed commit GitHub doesn't report yet: the reviewer is pinged.
+	if out := rerequest("0123456789abcdef0123456789abcdef01234567"); out["skipped"] != nil {
+		t.Fatalf("skipped %v: the caller pushed a commit the reviewer hasn't seen", out["skipped"])
+	}
+	if c := f.ReviewRequestsOf("acme/w", n, "rev"); c != 1 {
+		t.Fatalf("rev was requested %d times, want 1", c)
+	}
+}
+
+// A caller's head older than GitHub's (someone else pushed after it) never
+// hides the newer commit: GitHub's head differing from the review is enough.
+func TestRerequestCallerHeadNeverHidesANewerPush(t *testing.T) {
+	f, _, n := world(t, Options{})
+	f.SubmitReview("acme/w", n, "rev", "CHANGES_REQUESTED", "fix the leak")
+	f.Flush()
+	reviewed := f.HeadSHA("acme/w", n)
+	f.Push("acme/w", "feat", "me", "fix")
+	f.Flush()
+	kit, err := githubkit.NewClient(githubkit.Config{WriteToken: "tok-me", APIBase: f.URL()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := kit.Invoke(context.Background(), "rerequest_review", map[string]any{
+		"repo": "acme/w", "pr": n, "reviewers": []any{"rev"}, "head": reviewed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out["skipped"] != nil {
+		t.Fatalf("skipped %v: GitHub's head moved past the reviewed commit", out["skipped"])
+	}
+}
