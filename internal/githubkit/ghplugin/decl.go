@@ -97,8 +97,9 @@ func decl() plugin.Decl {
 		// gh: the write chain's `gh auth token` (Q8); its token variables, for a
 		// box that authenticates gh through the environment rather than its
 		// config file.
+		// git and github.com: pr_clone's fetch of a PR over HTTPS.
 		Capabilities: plugin.Capabilities{Egress: []string{"api.github.com:443", "*.ghe.com:443", "smee.io:443",
-			"productionresultssa*.blob.core.windows.net:443", "*.actions.githubusercontent.com:443"}, Commands: []string{"gh"},
+			"productionresultssa*.blob.core.windows.net:443", "*.actions.githubusercontent.com:443", "github.com:443"}, Commands: []string{"gh", "git"},
 			Env: []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_HOST", "GH_CONFIG_DIR"}},
 		Desc: "GitHub: PR/issue/check/release events in; comments, reviews, and review requests out.",
 		Connection: plugin.Schema{
@@ -283,6 +284,21 @@ func decl() plugin.Decl {
 					"as": {Type: "string", Enum: []string{"me", "bot"}},
 				},
 				Outputs: plugin.Schema{"diff": {Type: "string"}},
+			},
+			{
+				Name: "pr_clone", Desc: "clone a PR into a fresh temp directory: the PR head (checked out, detached) and its base branch (origin/<base>), shallow but deep enough for git diff origin/<base>...HEAD. Over HTTPS with the read credential, which never reaches argv or disk; a fetch that fails on the network is retried. Remove it with pr_clone_discard",
+				Options: plugin.Schema{"repo": {Type: "string", Required: true, Scope: "repo"}, "pr": {Type: "integer", Required: true}},
+				Outputs: plugin.Schema{
+					"dir":        {Type: "string", Desc: "the clone"},
+					"head_sha":   {Type: "string"},
+					"base":       {Type: "string", Desc: "the base branch, fetched as origin/<base>"},
+					"merge_base": {Type: "string"},
+				},
+			},
+			{
+				Name: "pr_clone_discard", Desc: "remove a pr_clone directory (only one; a directory already gone is fine)",
+				Options: plugin.Schema{"dir": {Type: "string", Required: true}},
+				Outputs: plugin.Schema{"ok": {Type: "boolean"}},
 			},
 			{
 				Name: "read_token", Desc: "the read credential agents receive (identity.read_token: the App's installation token by default)",

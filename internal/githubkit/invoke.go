@@ -18,9 +18,18 @@ import (
 // it must intercept that verb before calling Invoke.
 func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (map[string]any, error) {
 	repo, _ := opts["repo"].(string)
+	if verb == "pr_clone_discard" {
+		dir, _ := opts["dir"].(string)
+		return discardPRClone(dir)
+	}
 	// Gists are user-scoped, not repo-scoped — they don't require a repo.
 	if repo == "" && !isGistVerb(verb) {
 		return nil, fmt.Errorf("github.%s: options.repo is required", verb)
+	}
+	if verb == "pr_clone" {
+		// A read, as the read credential agents get (identity.read_token),
+		// not the call's `as`.
+		return c.prClone(ctx, repo, toInt(opts["pr"]))
 	}
 	if verb == "read_token" || verb == "write_token" {
 		// The credentials agents receive (mints_credential, host-only): each
