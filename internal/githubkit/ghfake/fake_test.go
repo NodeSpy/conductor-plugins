@@ -619,3 +619,32 @@ func TestAppAuthFlow(t *testing.T) {
 		t.Error(p)
 	}
 }
+
+// A cancel-in-progress concurrency group: a newer run cancels the older one,
+// and re-running the older one cancels the newer one in turn.
+func TestConcurrencyGroupCancelsInProgress(t *testing.T) {
+	f := New(Options{})
+	f.AddUser("acme", "Organization")
+	f.AddRepo("acme/w")
+	n := f.OpenPR("acme/w", "acme", PROpts{Title: "t", Head: "feat"})
+	a, _ := f.StartRun("acme/w", f.HeadSHA("acme/w", n), "ci", "g")
+	other, _ := f.StartRun("acme/w", f.HeadSHA("acme/w", n), "lint", "")
+	b, _ := f.StartRun("acme/w", f.Push("acme/w", "feat", "acme", "next"), "ci", "g")
+	if s, c, _ := f.Run("acme/w", a); s != "completed" || c != "cancelled" {
+		t.Fatalf("older run in the group: %s/%s, want completed/cancelled", s, c)
+	}
+	if s, _, _ := f.Run("acme/w", other); s != "in_progress" {
+		t.Fatalf("a run outside the group: %s, want in_progress", s)
+	}
+	f.mu.Lock()
+	r := f.mustRepo("acme/w")
+	for _, w := range r.Runs {
+		if w.ID == a {
+			f.rerun(r, w, true, nil)
+		}
+	}
+	f.mu.Unlock()
+	if s, c, _ := f.Run("acme/w", b); s != "completed" || c != "cancelled" {
+		t.Fatalf("re-running the older run: the newer one is %s/%s, want completed/cancelled", s, c)
+	}
+}

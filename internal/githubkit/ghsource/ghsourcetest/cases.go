@@ -227,6 +227,21 @@ func Cases() []Case {
 				Context: map[string]any{"failing_check": "docs"}, Absent: []string{"ignore_checks"}}},
 		},
 		{
+			// A cancelled check was superseded (a concurrency group cancels
+			// the older run) or stopped on purpose: nothing to fix. The
+			// failure on the same PR still fires.
+			Name:       "failing_checks: a cancelled check is not a failure",
+			Connection: base,
+			Triggers:   []Trigger{{On: "failing_checks", Name: "fc"}},
+			Routes:     []Route{pull(7, "me", "open", "clean")},
+			Steps: []Step{
+				{Event: "check_run", Body: checkRun(7, "unit", "cancelled", 80)},
+				{Event: "check_run", Body: checkRun(7, "lint", "failure", 81)},
+			},
+			Want: []Want{{Kind: "failing_checks", Trigger: "fc", Repo: repo, Number: 7,
+				Context: map[string]any{"failing_check": "lint", "run_id": 81}}},
+		},
+		{
 			Name:       "merge_conflict and pr_behind from the PR's merge state",
 			Connection: base,
 			Triggers:   []Trigger{{On: "merge_conflict", Name: "mc"}, {On: "pr_behind", Name: "pb"}},
