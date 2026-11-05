@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -52,6 +53,7 @@ func (gitPlugin) Describe() plugin.Decl {
 			"config":                   {Type: "map", Desc: "additional -c key=value flags (sorted), applied before every subcommand"},
 			"env":                      {Type: "map", Desc: "default process environment for every invocation"},
 			"timeout":                  {Type: "duration", Desc: "default per-verb timeout (default 10m); a verb's timeout option overrides it"},
+			"clone_root":               {Type: "string", Desc: "absolute directory clone's temp option creates its clones in (default the system temp dir); discard removes only clones made there"},
 		},
 		Verbs: gitVerbs(),
 		Capabilities: plugin.Capabilities{
@@ -92,11 +94,20 @@ func gitVerbs() []plugin.Verb {
 			Options: plugin.Schema{
 				"url":           {Type: "string", Required: true, Scope: "repo"},
 				"dir":           {Type: "string", Desc: "destination directory"},
+				"temp":          {Type: "boolean", Desc: "clone into a fresh private directory under clone_root instead of dir, returned as the dir output; removed again if the clone fails. Remove it with discard when done"},
+				"ref":           {Type: "string", Desc: "after the clone, fetch this ref from origin (any ref, e.g. refs/pull/7/head; at depth, when set) and check it out detached. Needs dir or temp; not with bare"},
 				"branch":        {Type: "string", Desc: "--branch"},
 				"depth":         {Type: "integer", Desc: "--depth"},
 				"single_branch": {Type: "boolean", Desc: "--single-branch"},
 				"recursive":     {Type: "boolean", Desc: "--recursive"},
 				"bare":          {Type: "boolean", Desc: "--bare"},
+			},
+			Outputs: withOutputs(plugin.Schema{"dir": {Type: "string", Desc: "the clone's directory, with temp"}}),
+		},
+		{
+			Name: "discard", Desc: "remove a clone made with clone's temp option",
+			Options: plugin.Schema{
+				"dir": {Type: "string", Required: true, Desc: "the dir output of a temp clone; anything else is refused. A dir already gone is not an error"},
 			},
 			Outputs: out,
 		},
@@ -342,6 +353,7 @@ type gitConn struct {
 	config                map[string]string
 	env                   map[string]string
 	timeout               time.Duration
+	cloneRoot             string
 }
 
 func parseConn(m map[string]any) (gitConn, error) {
@@ -365,6 +377,11 @@ func parseConn(m map[string]any) (gitConn, error) {
 	} else if d > 0 {
 		c.timeout = d
 	}
+	c.cloneRoot = strOr(m["clone_root"], os.TempDir())
+	if !filepath.IsAbs(c.cloneRoot) {
+		return c, fmt.Errorf("connection.clone_root must be an absolute path")
+	}
+	c.cloneRoot = filepath.Clean(c.cloneRoot)
 	return c, nil
 }
 
@@ -417,6 +434,9 @@ func (gitPlugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeResult, error) {
 	o := req.Options
 	if o == nil {
 		o = map[string]any{}
+	}
+	if req.Verb == "discard" {
+		return discard(conn, o)
 	}
 
 	args, err := verbArgs(req.Verb, o)
@@ -474,7 +494,16 @@ func (gitPlugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	res, err := runGit(ctx, conn.binary, conn.dir, procEnv(conn.env, extraEnv), full)
+	env := procEnv(conn.env, extraEnv)
+	var res map[string]any
+	if req.Verb == "clone" && (boolv(o["temp"]) || str(o["ref"]) != "") {
+		run := func(dir string, a []string) (map[string]any, error) {
+			return runNet(ctx, conn.binary, dir, env, append(append([]string{}, configFlags...), a...))
+		}
+		res, err = cloneAt(run, conn, args, o)
+	} else {
+		res, err = runNet(ctx, conn.binary, conn.dir, env, full)
+	}
 	if err != nil {
 		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, req.Verb+": "+err.Error())
 	}
@@ -563,11 +592,99 @@ func cloneArgs(o map[string]any) ([]string, error) {
 	if boolv(o["recursive"]) {
 		a = append(a, "--recursive")
 	}
+	temp, dir := boolv(o["temp"]), str(o["dir"])
+	switch {
+	case temp && dir != "":
+		return nil, fmt.Errorf("temp and dir are exclusive: temp picks the directory")
+	case str(o["ref"]) != "" && boolv(o["bare"]):
+		return nil, fmt.Errorf("ref checks out a working tree, which a bare clone has none of")
+	case str(o["ref"]) != "" && !temp && dir == "":
+		return nil, fmt.Errorf("ref needs dir or temp")
+	case strings.HasPrefix(str(o["ref"]), "-"):
+		return nil, fmt.Errorf("ref must not start with -")
+	}
 	a = append(a, url)
-	if dir := str(o["dir"]); dir != "" {
+	if dir != "" {
 		a = append(a, dir)
 	}
 	return a, nil
+}
+
+// tempClonePrefix names the directories clone's temp option makes, and is
+// what discard checks before it removes anything.
+const tempClonePrefix = "conductor-git-clone-"
+
+// cloneAt runs a clone with temp and/or ref: into a fresh directory under
+// clone_root, then fetching ref (at the clone's depth) and checking it out
+// detached. A temp clone that fails anywhere is removed; its directory is the
+// dir output otherwise.
+func cloneAt(run func(dir string, args []string) (map[string]any, error), conn gitConn, args []string, o map[string]any) (map[string]any, error) {
+	temp, dir := boolv(o["temp"]), str(o["dir"])
+	if temp {
+		d, err := os.MkdirTemp(conn.cloneRoot, tempClonePrefix+"*")
+		if err != nil {
+			return nil, err
+		}
+		dir, args = d, append(args, d)
+	}
+	var stdout, stderr strings.Builder
+	res, err := run(conn.dir, args)
+	if ref := str(o["ref"]); ref != "" {
+		in := dir
+		if !filepath.IsAbs(in) {
+			in = filepath.Join(conn.dir, in)
+		}
+		fetch := []string{"fetch"}
+		if d := intStr(o["depth"]); d != "" {
+			fetch = append(fetch, "--depth", d)
+		}
+		fetch = append(fetch, "origin", ref)
+		for _, next := range [][]string{fetch, {"checkout", "--detach", "FETCH_HEAD"}} {
+			if err != nil || res["exit_code"] != 0 {
+				break
+			}
+			stdout.WriteString(str(res["stdout"]))
+			stderr.WriteString(str(res["stderr"]))
+			res, err = run(in, next)
+		}
+	}
+	if err == nil {
+		stdout.WriteString(str(res["stdout"]))
+		stderr.WriteString(str(res["stderr"]))
+		res["stdout"], res["stderr"] = stdout.String(), stderr.String()
+	}
+	if temp {
+		if err != nil || res["exit_code"] != 0 {
+			os.RemoveAll(dir)
+		} else {
+			res["dir"] = dir
+		}
+	}
+	return res, err
+}
+
+// discard removes a clone made by clone's temp option — and only that: a
+// directory directly under clone_root carrying the temp prefix, never a
+// symlink. One already gone is fine, so a cleanup hook can run twice.
+func discard(conn gitConn, o map[string]any) (plugin.InvokeResult, error) {
+	dir := str(o["dir"])
+	refuse := plugin.Errorf(plugin.CodeInvalidParams, "discard: "+dir+" is not a temp clone made under "+conn.cloneRoot)
+	if !filepath.IsAbs(dir) || filepath.Clean(dir) != dir || filepath.Dir(dir) != conn.cloneRoot ||
+		!strings.HasPrefix(filepath.Base(dir), tempClonePrefix) {
+		return plugin.InvokeResult{}, refuse
+	}
+	switch fi, err := os.Lstat(dir); {
+	case os.IsNotExist(err):
+	case err != nil:
+		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, "discard: "+err.Error())
+	case !fi.IsDir():
+		return plugin.InvokeResult{}, refuse
+	default:
+		if err := os.RemoveAll(dir); err != nil {
+			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, "discard: "+err.Error())
+		}
+	}
+	return plugin.InvokeResult{Outputs: map[string]any{"stdout": "", "stderr": "", "exit_code": 0}}, nil
 }
 
 func initArgs(o map[string]any) ([]string, error) {
@@ -1076,6 +1193,77 @@ func runGit(ctx context.Context, binary, dir string, env, args []string) (map[st
 		}
 	}
 	return map[string]any{"stdout": stdout.String(), "stderr": stderr.String(), "exit_code": exit}, nil
+}
+
+// A remote command that failed on the network — a connect timeout, a reset,
+// "Could not read from remote repository" — is run again, up to netAttempts
+// in all with a doubling pause, unless git's output also says the remote
+// refused it (auth) or has no such repository or ref: those fail the same
+// way every time.
+const netAttempts = 3
+
+var netBackoff = 2 * time.Second
+
+var (
+	netSubcommands = map[string]bool{"clone": true, "fetch": true, "pull": true, "push": true, "ls-remote": true}
+	transientNet   = []string{"timed out", "connection reset", "could not read from remote repository",
+		"the remote end hung up unexpectedly", "early eof"}
+	permanentNet = []string{"permission denied", "authentication failed", "could not read username",
+		"could not read password", "invalid username or password", "access denied", "not found",
+		"does not appear to be a git repository", "couldn't find remote ref", "host key verification failed",
+		"http 401", "http 403", "returned error: 401", "returned error: 403", "returned error: 404"}
+)
+
+// runNet is runGit with the network retry for a subcommand that reaches a
+// remote, whether a first-class verb or cli made it.
+func runNet(ctx context.Context, binary, dir string, env, args []string) (map[string]any, error) {
+	res, err := runGit(ctx, binary, dir, env, args)
+	if !netSubcommands[subcommand(args)] {
+		return res, err
+	}
+	for attempt := 1; attempt < netAttempts && err == nil && transientNetFailure(res); attempt++ {
+		fmt.Fprintf(os.Stderr, "conductor-git: %s failed on the network (attempt %d of %d), retrying\n", subcommand(args), attempt, netAttempts)
+		select {
+		case <-ctx.Done():
+			return res, nil
+		case <-time.After(netBackoff << (attempt - 1)):
+		}
+		res, err = runGit(ctx, binary, dir, env, args)
+	}
+	return res, err
+}
+
+// subcommand is the git subcommand in argv: the first word that is not a
+// global option (-c k=v and -C dir take a value).
+func subcommand(args []string) string {
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == "-c" || a == "-C" || a == "--git-dir" || a == "--work-tree" || a == "--namespace":
+			i++
+		case strings.HasPrefix(a, "-"):
+		default:
+			return a
+		}
+	}
+	return ""
+}
+
+func transientNetFailure(res map[string]any) bool {
+	if res["exit_code"] == 0 {
+		return false
+	}
+	s := strings.ToLower(str(res["stderr"]))
+	for _, m := range permanentNet {
+		if strings.Contains(s, m) {
+			return false
+		}
+	}
+	for _, m := range transientNet {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // writeTempFile writes content to a new temp file with the given permissions,

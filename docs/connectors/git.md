@@ -64,6 +64,7 @@ connector instance.
 | `config` | map | additional `-c key=value` flags (sorted), applied before every subcommand |
 | `env` | map | default process environment for every invocation |
 | `timeout` | duration | default per-verb timeout (default `10m`); a verb's `timeout` option overrides it |
+| `clone_root` | string | absolute directory `clone`'s `temp` option makes its clones in (default the system temp dir); `discard` removes only clones made there |
 
 ### Credentials, materialized safely per invocation
 
@@ -133,13 +134,63 @@ error** — inspect `exit_code`.
 `status`, `rev_parse`, and `ls_remote` add structured outputs (below),
 populated only on `exit_code == 0`.
 
+### Network failures are retried
+
+A command that reaches a remote (`clone`, `fetch`, `pull`, `push`,
+`ls_remote`, or the same subcommands through `cli`) and fails on the network
+is run again, up to three times in all, 2s then 4s apart, inside the verb's
+`timeout`. A failure counts as a network one when git reports a timeout
+(`Connection timed out`), a reset, `Could not read from remote repository`,
+or the remote hanging up mid-transfer. It is never retried when git also
+reports an authentication failure (`Permission denied`, `Authentication
+failed`, HTTP 401/403) or something missing (`Repository not found`, `couldn't
+find remote ref`, a 404): those fail the same way every time. The outputs are
+the last attempt's. Each retry is logged on the plugin's stderr. (Since
+v1.1.0.)
+
 ## Verbs
 
 ### `clone` — clone a repository
 
 `url` * (Scope: repo), `dir`, `branch` (`--branch`), `depth` (`--depth`),
 `single_branch` (`--single-branch`), `recursive` (`--recursive`), `bare`
-(`--bare`).
+(`--bare`), and (since v1.1.0):
+
+- `temp` — clone into a fresh private directory under `clone_root` instead
+  of `dir` (the two are exclusive), returned as the **`dir`** output. A temp
+  clone that fails at any point is removed. Remove a finished one with
+  `discard`.
+- `ref` — after the clone, fetch this ref from `origin` (at `depth`, when
+  set) and check it out detached. Any ref the remote serves works, including
+  ones a clone never fetches, such as `refs/pull/<n>/head`. Needs `dir` or
+  `temp`; not with `bare`.
+
+A shallow tree of a pull request that can still be diffed against its base:
+the base branch and the PR head, each `depth` commits deep, so `git diff
+origin/<base>...HEAD` works when the PR branched off within that depth.
+
+```yaml
+- id: tree
+  uses: repo.clone
+  options:
+    url: "https://github.com/{{.repo}}.git"
+    temp: true
+    branch: "{{.base}}"
+    single_branch: true
+    depth: 200
+    ref: "refs/pull/{{.number}}/head"
+# … use {{.tree.dir}} …
+- id: done
+  uses: repo.discard
+  options: { dir: "{{.tree.dir}}" }
+```
+
+### `discard` — remove a temp clone
+
+`dir` * — the `dir` output of a `temp` clone. Anything else is refused: the
+directory must sit directly under `clone_root`, carry the temp clones' name
+prefix and not be a symlink. A directory already gone is not an error, so a
+cleanup hook can run twice. (Since v1.1.0.)
 
 ### `init` — create a new repository
 

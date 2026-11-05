@@ -36,7 +36,7 @@ Each plugin has a full reference page under [`docs/`](docs/README.md).
 - **[github](docs/connectors/github.md)** — pull requests, reviews, issues, checks, releases, gists + every webhook event and the catch-up sweep: the same implementation as conductor's bundled github connector, out of process. Token or GitHub-App auth.
 - **[gitlab](docs/connectors/gitlab.md)** — merge requests, issues, labels, branches, pipelines + push/MR/pipeline webhooks.
 - **[gitea](docs/connectors/gitea.md)** — Gitea/Forgejo issues, PRs, releases, files + webhooks.
-- **[git](docs/connectors/git.md)** — the `git` CLI with managed credentials: clone, commit, push, branch, tag, merge…
+- **[git](docs/connectors/git.md)** — the `git` CLI with managed credentials: clone, commit, push, branch, tag, merge… Retries clones, fetches and pushes that fail on the network; clones a PR (any ref) into a temp directory.
 - **[asana](docs/connectors/asana.md)** — Asana tasks, projects, sections, comments, search + task/story/project webhook events. Token or managed OAuth2.
 - **[jira](docs/connectors/jira.md)** — Jira Cloud issues, comments, transitions, JQL search + webhooks.
 - **[linear](docs/connectors/linear.md)** — Linear issues: create/update/comment/search + webhooks.

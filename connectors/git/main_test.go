@@ -352,7 +352,11 @@ func TestVerbArgsErrors(t *testing.T) {
 		verb string
 		opts map[string]any
 	}{
-		{"clone", map[string]any{}},                                  // no url
+		{"clone", map[string]any{}},                                     // no url
+		{"clone", map[string]any{"url": "u", "temp": true, "dir": "d"}}, // temp picks the dir
+		{"clone", map[string]any{"url": "u", "ref": "r"}},               // ref with no dir
+		{"clone", map[string]any{"url": "u", "temp": true, "ref": "r", "bare": true}},
+		{"clone", map[string]any{"url": "u", "temp": true, "ref": "--upload-pack=x"}},
 		{"checkout", map[string]any{}},                               // no ref
 		{"switch", map[string]any{}},                                 // no ref
 		{"add", map[string]any{}},                                    // no paths, no all
@@ -552,7 +556,7 @@ func TestDescribe(t *testing.T) {
 		"clone", "init", "fetch", "pull", "push", "checkout", "switch", "add",
 		"commit", "status", "log", "diff", "branch", "tag", "merge", "rebase",
 		"reset", "rev_parse", "ls_remote", "remote", "config_get", "config_set",
-		"stash", "clean", "show", "cli",
+		"stash", "clean", "show", "cli", "discard",
 	}
 	got := map[string]bool{}
 	for _, v := range d.Verbs {
