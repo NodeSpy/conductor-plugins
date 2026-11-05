@@ -88,7 +88,14 @@ func (p *Plugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeResult, error) {
 	if err != nil {
 		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInvalidParams, err.Error())
 	}
-	out, err := kit.Invoke(context.Background(), req.Verb, req.Options)
+	var out map[string]any
+	if req.Verb == "pr_snapshot" {
+		// A read, as the read credential agents get (identity.read_token),
+		// not the call's `as`; the archive goes to the call's staging dir.
+		out, err = kit.PRSnapshot(context.Background(), req.Options, req.Staging)
+	} else {
+		out, err = kit.Invoke(context.Background(), req.Verb, req.Options)
+	}
 	if err != nil {
 		// A verb call that answered with one of the contract's own codes
 		// (plugin-contract.md §1.11 — target_gone, invalid, rate_limited,

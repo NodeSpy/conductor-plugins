@@ -56,6 +56,10 @@ type Config struct {
 	// subprocess) that cannot rely on inheriting the parent process's
 	// environment to reach a hermetic test double.
 	APIBase string
+	// GitBase overrides where pr_snapshot clones repositories from (default:
+	// the web host of the API base, over HTTPS — see cloneBase). For a test's
+	// file:// remote.
+	GitBase string
 }
 
 // DefaultCacheTTL is how long a GET body is served without revalidating —
@@ -79,6 +83,7 @@ type Client struct {
 
 	// apiBase overrides APIBaseURL() when non-empty (see Config.APIBase).
 	apiBase string
+	gitBase string // Config.GitBase
 
 	// GET response cache (reads only) + last-seen rate-limit state, so a
 	// fan-out of reviewers/verifiers that all want the same diff/metadata hits
@@ -119,7 +124,7 @@ func NewClient(cfg Config) (*Client, error) {
 	}
 	c := &Client{
 		token: cfg.Token, writeToken: cfg.WriteToken, readToken: cfg.ReadToken, ghToken: ghToken,
-		httpc: httpc, CacheTTL: ttl, apiBase: cfg.APIBase,
+		httpc: httpc, CacheTTL: ttl, apiBase: cfg.APIBase, gitBase: cfg.GitBase,
 		getCache: map[string]*cacheEntry{}, logins: map[string]string{}, rlRemaining: -1,
 	}
 	if cfg.App != nil && cfg.App.AppID > 0 {
