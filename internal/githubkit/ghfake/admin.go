@@ -238,6 +238,14 @@ func (f *Fake) act(a map[string]any) (map[string]any, error) {
 		return map[string]any{"number": num, "head_sha": f.HeadSHA(repo, num)}, nil
 	case "push":
 		return map[string]any{"sha": f.Push(repo, str(a, "branch"), by, str(a, "message"), strs(a["paths"])...)}, nil
+	case "commit_files":
+		files := map[string]string{}
+		if m, ok := a["files"].(map[string]any); ok {
+			for k, v := range m {
+				files[k], _ = v.(string)
+			}
+		}
+		return map[string]any{"sha": f.CommitFiles(repo, str(a, "branch"), by, str(a, "message"), files, strs(a["deletes"])...)}, nil
 	case "push_sha":
 		f.PushSHA(repo, str(a, "branch"), by, str(a, "sha"))
 	case "set_conflict":
@@ -309,6 +317,9 @@ func (f *Fake) query(r *http.Request) (any, error) {
 		p := f.PR(repo, n)
 		return map[string]any{"head_sha": p.HeadSHA, "head_ref": p.HeadRef, "merged": p.Merged, "state": p.Issue.State,
 			"draft": p.Draft, "requested_reviewers": f.RequestedReviewers(repo, n)}, nil
+	case "files":
+		files, sha := f.FilesAt(repo, q.Get("branch"))
+		return map[string]any{"files": files, "sha": sha, "author": f.CommitAuthor(repo, sha)}, nil
 	case "statuses":
 		sha := q.Get("sha")
 		if sha == "" {
