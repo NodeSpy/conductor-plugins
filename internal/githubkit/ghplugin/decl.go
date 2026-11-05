@@ -296,6 +296,9 @@ func decl() plugin.Decl {
 					"base":               {Type: "string", Desc: "the base branch, fetched as origin/<base>"},
 					"merge_base":         {Type: "string"},
 				},
+				// It clones and archives the whole PR, which on a big repository
+				// takes longer than the host's default 30s per call.
+				Semantics: &plugin.VerbSemantics{CallTimeout: "10m", Optional: []string{"call_timeout"}},
 			},
 			{
 				Name: "read_token", Desc: "the read credential agents receive (identity.read_token: the App's installation token by default)",
@@ -478,6 +481,10 @@ func decl() plugin.Decl {
 					"refused":   {Type: "list", Desc: "paths the diff touches that refuse_paths names; nothing was committed"},
 					"reason":    {Type: "string", Desc: "why nothing was committed (empty when pushed)"},
 				},
+				// It reads, then writes, every file the diff touches (a request
+				// each), more than the host's default 30s per call allows for a
+				// large diff.
+				Semantics: &plugin.VerbSemantics{CallTimeout: "2m", Optional: []string{"call_timeout"}},
 			},
 			{
 				Name: "put_file", Desc: "create or update a file in one commit",
@@ -647,6 +654,9 @@ func decl() plugin.Decl {
 					"omitted":   {Type: "integer", Desc: "failing checks past the first 20, not described"},
 					"truncated": {Type: "boolean", Desc: "a size cap cut something"},
 				},
+				// It downloads failed jobs' logs, several MB each, which can take
+				// longer than the host's default 30s per call.
+				Semantics: &plugin.VerbSemantics{CallTimeout: "3m", Optional: []string{"call_timeout"}},
 			},
 			{
 				Name: "checks", Desc: "check-run status for a ref: [{name, status, conclusion, url}]",

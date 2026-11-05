@@ -318,6 +318,11 @@ Selected by `uses: <name>.<verb>`. Conventions shared across verbs:
   page, or `per_page` (max 100) to size it.
 - **`sweep`** — conductor-defined: the DAEMON answers it (a daemon-wide catch-up
   sweep, as `conductor sweep --now`), it is never sent to the plugin. → `nudged`.
+- **Slow verbs** *(since 2.7.0)* — three verbs declare a per-call timeout
+  (`call_timeout`) longer than conductor's default 30s: `pr_snapshot` 10m (a
+  big repository's clone and archive), `check_failures` 3m (failed jobs' logs),
+  `apply_diff` 2m (a request per file the diff touches). Conductor caps it at
+  its own maximum; a conductor without call_timeout uses its default.
 
 Required options are marked `*`.
 
