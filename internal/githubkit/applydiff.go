@@ -39,6 +39,14 @@ func (c *Client) applyDiff(ctx context.Context, tok, base, repo string, opts map
 	if branch == "" || message == "" || strings.TrimSpace(diff) == "" {
 		return nil, fmt.Errorf("github.apply_diff: options.branch, options.diff and options.message are required")
 	}
+	if at, _ := opts["start_at"].(string); at != "" {
+		// Only the part from a heading on: one section of a combined diff.
+		i := strings.Index("\n"+diff, "\n"+at)
+		if i < 0 {
+			return nil, fmt.Errorf("github.apply_diff: no line of the diff starts with options.start_at %q", at)
+		}
+		diff = diff[i:]
+	}
 	refuse := toStrings(opts["refuse_paths"])
 	var head struct {
 		Object struct {

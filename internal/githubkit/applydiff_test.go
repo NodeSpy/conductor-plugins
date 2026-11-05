@@ -213,3 +213,19 @@ func TestApplyDiffRefusesBadInput(t *testing.T) {
 		}
 	}
 }
+
+func TestApplyDiffStartAt(t *testing.T) {
+	f, kit, _ := applyWorld(t)
+	// A step's diff output: the uncommitted section (never pushed) first.
+	diff := strings.Replace(fixDiff, "return 10", "return 7", 1) + "\n# committed, not pushed (vs abc)\n" + strings.TrimPrefix(fixDiff, "# uncommitted (vs HEAD)\n")
+	out := applyDiff(t, kit, map[string]any{"diff": diff, "start_at": "# committed, not pushed"})
+	if out["pushed"] != true {
+		t.Fatalf("out = %v", out)
+	}
+	if files, _ := f.FilesAt("acme/w", "feat"); !strings.Contains(files["main.go"], "return 10") {
+		t.Fatalf("main.go = %q", files["main.go"])
+	}
+	if _, err := kit.Invoke(context.Background(), "apply_diff", map[string]any{"repo": "acme/w", "branch": "feat", "message": "m", "diff": fixDiff, "start_at": "# nope"}); err == nil {
+		t.Fatal("a missing start_at heading must be an error")
+	}
+}

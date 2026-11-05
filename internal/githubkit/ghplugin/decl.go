@@ -463,6 +463,7 @@ func decl() plugin.Decl {
 					"diff":         {Type: "string", Required: true, Desc: "a unified diff in git's format (`git diff` output; several diffs, with text between them, are applied in order)"},
 					"message":      {Type: "string", Required: true, Desc: "commit message"},
 					"base":         {Type: "string", Desc: "the sha the diff was made against; `moved` reports whether the branch's head is still it"},
+					"start_at":     {Type: "string", Desc: "apply only the diff from the first line starting with this text (one section of a diff with headings); no such line is an error"},
 					"refuse_paths": {Type: "list", Desc: "paths the diff must not touch: an exact path, or a prefix ending in /; a hit commits nothing and lists the paths in `refused`"},
 				},
 				Outputs: plugin.Schema{
