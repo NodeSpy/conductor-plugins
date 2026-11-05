@@ -59,7 +59,7 @@ func (c *Client) applyDiff(ctx context.Context, tok, base, repo string, opts map
 	}
 	onto := head.Object.SHA
 	out := map[string]any{"onto": onto, "moved": since != "" && since != onto, "pushed": false, "rejected": false,
-		"conflicts": []any{}, "refused": []any{}, "files": 0, "head": onto, "reason": ""}
+		"conflicts": []any{}, "refused": []any{}, "files": 0, "head": onto, "reason": "", "status": ""}
 
 	patches, err := parsePatches(diff)
 	if err != nil {
@@ -74,7 +74,7 @@ func (c *Client) applyDiff(ctx context.Context, tok, base, repo string, opts map
 		}
 	}
 	if len(refused) > 0 {
-		out["refused"], out["reason"] = dedupe(refused), "the diff changes a path the caller refuses"
+		out["refused"], out["reason"], out["status"] = dedupe(refused), "the diff changes a path the caller refuses", "refused"
 		return out, nil
 	}
 	read := func(path string) (string, bool, error) {
@@ -105,11 +105,11 @@ func (c *Client) applyDiff(ctx context.Context, tok, base, repo string, opts map
 		return nil, fmt.Errorf("github.apply_diff: %w", err)
 	}
 	if len(conflicts) > 0 {
-		out["conflicts"], out["reason"] = conflicts, "the diff does not apply to the branch's head"
+		out["conflicts"], out["reason"], out["status"] = conflicts, "the diff does not apply to the branch's head", "conflict"
 		return out, nil
 	}
 	if len(changes) == 0 {
-		out["reason"] = "the branch's head already has every change in the diff"
+		out["reason"], out["status"] = "the branch's head already has every change in the diff", "unchanged"
 		return out, nil
 	}
 
@@ -134,7 +134,7 @@ func (c *Client) applyDiff(ctx context.Context, tok, base, repo string, opts map
 			continue
 		}
 		if len(*text) > applyDiffMaxFile {
-			out["conflicts"], out["reason"] = []any{p}, "a changed file is larger than apply_diff writes"
+			out["conflicts"], out["reason"], out["status"] = []any{p}, "a changed file is larger than apply_diff writes", "conflict"
 			return out, nil
 		}
 		var blob struct {
@@ -164,13 +164,13 @@ func (c *Client) applyDiff(ctx context.Context, tok, base, repo string, opts map
 	err = c.patch(ctx, tok, fmt.Sprintf("%s/repos/%s/git/refs/heads/%s", base, repo, escapePath(branch)),
 		map[string]any{"sha": made.SHA, "force": false}, nil)
 	if httpStatus(err) == http.StatusUnprocessableEntity {
-		out["rejected"], out["reason"] = true, "the branch moved again while the diff was applied"
+		out["rejected"], out["reason"], out["status"] = true, "the branch moved again while the diff was applied", "rejected"
 		return out, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	out["pushed"], out["head"], out["files"] = true, made.SHA, len(changes)
+	out["pushed"], out["head"], out["files"], out["status"] = true, made.SHA, len(changes), "pushed"
 	return out, nil
 }
 

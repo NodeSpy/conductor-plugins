@@ -467,6 +467,7 @@ func decl() plugin.Decl {
 					"refuse_paths": {Type: "list", Desc: "paths the diff must not touch: an exact path, or a prefix ending in /; a hit commits nothing and lists the paths in `refused`"},
 				},
 				Outputs: plugin.Schema{
+					"status":    {Type: "string", Desc: "pushed, unchanged (the head already has the diff), conflict, refused or rejected"},
 					"pushed":    {Type: "boolean", Desc: "the commit is on the branch"},
 					"rejected":  {Type: "boolean", Desc: "the branch moved again while the diff was applied; nothing was committed"},
 					"moved":     {Type: "boolean", Desc: "the branch's head was not `base`"},

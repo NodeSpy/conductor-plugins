@@ -55,7 +55,7 @@ func TestApplyDiffOntoAMovedHead(t *testing.T) {
 	// Someone else pushed b()'s change while the agent worked.
 	moved := f.CommitFiles("acme/w", "feat", "rev", "theirs", map[string]string{"main.go": strings.Replace(applyBase, "return 2", "return 20", 1)})
 	out := applyDiff(t, kit, map[string]any{"diff": fixDiff, "base": base})
-	if out["pushed"] != true || out["moved"] != true || out["onto"] != moved || out["files"] != 1 || out["reason"] != "" {
+	if out["status"] != "pushed" || out["pushed"] != true || out["moved"] != true || out["onto"] != moved || out["files"] != 1 || out["reason"] != "" {
 		t.Fatalf("out = %v", out)
 	}
 	files, head := f.FilesAt("acme/w", "feat")
@@ -83,7 +83,7 @@ func TestApplyDiffConflictCommitsNothing(t *testing.T) {
 	f, kit, base := applyWorld(t)
 	moved := f.CommitFiles("acme/w", "feat", "rev", "theirs", map[string]string{"main.go": strings.Replace(applyBase, "return 1", "return 99", 1)})
 	out := applyDiff(t, kit, map[string]any{"diff": fixDiff, "base": base})
-	if out["pushed"] != false || !reflect.DeepEqual(out["conflicts"], []any{"main.go"}) || out["reason"] == "" {
+	if out["status"] != "conflict" || out["pushed"] != false || !reflect.DeepEqual(out["conflicts"], []any{"main.go"}) || out["reason"] == "" {
 		t.Fatalf("out = %v", out)
 	}
 	if _, head := f.FilesAt("acme/w", "feat"); head != moved {
@@ -95,7 +95,7 @@ func TestApplyDiffAlreadyApplied(t *testing.T) {
 	f, kit, _ := applyWorld(t)
 	same := f.CommitFiles("acme/w", "feat", "rev", "same fix", map[string]string{"main.go": strings.Replace(applyBase, "return 1", "return 10", 1)})
 	out := applyDiff(t, kit, map[string]any{"diff": fixDiff})
-	if out["pushed"] != false || out["head"] != same || len(out["conflicts"].([]any)) != 0 || !strings.Contains(out["reason"].(string), "already") {
+	if out["status"] != "unchanged" || out["pushed"] != false || out["head"] != same || len(out["conflicts"].([]any)) != 0 || !strings.Contains(out["reason"].(string), "already") {
 		t.Fatalf("out = %v", out)
 	}
 }
@@ -117,7 +117,7 @@ func TestApplyDiffRejectedWhenTheBranchMovesAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := applyDiff(t, kit, map[string]any{"diff": fixDiff})
-	if out["pushed"] != false || out["rejected"] != true {
+	if out["status"] != "rejected" || out["pushed"] != false || out["rejected"] != true {
 		t.Fatalf("out = %v", out)
 	}
 	if _, head := f.FilesAt("acme/w", "feat"); head != again {
@@ -135,7 +135,7 @@ new file mode 100644
 +on: push
 `
 	out := applyDiff(t, kit, map[string]any{"diff": diff, "refuse_paths": []any{".github/workflows/", "Jenkinsfile"}})
-	if out["pushed"] != false || !reflect.DeepEqual(out["refused"], []any{".github/workflows/ci.yml"}) {
+	if out["status"] != "refused" || out["pushed"] != false || !reflect.DeepEqual(out["refused"], []any{".github/workflows/ci.yml"}) {
 		t.Fatalf("out = %v", out)
 	}
 	if _, head := f.FilesAt("acme/w", "feat"); head != base {
