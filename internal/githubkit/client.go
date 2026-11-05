@@ -56,7 +56,7 @@ type Config struct {
 	// subprocess) that cannot rely on inheriting the parent process's
 	// environment to reach a hermetic test double.
 	APIBase string
-	// GitBase overrides where pr_clone clones repositories from (default:
+	// GitBase overrides where pr_snapshot clones repositories from (default:
 	// the web host of the API base, over HTTPS — see cloneBase). For a test's
 	// file:// remote.
 	GitBase string

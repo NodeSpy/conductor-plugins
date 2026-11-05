@@ -109,21 +109,53 @@ func privateTmp(t *testing.T) string {
 	return d
 }
 
+// snapshot runs pr_snapshot of acme/w#7 with a fresh staging dir, which it
+// returns too.
+func snapshot(t *testing.T, root string) (map[string]any, string, error) {
+	t.Helper()
+	staging := t.TempDir()
+	out, err := cloneClient(t, root).PRSnapshot(context.Background(), map[string]any{"repo": "acme/w", "pr": 7}, staging)
+	return out, staging, err
+}
+
+// unpack extracts a snapshot archive into a fresh dir and returns it.
+func unpack(t *testing.T, archive string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if out, err := exec.Command("tar", "-C", dir, "-xf", archive).CombinedOutput(); err != nil {
+		t.Fatalf("untar: %v\n%s", err, out)
+	}
+	return dir
+}
+
+func empty(t *testing.T, what, dir string) {
+	t.Helper()
+	if ents, _ := os.ReadDir(dir); len(ents) != 0 {
+		t.Errorf("%s holds %v", what, ents)
+	}
+}
+
 // A PR whose base moved on past the PR's own depth: the clone deepens until
 // the merge-base is in it, and stays shallow — enough for base...HEAD, not
-// the whole history.
-func TestPRCloneDeepensToTheMergeBase(t *testing.T) {
+// the whole history. The archive of it, .git included, lands in the staging
+// dir; the clone itself is gone when the call returns.
+func TestPRSnapshotDeepensToTheMergeBase(t *testing.T) {
 	tmp := privateTmp(t)
 	root, prHead, fork := prRemote(t, 100, 20)
 	argv := recordingGit(t, 0, "")
-	out, err := cloneClient(t, root).Invoke(context.Background(), "pr_clone", map[string]any{"repo": "acme/w", "pr": 7})
+	out, staging, err := snapshot(t, root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir, _ := out["dir"].(string)
-	if filepath.Dir(dir) != tmp || !strings.HasPrefix(filepath.Base(dir), prCloneDirPrefix) {
-		t.Fatalf("dir = %q, want a pr_clone dir in %s", dir, tmp)
+	empty(t, "TMPDIR after the call", tmp)
+	archive, _ := out["archive"].(string)
+	if filepath.Dir(archive) != staging || !strings.HasPrefix(filepath.Base(archive), "pr-7-") || !strings.HasSuffix(archive, ".tar") {
+		t.Fatalf("archive = %q, want a pr-7-*.tar in the staging dir %s", archive, staging)
 	}
+	if out["archive_media_type"] != SnapshotMediaType {
+		t.Errorf("archive_media_type = %v", out["archive_media_type"])
+	}
+	dir := unpack(t, archive)
 	if out["head_sha"] != prHead || out["merge_base"] != fork || out["base"] != "main" {
 		t.Fatalf("outputs %#v; want head %s, merge_base %s", out, prHead, fork)
 	}
@@ -145,16 +177,19 @@ func TestPRCloneDeepensToTheMergeBase(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, ".git", "objects", "info", "alternates")); !os.IsNotExist(err) {
 		t.Error("the clone borrows objects through alternates")
 	}
+	if st := gitIn(t, dir, "status", "--porcelain"); st != "" {
+		t.Errorf("the unpacked tree is not clean: %q", st)
+	}
 }
 
 // The credential never reaches argv or disk: it rides git's environment as
 // an Authorization header scoped to the clone host, and nothing in the
 // clone holds it.
-func TestPRCloneKeepsTheTokenOutOfArgvAndDisk(t *testing.T) {
+func TestPRSnapshotKeepsTheTokenOutOfArgvAndDisk(t *testing.T) {
 	privateTmp(t)
 	root, _, _ := prRemote(t, 3, 1)
 	argv := recordingGit(t, 0, "")
-	out, err := cloneClient(t, root).Invoke(context.Background(), "pr_clone", map[string]any{"repo": "acme/w", "pr": 7})
+	out, _, err := snapshot(t, root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +197,10 @@ func TestPRCloneKeepsTheTokenOutOfArgvAndDisk(t *testing.T) {
 	if a := argv(); strings.Contains(a, cloneToken) || strings.Contains(a, b64) {
 		t.Fatalf("the token is in git's argv:\n%s", a)
 	}
-	filepath.Walk(out["dir"].(string), func(p string, fi os.FileInfo, err error) error {
+	if b, _ := os.ReadFile(out["archive"].(string)); strings.Contains(string(b), cloneToken) || strings.Contains(string(b), b64) {
+		t.Error("the token is in the archive")
+	}
+	filepath.Walk(unpack(t, out["archive"].(string)), func(p string, fi os.FileInfo, err error) error {
 		if err == nil && fi.Mode().IsRegular() {
 			if b, _ := os.ReadFile(p); strings.Contains(string(b), cloneToken) || strings.Contains(string(b), b64) {
 				t.Errorf("the token is on disk in %s", p)
@@ -172,7 +210,7 @@ func TestPRCloneKeepsTheTokenOutOfArgvAndDisk(t *testing.T) {
 	})
 }
 
-func TestPRCloneGitEnvironment(t *testing.T) {
+func TestPRSnapshotGitEnvironment(t *testing.T) {
 	t.Setenv("GIT_DIR", "/elsewhere")
 	t.Setenv("GIT_SSH_COMMAND", "ssh -i key")
 	env := strings.Join(gitEnv("https://github.com", "tok"), "\n")
@@ -195,7 +233,7 @@ func TestPRCloneGitEnvironment(t *testing.T) {
 
 // A fetch that failed on the network is retried; one the remote refused
 // is not, and a failed clone leaves nothing behind or in its error.
-func TestPRCloneRetriesOnlyNetworkFailures(t *testing.T) {
+func TestPRSnapshotRetriesOnlyNetworkFailures(t *testing.T) {
 	for _, c := range []struct {
 		name    string
 		fails   int
@@ -216,7 +254,7 @@ func TestPRCloneRetriesOnlyNetworkFailures(t *testing.T) {
 			tmp := privateTmp(t)
 			root, _, _ := prRemote(t, 3, 1)
 			argv := recordingGit(t, c.fails, c.stderr)
-			out, err := cloneClient(t, root).Invoke(context.Background(), "pr_clone", map[string]any{"repo": "acme/w", "pr": 7})
+			out, staging, err := snapshot(t, root)
 			if got := strings.Count(argv(), " fetch "); got != c.fetches {
 				t.Errorf("%d fetches, want %d", got, c.fetches)
 			}
@@ -232,60 +270,79 @@ func TestPRCloneRetriesOnlyNetworkFailures(t *testing.T) {
 			if strings.Contains(err.Error(), cloneToken) {
 				t.Errorf("the error carries the token: %v", err)
 			}
-			if ents, _ := os.ReadDir(tmp); len(ents) != 0 {
-				t.Errorf("a failed clone left %v", ents)
-			}
+			empty(t, "TMPDIR after a failed clone", tmp)
+			empty(t, "staging after a failed clone", staging)
 		})
 	}
 }
 
 // A PR the remote doesn't serve fails at once and leaves nothing.
-func TestPRCloneOfAMissingPRLeavesNothing(t *testing.T) {
+func TestPRSnapshotOfAMissingPRLeavesNothing(t *testing.T) {
 	tmp := privateTmp(t)
 	root, _, _ := prRemote(t, 3, 1)
 	gitIn(t, filepath.Join(root, "acme", "w.git"), "update-ref", "-d", "refs/pull/7/head")
 	argv := recordingGit(t, 0, "")
-	if _, err := cloneClient(t, root).Invoke(context.Background(), "pr_clone", map[string]any{"repo": "acme/w", "pr": 7}); err == nil {
+	_, staging, err := snapshot(t, root)
+	if err == nil {
 		t.Fatal("clone of a missing PR ref succeeded")
 	}
 	if got := strings.Count(argv(), " fetch "); got != 1 {
 		t.Errorf("%d fetches of a missing ref, want 1", got)
 	}
-	if ents, _ := os.ReadDir(tmp); len(ents) != 0 {
-		t.Errorf("a failed clone left %v", ents)
-	}
+	empty(t, "TMPDIR after a failed clone", tmp)
+	empty(t, "staging after a failed clone", staging)
 }
 
-func TestPRCloneDiscard(t *testing.T) {
+// Without a staging dir there is nowhere to put the archive: the call fails
+// before it fetches anything.
+func TestPRSnapshotNeedsAStagingDir(t *testing.T) {
 	tmp := privateTmp(t)
-	kit, _ := NewClient(Config{WriteToken: "w"})
-	dir, err := os.MkdirTemp("", prCloneDirPrefix+"*")
+	root, _, _ := prRemote(t, 3, 1)
+	argv := recordingGit(t, 0, "")
+	if _, err := cloneClient(t, root).PRSnapshot(context.Background(), map[string]any{"repo": "acme/w", "pr": 7}, ""); err == nil {
+		t.Fatal("pr_snapshot without a staging dir succeeded")
+	}
+	if a := argv(); a != "" {
+		t.Errorf("git ran: %s", a)
+	}
+	empty(t, "TMPDIR", tmp)
+}
+
+// The archive holds the tree's dirs, files and in-tree symlinks; a symlink
+// out of the tree is left out, since it would fail the unpack.
+func TestTarTreeLeavesOutEscapingLinks(t *testing.T) {
+	src := t.TempDir()
+	os.MkdirAll(filepath.Join(src, "pkg"), 0o755)
+	os.WriteFile(filepath.Join(src, "pkg", "a.go"), []byte("package pkg\n"), 0o644)
+	for link, target := range map[string]string{"pkg/in": "a.go", "up": "pkg/../pkg/a.go", "abs": "/etc/passwd", "pkg/out": "../../x"} {
+		if err := os.Symlink(target, filepath.Join(src, link)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	archive := filepath.Join(t.TempDir(), "t.tar")
+	f, err := os.Create(archive)
 	if err != nil {
 		t.Fatal(err)
 	}
-	other := filepath.Join(tmp, "other")
-	os.Mkdir(other, 0o755)
-	link := filepath.Join(tmp, prCloneDirPrefix+"link")
-	os.Symlink(other, link)
-	for _, bad := range []string{"/etc", other, link, filepath.Join(dir, "x"), dir + "/../" + filepath.Base(dir), "relative", ""} {
-		if _, err := kit.Invoke(context.Background(), "pr_clone_discard", map[string]any{"dir": bad}); err == nil {
-			t.Errorf("discard %q: want refused", bad)
+	if err := tarTree(f, src); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	dir := unpack(t, archive)
+	if b, err := os.ReadFile(filepath.Join(dir, "pkg", "in")); err != nil || string(b) != "package pkg\n" {
+		t.Errorf("pkg/in: %q %v", b, err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "up")); err != nil {
+		t.Errorf("the in-tree link up is missing: %v", err)
+	}
+	for _, gone := range []string{"abs", "pkg/out"} {
+		if _, err := os.Lstat(filepath.Join(dir, gone)); !os.IsNotExist(err) {
+			t.Errorf("the escaping link %s is in the archive", gone)
 		}
-	}
-	for i := 0; i < 2; i++ { // the second finds it gone, which is fine
-		if _, err := kit.Invoke(context.Background(), "pr_clone_discard", map[string]any{"dir": dir}); err != nil {
-			t.Fatalf("discard #%d: %v", i+1, err)
-		}
-	}
-	if _, err := os.Lstat(dir); !os.IsNotExist(err) {
-		t.Errorf("discard left %s", dir)
-	}
-	if _, err := os.Stat(other); err != nil {
-		t.Errorf("discard reached through a symlink: %v", err)
 	}
 }
 
-func TestPRCloneBase(t *testing.T) {
+func TestPRSnapshotCloneBase(t *testing.T) {
 	for api, want := range map[string]string{
 		"https://api.github.com":         "https://github.com",
 		"https://api.acme.ghe.com":       "https://acme.ghe.com",

@@ -1,14 +1,18 @@
 package githubkit
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
+	"io/fs"
 	"log"
 	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -16,10 +20,13 @@ import (
 	"time"
 )
 
-// pr_clone makes a pull request's tree for a step that hands it to others (a
-// panel of reviewers sharing one fetch): a fresh temp directory holding a
-// shallow clone of the PR head and its base branch, deep enough that the
-// base...HEAD merge-base is in it, with HEAD detached at the PR head.
+// pr_snapshot makes a pull request's tree for a step that hands it to others
+// (a panel of reviewers sharing one fetch): a tar archive of a shallow clone
+// of the PR head and its base branch, .git included, deep enough that the
+// base...HEAD merge-base is in it, with HEAD detached at the PR head. The
+// archive is a binary output: written to the call's staging directory, it
+// is stored by conductor as a run-scoped blob. The clone is made in a temp
+// directory and removed before the call returns.
 //
 // It runs git over HTTPS only, with the connector's read credential. The
 // token travels as an http.<host>.extraHeader in git's environment
@@ -28,12 +35,14 @@ import (
 // insteadOf that could turn the URL into ssh). A fetch that fails on the
 // network is retried; one the remote refused is not.
 
-// gitBinary is the git pr_clone runs.
+// gitBinary is the git pr_snapshot runs.
 var gitBinary = "git"
 
 const (
 	prCloneDirPrefix = "conductor-github-pr-"
-	prCloneAttempts  = 3
+	// SnapshotMediaType is the archive's media type.
+	SnapshotMediaType = "application/x-tar"
+	prCloneAttempts   = 3
 	// prCloneDeepenRounds bounds the deepening: the depth doubles each
 	// round, and the last round fetches the whole history.
 	prCloneDeepenRounds = 12
@@ -65,20 +74,29 @@ func (c *Client) cloneBase() (string, error) {
 	return "https://" + host, nil
 }
 
-func (c *Client) prClone(ctx context.Context, repo string, number int) (map[string]any, error) {
+// PRSnapshot runs pr_snapshot: it clones the PR into a temp directory,
+// archives the clone into a new file under staging (the call's staging
+// directory), removes the clone, and returns the archive's path as the
+// binary output "archive".
+func (c *Client) PRSnapshot(ctx context.Context, opts map[string]any, staging string) (map[string]any, error) {
+	repo, _ := opts["repo"].(string)
+	number := toInt(opts["pr"])
 	if !repoName.MatchString(repo) || strings.Contains(repo, "..") {
-		return nil, fmt.Errorf("github.pr_clone: options.repo must be owner/name, got %q", repo)
+		return nil, fmt.Errorf("github.pr_snapshot: options.repo must be owner/name, got %q", repo)
 	}
 	if number <= 0 {
-		return nil, fmt.Errorf("github.pr_clone: options.pr is required")
+		return nil, fmt.Errorf("github.pr_snapshot: options.pr is required")
+	}
+	if staging == "" {
+		return nil, fmt.Errorf("github.pr_snapshot: the host gave this call no staging directory to write the archive to")
 	}
 	gitBase, err := c.cloneBase()
 	if err != nil {
-		return nil, fmt.Errorf("github.pr_clone: %w", err)
+		return nil, fmt.Errorf("github.pr_snapshot: %w", err)
 	}
 	tok, err := c.MintCredential(ctx, "read", repo)
 	if err != nil {
-		return nil, fmt.Errorf("github.pr_clone: %w", err)
+		return nil, fmt.Errorf("github.pr_snapshot: %w", err)
 	}
 	var pr struct {
 		Base struct {
@@ -93,16 +111,87 @@ func (c *Client) prClone(ctx context.Context, repo string, number int) (map[stri
 	defer cancel()
 	dir, err := os.MkdirTemp("", prCloneDirPrefix+"*")
 	if err != nil {
-		return nil, fmt.Errorf("github.pr_clone: %w", err)
+		return nil, fmt.Errorf("github.pr_snapshot: %w", err)
 	}
+	defer os.RemoveAll(dir)
 	g := &prGit{dir: dir, env: gitEnv(gitBase, tok), secret: tok}
 	out, err := g.clone(ctx, gitBase+"/"+repo+".git", pr.Base.Ref, number, pr.Commits)
 	if err != nil {
-		os.RemoveAll(dir)
-		return nil, fmt.Errorf("github.pr_clone %s#%d: %w", repo, number, err)
+		return nil, fmt.Errorf("github.pr_snapshot %s#%d: %w", repo, number, err)
 	}
-	out["dir"] = dir
+	f, err := os.CreateTemp(staging, fmt.Sprintf("pr-%d-*.tar", number))
+	if err != nil {
+		return nil, fmt.Errorf("github.pr_snapshot: %w", err)
+	}
+	err = tarTree(f, dir)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		os.Remove(f.Name())
+		return nil, fmt.Errorf("github.pr_snapshot: archive: %w", err)
+	}
+	out["archive"] = f.Name()
+	out["archive_media_type"] = SnapshotMediaType
 	return out, nil
+}
+
+// tarTree writes the tree under root to w as a tar archive: directories,
+// regular files and symlinks, with owner ids dropped. A symlink whose target
+// is absolute or climbs out of the tree is left out (conductor refuses to
+// unpack one); anything else that is not a file or directory is too.
+func tarTree(w io.Writer, root string) error {
+	tw := tar.NewWriter(w)
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || p == root {
+			return err
+		}
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		fi, err := d.Info()
+		if err != nil {
+			return err
+		}
+		hdr := &tar.Header{Name: rel, Mode: int64(fi.Mode().Perm()), ModTime: fi.ModTime().Truncate(time.Second)}
+		switch m := fi.Mode(); {
+		case m.IsDir():
+			hdr.Typeflag, hdr.Name = tar.TypeDir, rel+"/"
+		case m.IsRegular():
+			hdr.Typeflag, hdr.Size = tar.TypeReg, fi.Size()
+		case m&fs.ModeSymlink != 0:
+			target, err := os.Readlink(p)
+			if err != nil {
+				return err
+			}
+			if t := path.Clean(path.Join(path.Dir(rel), filepath.ToSlash(target))); path.IsAbs(target) || filepath.IsAbs(target) || t == ".." || strings.HasPrefix(t, "../") {
+				log.Printf("github: pr_snapshot: left out %s, a symlink to %s outside the tree", rel, target)
+				return nil
+			}
+			hdr.Typeflag, hdr.Linkname = tar.TypeSymlink, target
+		default:
+			return nil
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			return err
+		}
+		if hdr.Typeflag != tar.TypeReg {
+			return nil
+		}
+		f, err := os.Open(p)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		_, err = io.CopyN(tw, f, hdr.Size)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	return tw.Close()
 }
 
 // gitEnv is git's environment for a clone from base: the process's, minus
@@ -165,7 +254,7 @@ func (e *gitError) Error() string { return "git " + e.args + ": " + e.err.Error(
 func (g *prGit) fetch(ctx context.Context, args ...string) error {
 	_, err := g.run(ctx, append([]string{"fetch", "-q", "--no-tags"}, args...)...)
 	for attempt := 1; attempt < prCloneAttempts && transientGitFailure(err); attempt++ {
-		log.Printf("github: pr_clone: fetch failed on the network (attempt %d of %d), retrying: %v", attempt, prCloneAttempts, err)
+		log.Printf("github: pr_snapshot: fetch failed on the network (attempt %d of %d), retrying: %v", attempt, prCloneAttempts, err)
 		select {
 		case <-ctx.Done():
 			return err
@@ -263,27 +352,4 @@ func (g *prGit) clone(ctx context.Context, remote, base string, number, commits 
 		return nil, err
 	}
 	return map[string]any{"head_sha": head, "base": base, "merge_base": mergeBase}, nil
-}
-
-// discardPRClone removes a pr_clone directory — and only that: a directory
-// directly under the temp dir carrying pr_clone's prefix, never a symlink.
-// One already gone is fine, so a cleanup hook can run twice.
-func discardPRClone(dir string) (map[string]any, error) {
-	root := filepath.Clean(os.TempDir())
-	if !filepath.IsAbs(dir) || filepath.Clean(dir) != dir || filepath.Dir(dir) != root ||
-		!strings.HasPrefix(filepath.Base(dir), prCloneDirPrefix) {
-		return nil, fmt.Errorf("github.pr_clone_discard: %q is not a pr_clone directory", dir)
-	}
-	switch fi, err := os.Lstat(dir); {
-	case os.IsNotExist(err):
-	case err != nil:
-		return nil, fmt.Errorf("github.pr_clone_discard: %w", err)
-	case !fi.IsDir():
-		return nil, fmt.Errorf("github.pr_clone_discard: %q is not a pr_clone directory", dir)
-	default:
-		if err := os.RemoveAll(dir); err != nil {
-			return nil, fmt.Errorf("github.pr_clone_discard: %w", err)
-		}
-	}
-	return map[string]any{"ok": true}, nil
 }

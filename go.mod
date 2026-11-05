@@ -21,7 +21,7 @@ go 1.26.3
 // remediate_triage (plugin.RemediateTriage), which is not in a conductor
 // release yet. This pseudo-version is the head of the conductor change that
 // adds it; it MUST be bumped to that change's release tag before this merges.
-require github.com/NodeSpy/conductor v0.73.1-0.20261103191829-81a3933298e5
+require github.com/NodeSpy/conductor v0.80.1-0.20261105174714-fb0582f465c4
 
 // The interpreters the four step engines embed. These are the SAME versions
 // conductor pinned while the engines lived in its binary, so the port is a

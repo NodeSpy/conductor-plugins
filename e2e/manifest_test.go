@@ -58,7 +58,7 @@ func TestPluginsDeclareKindAndManifest(t *testing.T) {
 					t.Fatal("the github connector calls the API but declares no egress")
 				}
 				// The commands it runs: the write chain's `gh auth token` (the
-				// decision on the confined write credential), and pr_clone's git.
+				// decision on the confined write credential), and pr_snapshot's git.
 				if len(c.Commands) != 2 || c.Commands[0] != "gh" || c.Commands[1] != "git" {
 					t.Fatalf("the github connector should declare exactly the gh and git commands: %+v", c)
 				}

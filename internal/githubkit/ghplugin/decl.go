@@ -97,7 +97,7 @@ func decl() plugin.Decl {
 		// gh: the write chain's `gh auth token` (Q8); its token variables, for a
 		// box that authenticates gh through the environment rather than its
 		// config file.
-		// git and github.com: pr_clone's fetch of a PR over HTTPS.
+		// git and github.com: pr_snapshot's fetch of a PR over HTTPS.
 		Capabilities: plugin.Capabilities{Egress: []string{"api.github.com:443", "*.ghe.com:443", "smee.io:443",
 			"productionresultssa*.blob.core.windows.net:443", "*.actions.githubusercontent.com:443", "github.com:443"}, Commands: []string{"gh", "git"},
 			Env: []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_HOST", "GH_CONFIG_DIR"}},
@@ -286,19 +286,16 @@ func decl() plugin.Decl {
 				Outputs: plugin.Schema{"diff": {Type: "string"}},
 			},
 			{
-				Name: "pr_clone", Desc: "clone a PR into a fresh temp directory: the PR head (checked out, detached) and its base branch (origin/<base>), shallow but deep enough for git diff origin/<base>...HEAD. Over HTTPS with the read credential, which never reaches argv or disk; a fetch that fails on the network is retried. Remove it with pr_clone_discard",
-				Options: plugin.Schema{"repo": {Type: "string", Required: true, Scope: "repo"}, "pr": {Type: "integer", Required: true}},
+				Name: "pr_snapshot", Desc: "a PR's tree as a tar archive, .git included: the PR head (checked out, detached) and its base branch (origin/<base>), shallow but deep enough for git diff origin/<base>...HEAD. Fetched over HTTPS with the read credential, which never reaches argv or disk; a fetch that fails on the network is retried. The clone is removed before the call returns; the archive is stored by conductor as a run-scoped blob",
+				Options:   plugin.Schema{"repo": {Type: "string", Required: true, Scope: "repo"}, "pr": {Type: "integer", Required: true}},
+				BinaryOut: []string{"archive"},
 				Outputs: plugin.Schema{
-					"dir":        {Type: "string", Desc: "the clone"},
-					"head_sha":   {Type: "string"},
-					"base":       {Type: "string", Desc: "the base branch, fetched as origin/<base>"},
-					"merge_base": {Type: "string"},
+					"archive":            {Type: "any", Desc: "the tree's tar archive (a blob handle)"},
+					"archive_media_type": {Type: "string"},
+					"head_sha":           {Type: "string"},
+					"base":               {Type: "string", Desc: "the base branch, fetched as origin/<base>"},
+					"merge_base":         {Type: "string"},
 				},
-			},
-			{
-				Name: "pr_clone_discard", Desc: "remove a pr_clone directory (only one; a directory already gone is fine)",
-				Options: plugin.Schema{"dir": {Type: "string", Required: true}},
-				Outputs: plugin.Schema{"ok": {Type: "boolean"}},
 			},
 			{
 				Name: "read_token", Desc: "the read credential agents receive (identity.read_token: the App's installation token by default)",
