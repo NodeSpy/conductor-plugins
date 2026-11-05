@@ -704,13 +704,32 @@ func hPullFiles(c *call) (int, any) {
 	for _, fl := range p.Files {
 		out = append(out, ShapeOf("diff-entry", map[string]any{
 			"sha": c.f.sha(fl.Path), "filename": fl.Path, "status": fl.Status, "additions": fl.Additions,
-			"deletions": fl.Deletions, "changes": fl.Additions + fl.Deletions,
+			"deletions": fl.Deletions, "changes": fl.Additions + fl.Deletions, "patch": filePatch(fl),
 			"blob_url":     fmt.Sprintf("%s/%s/blob/%s/%s", htmlBase, c.repo.FullName(), p.HeadSHA, fl.Path),
 			"raw_url":      fmt.Sprintf("%s/%s/raw/%s/%s", htmlBase, c.repo.FullName(), p.HeadSHA, fl.Path),
 			"contents_url": c.f.api("/repos/%s/contents/%s?ref=%s", c.repo.FullName(), fl.Path, p.HeadSHA),
 		}))
 	}
 	return 200, c.paginate(out)
+}
+
+// filePatch renders a file's diff lines as a patch, one added-lines hunk per
+// run of consecutive lines, so the hunks cover exactly the lines inDiff
+// accepts.
+func filePatch(fl File) string {
+	var b strings.Builder
+	for i := 0; i < len(fl.Lines); {
+		j := i + 1
+		for j < len(fl.Lines) && fl.Lines[j] == fl.Lines[j-1]+1 {
+			j++
+		}
+		fmt.Fprintf(&b, "@@ -%d,0 +%d,%d @@\n", fl.Lines[i], fl.Lines[i], j-i)
+		for _, l := range fl.Lines[i:j] {
+			fmt.Fprintf(&b, "+line %d\n", l)
+		}
+		i = j
+	}
+	return b.String()
 }
 
 func hPullCommits(c *call) (int, any) {

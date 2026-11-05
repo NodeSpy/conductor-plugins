@@ -154,24 +154,16 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 		if event == "" {
 			return nil, fmt.Errorf("github.submit_review: options.event (APPROVE|REQUEST_CHANGES|COMMENT) is required")
 		}
-		var out struct {
-			ID int64 `json:"id"`
-		}
-		body := map[string]any{"event": event}
-		if b, _ := opts["body"].(string); b != "" {
-			body["body"] = b
-		}
+		body, _ := opts["body"].(string)
 		comments, err := ReviewComments(opts["comments"])
 		if err != nil {
 			return nil, err
 		}
-		if len(comments) > 0 {
-			body["comments"] = comments
-		}
-		if err := c.post(ctx, tok, fmt.Sprintf("%s/repos/%s/pulls/%d/reviews", base, repo, number), body, &out); err != nil {
+		id, inBody, err := c.submitReview(ctx, tok, base, repo, number, event, body, comments)
+		if err != nil {
 			return nil, c.remapTargetGone(ctx, tok, repo, key, err)
 		}
-		return map[string]any{"id": out.ID, "comments": len(comments)}, nil
+		return map[string]any{"id": id, "comments": len(comments), "in_body": inBody}, nil
 	case "pr_head":
 		// The revision read the engine's run facts take (reads_revision):
 		// uncached, since a caller compares heads across a push.
@@ -1418,9 +1410,9 @@ func toInt(v any) int {
 // review comment objects. Each needs a path + body; line/side/start_line/
 // start_side are passed through when set (a line-based comment defaults to
 // side RIGHT — the new version of the file). GitHub requires every commented
-// line to fall within the PR's diff; a comment outside it makes the whole
-// review 422, so callers should only comment on changed lines. nil/empty is
-// fine — a review with no inline comments, just a summary + verdict.
+// line to fall within the PR's diff and 422s the whole review otherwise;
+// submitReview moves any comment that isn't into the review body. nil/empty
+// is fine — a review with no inline comments, just a summary + verdict.
 func ReviewComments(v any) ([]map[string]any, error) {
 	if v == nil {
 		return nil, nil
