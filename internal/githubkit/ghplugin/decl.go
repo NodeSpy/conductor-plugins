@@ -275,7 +275,7 @@ func decl() plugin.Decl {
 						"Every commented line MUST fall within the PR's diff, or GitHub rejects the whole review."},
 					"as": {Type: "string", Enum: []string{"me", "bot"}},
 				},
-				Outputs: plugin.Schema{"id": {Type: "integer"}, "comments": {Type: "integer", Desc: "inline comments posted"}},
+				Outputs: plugin.Schema{"id": {Type: "integer"}, "comments": {Type: "integer", Desc: "inline comments posted"}, "in_body": {Type: "integer", Desc: "comments outside the diff, moved into the review body as file:line"}},
 			},
 			{
 				Name: "pr_diff", Desc: "the PR's unified diff (cached; GitHub caps the .diff media type around 300 files)",
