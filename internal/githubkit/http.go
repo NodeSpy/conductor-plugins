@@ -106,7 +106,11 @@ func (c *Client) graphql(ctx context.Context, token, query string, variables map
 	}
 	if len(resp.Errors) > 0 {
 		e := resp.Errors[0]
-		msg := fmt.Sprintf("github graphql: %s", e.Message)
+		msgs := make([]string, 0, len(resp.Errors))
+		for _, x := range resp.Errors {
+			msgs = append(msgs, x.Message)
+		}
+		msg := fmt.Sprintf("github graphql: %s", strings.Join(msgs, "; "))
 		// GraphQL answers 200 even on a query error (§1.11 has no HTTP status
 		// to classify from here): GitHub's own error "type" extension is the
 		// only signal. NOT_FOUND is the node the mutation named going away
@@ -534,11 +538,49 @@ func cacheKey(token, accept, url string) string {
 func readBody(resp *http.Response) string {
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxReadBytes))
 	resp.Body.Close()
+	return errorText(raw)
+}
+
+// errorText renders a GitHub error body as its "message" followed by its
+// errors[] entries, which carry the actual reason for a 422 ("Pull request
+// review thread line must be part of the diff") that the bare message
+// ("Unprocessable Entity") leaves out. An entry is a plain string or an
+// object with a "message", or failing that resource/field/code.
+func errorText(raw []byte) string {
 	var m struct {
-		Message string `json:"message"`
+		Message string            `json:"message"`
+		Errors  []json.RawMessage `json:"errors"`
 	}
 	_ = json.Unmarshal(raw, &m)
-	return m.Message
+	var details []string
+	for _, e := range m.Errors {
+		var s string
+		if json.Unmarshal(e, &s) == nil {
+			if s != "" {
+				details = append(details, s)
+			}
+			continue
+		}
+		var o struct {
+			Message, Resource, Field, Code string
+		}
+		if json.Unmarshal(e, &o) != nil {
+			continue
+		}
+		switch {
+		case o.Message != "":
+			details = append(details, o.Message)
+		case o.Code != "":
+			details = append(details, strings.Trim(o.Resource+"."+o.Field, ".")+" "+o.Code)
+		}
+	}
+	if len(details) == 0 {
+		return m.Message
+	}
+	if m.Message == "" {
+		return strings.Join(details, "; ")
+	}
+	return m.Message + " (" + strings.Join(details, "; ") + ")"
 }
 
 // httpFailure classifies a non-2xx response into the plugin contract's
