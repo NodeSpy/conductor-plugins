@@ -37,6 +37,7 @@ Each plugin has a full reference page under [`docs/`](docs/README.md).
 - **[gitlab](docs/connectors/gitlab.md)** — merge requests, issues, labels, branches, pipelines + push/MR/pipeline webhooks.
 - **[gitea](docs/connectors/gitea.md)** — Gitea/Forgejo issues, PRs, releases, files + webhooks.
 - **[git](docs/connectors/git.md)** — the `git` CLI with managed credentials: clone, commit, push, branch, tag, merge…
+- **[git-land](docs/connectors/git-land.md)** — land a workspace's commits on a remote branch that moved since: keep them under a ref, replay them onto the new head without hooks (conflicting paths when they don't apply), push fast-forward only.
 - **[asana](docs/connectors/asana.md)** — Asana tasks, projects, sections, comments, search + task/story/project webhook events. Token or managed OAuth2.
 - **[jira](docs/connectors/jira.md)** — Jira Cloud issues, comments, transitions, JQL search + webhooks.
 - **[linear](docs/connectors/linear.md)** — Linear issues: create/update/comment/search + webhooks.
