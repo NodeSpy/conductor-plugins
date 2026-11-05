@@ -64,6 +64,10 @@ type Repo struct {
 	Releases   []*Release
 	Contents   map[string]*Content
 	CreatedAt  time.Time
+	// Git objects (gitdata.go): a tree is a flat path → blob sha map, a blob
+	// its text. A commit with no Tree reads as the repo's Contents.
+	Trees map[string]map[string]string
+	Blobs map[string]string
 }
 
 // FullName is owner/name.
@@ -76,6 +80,7 @@ type Commit struct {
 	Parents []string
 	Author  *User
 	At      time.Time
+	Tree    string // its tree in Trees ("" = the repo's Contents)
 }
 
 // Label is a repo label.

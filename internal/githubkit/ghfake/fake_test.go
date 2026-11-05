@@ -428,6 +428,8 @@ func TestEveryResponseValidatesAgainstGitHubsSchema(t *testing.T) {
 	call("get_ref", map[string]any{"ref": "main"})
 	call("create_branch", map[string]any{"branch": "topic", "from": "main"})
 	call("put_file", map[string]any{"path": "docs/a.md", "content": "hello", "message": "add a"})
+	f.CommitFiles("acme/w", "feat", "me", "seed", map[string]string{"notes.txt": "a\n"})
+	call("apply_diff", map[string]any{"branch": "feat", "message": "edit notes", "diff": "diff --git a/notes.txt b/notes.txt\n--- a/notes.txt\n+++ b/notes.txt\n@@ -1 +1 @@\n-a\n+b\n"})
 	call("file", map[string]any{"path": "docs/a.md"})
 	call("create_release", map[string]any{"tag": "v1.0.0"})
 	call("create_gist", map[string]any{"files": map[string]any{"a.txt": "x"}})
