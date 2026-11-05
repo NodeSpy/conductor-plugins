@@ -149,6 +149,14 @@ func TestPRSnapshotDeepensToTheMergeBase(t *testing.T) {
 	}
 	empty(t, "TMPDIR after the call", tmp)
 	archive, _ := out["archive"].(string)
+	// The clone was made in the staging dir (on disk, owned by the host) and
+	// is gone: only the archive is left there.
+	if !strings.Contains(argv(), filepath.Join(staging, prCloneDirPrefix)) {
+		t.Errorf("git never ran in a clone dir inside the staging dir %s", staging)
+	}
+	if ents, _ := os.ReadDir(staging); len(ents) != 1 {
+		t.Errorf("staging holds %v, want only the archive", ents)
+	}
 	if filepath.Dir(archive) != staging || !strings.HasPrefix(filepath.Base(archive), "pr-7-") || !strings.HasSuffix(archive, ".tar") {
 		t.Fatalf("archive = %q, want a pr-7-*.tar in the staging dir %s", archive, staging)
 	}
