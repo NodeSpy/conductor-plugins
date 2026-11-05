@@ -39,7 +39,7 @@ import (
 var gitBinary = "git"
 
 const (
-	prCloneDirPrefix = "conductor-github-pr-"
+	prCloneDirPrefix = "clone-"
 	// SnapshotMediaType is the archive's media type.
 	SnapshotMediaType = "application/x-tar"
 	prCloneAttempts   = 3
@@ -109,7 +109,11 @@ func (c *Client) PRSnapshot(ctx context.Context, opts map[string]any, staging st
 	}
 	ctx, cancel := context.WithTimeout(ctx, prCloneTimeout)
 	defer cancel()
-	dir, err := os.MkdirTemp("", prCloneDirPrefix+"*")
+	// The clone goes in the call's staging dir, on disk, never os.TempDir()
+	// (often a RAM-backed tmpfs). The host owns that dir and removes it after
+	// the call whatever happens, so a clone cut off by the call deadline is
+	// cleaned up too.
+	dir, err := os.MkdirTemp(staging, prCloneDirPrefix+"*")
 	if err != nil {
 		return nil, fmt.Errorf("github.pr_snapshot: %w", err)
 	}
