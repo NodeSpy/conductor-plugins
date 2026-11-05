@@ -456,6 +456,28 @@ func decl() plugin.Decl {
 				},
 			},
 			{
+				Name: "apply_diff", Desc: "apply a unified git diff to a branch's current head as one commit (fast-forward only, never forced), as the write identity",
+				Options: plugin.Schema{
+					"repo":         {Type: "string", Required: true, Scope: "repo"},
+					"branch":       {Type: "string", Required: true, Desc: "the branch to commit on"},
+					"diff":         {Type: "string", Required: true, Desc: "a unified diff in git's format (`git diff` output; several diffs, with text between them, are applied in order)"},
+					"message":      {Type: "string", Required: true, Desc: "commit message"},
+					"base":         {Type: "string", Desc: "the sha the diff was made against; `moved` reports whether the branch's head is still it"},
+					"refuse_paths": {Type: "list", Desc: "paths the diff must not touch: an exact path, or a prefix ending in /; a hit commits nothing and lists the paths in `refused`"},
+				},
+				Outputs: plugin.Schema{
+					"pushed":    {Type: "boolean", Desc: "the commit is on the branch"},
+					"rejected":  {Type: "boolean", Desc: "the branch moved again while the diff was applied; nothing was committed"},
+					"moved":     {Type: "boolean", Desc: "the branch's head was not `base`"},
+					"onto":      {Type: "string", Desc: "the head the diff was applied to"},
+					"head":      {Type: "string", Desc: "the branch's head after the call (the new commit when pushed)"},
+					"files":     {Type: "integer", Desc: "files the commit changes"},
+					"conflicts": {Type: "list", Desc: "paths whose changes do not apply to the head; nothing was committed"},
+					"refused":   {Type: "list", Desc: "paths the diff touches that refuse_paths names; nothing was committed"},
+					"reason":    {Type: "string", Desc: "why nothing was committed (empty when pushed)"},
+				},
+			},
+			{
 				Name: "put_file", Desc: "create or update a file in one commit",
 				Options: plugin.Schema{
 					"repo": {Type: "string", Required: true, Scope: "repo"}, "path": {Type: "string", Required: true},

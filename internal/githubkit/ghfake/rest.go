@@ -132,8 +132,13 @@ func match(method, path string) (*route, map[string]string) {
 			continue
 		}
 		tsegs := strings.Split(strings.Trim(rt.path, "/"), "/")
-		// {path} in the contents API spans the rest of the path.
-		if len(tsegs) > 0 && tsegs[len(tsegs)-1] == "{path}" && len(segs) >= len(tsegs) {
+		// {path} in the contents API spans the rest of the path, as does a
+		// git ref's {ref} (heads/<branch>, which may itself hold slashes).
+		last := ""
+		if len(tsegs) > 0 {
+			last = tsegs[len(tsegs)-1]
+		}
+		if (last == "{path}" || (last == "{ref}" && strings.Contains(rt.path, "/git/ref"))) && len(segs) >= len(tsegs) {
 			params := map[string]string{}
 			ok := true
 			for i, t := range tsegs[:len(tsegs)-1] {
@@ -143,7 +148,7 @@ func match(method, path string) (*route, map[string]string) {
 				}
 			}
 			if ok {
-				params["path"] = strings.Join(segs[len(tsegs)-1:], "/")
+				params[strings.Trim(last, "{}")] = strings.Join(segs[len(tsegs)-1:], "/")
 				return &rt, params
 			}
 			continue
@@ -482,6 +487,12 @@ func routes() []route {
 		{"PUT", "/repos/{owner}/{repo}/contents/{path}", "repo", hPutContent},
 		{"DELETE", "/repos/{owner}/{repo}/contents/{path}", "repo", hDeleteContent},
 		{"POST", "/repos/{owner}/{repo}/git/refs", "repo", hCreateRef},
+		{"GET", "/repos/{owner}/{repo}/git/ref/{ref}", "repo", hGetGitRef},
+		{"PATCH", "/repos/{owner}/{repo}/git/refs/{ref}", "repo", hUpdateGitRef},
+		{"GET", "/repos/{owner}/{repo}/git/commits/{commit_sha}", "repo", hGetGitCommit},
+		{"POST", "/repos/{owner}/{repo}/git/commits", "repo", hCreateGitCommit},
+		{"POST", "/repos/{owner}/{repo}/git/trees", "repo", hCreateTree},
+		{"POST", "/repos/{owner}/{repo}/git/blobs", "repo", hCreateBlob},
 		{"POST", "/repos/{owner}/{repo}/releases", "repo", hCreateRelease},
 		{"GET", "/repos/{owner}/{repo}/releases/{release_id}", "repo", hGetRelease},
 		{"POST", "/repos/{owner}/{repo}/releases/{release_id}/assets", "repo", hUploadAsset},
@@ -1545,6 +1556,15 @@ func hDispatch(c *call) (int, any) {
 
 func hGetContent(c *call) (int, any) {
 	ct := c.repo.Contents[c.p("path")]
+	if ref := c.r.URL.Query().Get("ref"); ref != "" {
+		// At a commit with a tree of its own: the file as of that commit.
+		if cm := c.repo.Commits[c.resolveRef(ref)]; cm != nil && cm.Tree != "" {
+			ct = nil
+			if text, ok := c.repo.filesAt(cm)[c.p("path")]; ok {
+				ct = &Content{Path: c.p("path"), Text: text, SHA: gitBlobSHA(text)}
+			}
+		}
+	}
 	if ct == nil {
 		return notFound()
 	}

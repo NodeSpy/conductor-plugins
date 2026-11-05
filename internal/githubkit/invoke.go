@@ -32,6 +32,13 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 		return map[string]any{"token": tok}, nil
 	}
 	as, _ := opts["as"].(string)
+	if verb == "apply_diff" {
+		// The commit is the caller's write identity's (the user), never the bot's.
+		if as != "" && as != "me" {
+			return nil, fmt.Errorf("github.apply_diff: commits as the write identity; as: %q is not accepted", as)
+		}
+		as = "me"
+	}
 	tok, err := c.TokenFor(ctx, as, repo)
 	if err != nil {
 		return nil, fmt.Errorf("github.%s: %w", verb, err)
@@ -563,6 +570,8 @@ func (c *Client) Invoke(ctx context.Context, verb string, opts map[string]any) (
 			"title": iss.Title, "body": iss.Body, "state": iss.State,
 			"labels": labels, "assignees": assignees, "author": iss.User.Login, "url": iss.HTMLURL,
 		}, nil
+	case "apply_diff":
+		return c.applyDiff(ctx, tok, base, repo, opts)
 	case "put_file":
 		path, _ := opts["path"].(string)
 		content, _ := opts["content"].(string)
