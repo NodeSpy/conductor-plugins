@@ -70,6 +70,11 @@ func (g *Source) Start(ctx context.Context, emit EmitFunc) error {
 			"retrying in the background (set me.logins to skip discovery)", g.name, err)
 		go g.discoverSelfLoop(ctx)
 	}
+	if g.cfg.Webhook.SmeeURL != "" {
+		log.Printf("github[%s]: webhook.smee_url is deprecated and goes in the next major release — "+
+			"a smee channel is a smee connector now (expose: <smee connector> in front of webhook.listen); "+
+			"a conductor that knows this rewrites the config at boot, or run `conductor config migrate`", g.name)
+	}
 	if g.cfg.Webhook.Verify() && g.cfg.Webhook.SmeeURL != "" {
 		log.Printf("github[%s]: signature verification ON — note the smee re-serialization caveat; "+
 			"set webhook.verify_signature:false if valid deliveries are being dropped", g.name)
