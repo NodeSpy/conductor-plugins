@@ -42,8 +42,19 @@ func (kubernetesPlugin) Describe() plugin.Decl {
 			"env":        {Type: "map", Desc: "default process environment for every invocation"},
 			"timeout":    {Type: "duration", Desc: "default per-verb timeout (default 10m); a verb's timeout option overrides it"},
 		},
-		Verbs:        kubernetesVerbs(),
-		Capabilities: plugin.Capabilities{Commands: []string{"kubectl"}, Spawns: true},
+		Verbs: kubernetesVerbs(),
+		// The cluster's API server host lives inside the kubeconfig FILE's
+		// content (a connection field only names the file, not the host), so it
+		// cannot be pinned to a config: egress reference; declaring a port-only
+		// wildcard is the honest expression of "reaches whatever cluster the
+		// kubeconfig points at". kubectl also writes a discovery/http cache
+		// under ~/.kube beside the config it reads.
+		Capabilities: plugin.Capabilities{
+			Commands: []string{"kubectl"},
+			Egress:   []string{"*:443", "*:6443"},
+			Read:     []string{"config:kubeconfig"},
+			Write:    []string{"~/.kube"},
+		},
 	}
 }
 

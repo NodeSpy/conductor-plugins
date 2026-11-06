@@ -22,8 +22,17 @@ func TestDescribe(t *testing.T) {
 	if d.Kind != plugin.KindConnector || d.Type != "uptimerobot" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	if len(d.Capabilities.Egress) != 1 || d.Capabilities.Egress[0] != "api.uptimerobot.com:443" {
+	wantEgress := []string{"api.uptimerobot.com:443", "config:webhook.smee"}
+	if len(d.Capabilities.Egress) != len(wantEgress) {
 		t.Fatalf("egress: got %#v", d.Capabilities.Egress)
+	}
+	for i, w := range wantEgress {
+		if d.Capabilities.Egress[i] != w {
+			t.Fatalf("egress: got %#v, want %#v", d.Capabilities.Egress, wantEgress)
+		}
+	}
+	if len(d.Capabilities.Listen) != 1 || d.Capabilities.Listen[0] != "config:webhook.listen" {
+		t.Fatalf("listen: got %#v", d.Capabilities.Listen)
 	}
 	if len(d.Capabilities.Commands) != 0 || d.Capabilities.Spawns {
 		t.Fatalf("capabilities should not spawn/command: %#v", d.Capabilities)

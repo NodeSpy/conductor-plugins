@@ -42,8 +42,16 @@ func (ffmpegPlugin) Describe() plugin.Decl {
 			"timeout":           {Type: "duration", Desc: "default per-verb timeout (default 30m); a verb's timeout option overrides it"},
 			"overwrite_default": {Type: "boolean", Desc: "default -y behavior when a verb does not set its own overwrite option (default true)"},
 		},
-		Verbs:        ffmpegVerbs(),
-		Capabilities: plugin.Capabilities{Commands: []string{"ffmpeg", "ffprobe"}, Spawns: true, Egress: []string{}},
+		Verbs: ffmpegVerbs(),
+		// ffmpeg/ffprobe process local media only — no egress. input/output are
+		// verb OPTIONS, not a connection field, so an arbitrary caller-chosen
+		// absolute path has no capability reference to grant; only paths
+		// relative to the configured working directory (dir, which the process
+		// runs in — see runFFmpeg's cmd.Dir) are covered.
+		Capabilities: plugin.Capabilities{
+			Commands: []string{"ffmpeg", "ffprobe"},
+			Write:    []string{"config:dir"},
+		},
 	}
 }
 

@@ -105,10 +105,15 @@ func (iftttPlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{"result": {Type: "string"}, "status_code": {Type: "integer"}},
 			},
 		},
-		// The permission manifest conductor records at install and confines
-		// this plugin to: the Maker Webhooks host, and nothing else. It spawns
+		// Egress covers the real Maker Webhooks host, plus whatever
+		// base_url resolves to for a test/proxy override and
+		// webhook.smee for the optional smee.io-style relay. Listen is
+		// the webhook source's own inbound receiver address. It spawns
 		// no commands.
-		Capabilities: plugin.Capabilities{Egress: []string{"maker.ifttt.com:443"}},
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"maker.ifttt.com:443", "config:base_url", "config:webhook.smee"},
+			Listen: []string{"config:webhook.listen"},
+		},
 	}
 }
 

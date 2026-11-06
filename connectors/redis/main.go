@@ -25,6 +25,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -113,9 +114,12 @@ func (redisPlugin) Describe() plugin.Decl {
 				},
 			},
 		},
-		// The server host is operator-specific (config), so no fixed egress is
-		// declared — narrow it per instance with network:. Spawns nothing.
-		Capabilities: plugin.Capabilities{Spawns: false},
+		// The server is operator-specific: url/address name it, with
+		// "localhost:6379" declared too since address defaults to it
+		// when the operator sets neither. Spawns nothing.
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"localhost:6379", "config:address:6379", "config:url:6379"},
+		},
 	}
 }
 
@@ -290,6 +294,27 @@ func newClient(cfg map[string]any) (*redis.Client, error) {
 			opt.TLSConfig = &tls.Config{} //nolint:gosec // populated on the next line
 		}
 		opt.TLSConfig.InsecureSkipVerify = true //nolint:gosec // opt-in, documented, for self-signed servers
+	}
+	// Redis speaks a raw TCP protocol, not HTTP, so the jail's egress proxy
+	// is reached via plugin.DialContext rather than an HTTP transport's
+	// proxy env vars. A custom Dialer replaces go-redis's own TLS-aware
+	// default dialer (options.go NewDialer), so TLS (when TLSConfig is set)
+	// is re-applied here over the proxied connection.
+	tlsConfig := opt.TLSConfig
+	opt.Dialer = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		conn, err := plugin.DialContext(ctx, network, addr)
+		if err != nil {
+			return nil, err
+		}
+		if tlsConfig == nil {
+			return conn, nil
+		}
+		tlsConn := tls.Client(conn, tlsConfig)
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			conn.Close()
+			return nil, err
+		}
+		return tlsConn, nil
 	}
 	return redis.NewClient(opt), nil
 }

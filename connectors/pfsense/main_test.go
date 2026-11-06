@@ -574,8 +574,8 @@ func TestDescribe(t *testing.T) {
 	if len(d.Verbs) != len(want) {
 		t.Errorf("verb count: got %d want %d", len(d.Verbs), len(want))
 	}
-	if len(d.Capabilities.Egress) != 0 {
-		t.Errorf("expected empty egress (self-hosted), got %v", d.Capabilities.Egress)
+	if len(d.Capabilities.Egress) != 1 || d.Capabilities.Egress[0] != "config:base_url" {
+		t.Errorf("expected egress scoped to config:base_url, got %v", d.Capabilities.Egress)
 	}
 }
 

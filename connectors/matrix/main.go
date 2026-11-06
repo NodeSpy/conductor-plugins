@@ -82,12 +82,14 @@ func (matrixPlugin) Describe() plugin.Decl {
 			},
 		},
 		Verbs: matrixVerbs(),
-		// Egress is intentionally empty: the homeserver host is operator-
-		// supplied per connection (there is no fixed Matrix API host to
-		// declare statically, unlike github's api.github.com). It is
-		// documented in Connection.homeserver instead, and narrowed per
-		// instance with `network:` the same as any other connector.
-		Capabilities: plugin.Capabilities{},
+		// The homeserver host is operator-supplied per connection (there is
+		// no fixed Matrix API host to declare statically, unlike github's
+		// api.github.com), so egress is the connection's own homeserver —
+		// plus api_base, which overrides the Client-Server API base URL
+		// outright (used for tests and non-standard deployments). Both
+		// Invoke and the /sync poll loop in StartSource dial out to the
+		// same host; nothing listens for inbound connections.
+		Capabilities: plugin.Capabilities{Egress: []string{"config:homeserver", "config:api_base"}},
 	}
 }
 

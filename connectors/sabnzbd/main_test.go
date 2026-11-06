@@ -361,8 +361,8 @@ func TestDescribe(t *testing.T) {
 	if len(d.Capabilities.Commands) != 0 || d.Capabilities.Spawns {
 		t.Fatalf("capabilities: verb-only connector must not spawn/command: %#v", d.Capabilities)
 	}
-	if d.Capabilities.Egress == nil || len(d.Capabilities.Egress) != 0 {
-		t.Fatalf("capabilities.egress: want declared-empty ([]string{}), got %#v", d.Capabilities.Egress)
+	if want := []string{"config:base_url"}; len(d.Capabilities.Egress) != 1 || d.Capabilities.Egress[0] != want[0] {
+		t.Fatalf("capabilities.egress: want %v (resolved from base_url), got %#v", want, d.Capabilities.Egress)
 	}
 	want := []string{"queue", "history", "add_url", "pause", "resume", "pause_job",
 		"resume_job", "delete_job", "set_speedlimit", "status", "version", "categories", "api"}

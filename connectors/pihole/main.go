@@ -31,10 +31,11 @@
 // protected against a man-in-the-middle. Prefer importing the box's real
 // certificate instead when possible.
 //
-// Pi-hole is self-hosted with no fixed public host, so Capabilities.Egress is
-// declared empty; the operator's `network:` allowlist on the connector
-// instance is the actual scope. This connector is verb-only: it has no
-// Events and does not implement SourceHandler.
+// Pi-hole is self-hosted with no fixed public host, so egress is scoped to
+// whatever host the operator puts in base_url (Capabilities.Egress:
+// "config:base_url"); `network:` on the connector instance can narrow this
+// further, but not widen it. This connector is verb-only: it has no Events
+// and does not implement SourceHandler.
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -74,7 +75,7 @@ func (p *piholePlugin) Describe() plugin.Decl {
 	return plugin.Decl{
 		Kind: plugin.KindConnector,
 		Type: "pihole",
-		Desc: "Pi-hole v6 REST API: stats summary/history/query log, top domains/clients/upstreams, blocking on/off, allow/deny domain management, lists/groups/clients, a gravity update trigger, and a raw `api` escape hatch. Session (password -> SID) auth. Self-hosted; declares no egress (narrow with network: per instance). No source.",
+		Desc: "Pi-hole v6 REST API: stats summary/history/query log, top domains/clients/upstreams, blocking on/off, allow/deny domain management, lists/groups/clients, a gravity update trigger, and a raw `api` escape hatch. Session (password -> SID) auth. Self-hosted; egress is scoped to the configured base_url (narrow further with network: per instance). No source.",
 		Connection: plugin.Schema{
 			"base_url":             {Type: "string", Required: true, Desc: "Pi-hole v6 web/API root, e.g. https://pihole.example.com (no trailing /api)"},
 			"password":             {Type: "string", Required: true, Desc: "Pi-hole web/app password, exchanged for a session via POST /api/auth"},
@@ -221,10 +222,11 @@ func (p *piholePlugin) Describe() plugin.Decl {
 				Outputs: list,
 			},
 		},
-		// Pi-hole is self-hosted: there is no fixed public host to declare.
-		// The operator narrows egress to their own instance with
-		// `network: ["pihole.example.com:443"]` on the connector instance.
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// Pi-hole is self-hosted: there is no fixed public host to declare
+		// statically, so egress is scoped to whatever host the operator puts
+		// in base_url. network: can narrow this further per instance, but
+		// not widen it.
+		Capabilities: plugin.Capabilities{Egress: []string{"config:base_url"}},
 	}
 }
 
@@ -259,8 +261,11 @@ func httpClientFor(conn piholeConn) *http.Client {
 		return &http.Client{Timeout: 30 * time.Second}
 	}
 	return &http.Client{
-		Timeout:   30 * time.Second,
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec // opt-in per connection, for self-signed home-lab certs
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			Proxy:           http.ProxyFromEnvironment,
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // opt-in per connection, for self-signed home-lab certs
+		},
 	}
 }
 

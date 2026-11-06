@@ -48,8 +48,14 @@ func TestDescribeIsADecisionRuntime(t *testing.T) {
 	if !verbs[plugin.VerbDecide] || !verbs[plugin.VerbModels] || len(d.Verbs) != 2 {
 		t.Fatalf("a decision runtime serves exactly decide and models: %v", verbs)
 	}
-	if len(d.Capabilities.Egress) != 1 || d.Capabilities.Egress[0] != "api.typesafe.ai:443" {
+	wantEgress := map[string]bool{"api.typesafe.ai:443": true, "config:api_base": true}
+	if len(d.Capabilities.Egress) != len(wantEgress) {
 		t.Fatalf("egress: %v", d.Capabilities.Egress)
+	}
+	for _, e := range d.Capabilities.Egress {
+		if !wantEgress[e] {
+			t.Fatalf("unexpected egress entry %q: %v", e, d.Capabilities.Egress)
+		}
 	}
 	if d.Capabilities.Spawns || len(d.Capabilities.Commands) != 0 {
 		t.Fatal("the runtime spawns nothing")

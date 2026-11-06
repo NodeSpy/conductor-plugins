@@ -24,6 +24,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -80,9 +82,12 @@ func (mqttPlugin) Describe() plugin.Decl {
 				},
 			},
 		},
-		// The broker host is operator-specific (config), so no fixed egress is
-		// declared — narrow it per instance with network:. Spawns nothing.
-		Capabilities: plugin.Capabilities{Spawns: false},
+		// The broker is reached via the connection's broker URL; :1883 is the
+		// fallback port when a bare host carries no port of its own (ssl://
+		// brokers almost always spell out :8883 explicitly). paho's own tcp/ssl
+		// dialer bypasses HTTP(S)_PROXY (see openConnViaJail below), so this is
+		// the only capability needed: no separate Commands/Env.
+		Capabilities: plugin.Capabilities{Egress: []string{"config:broker:1883"}},
 	}
 }
 
@@ -220,6 +225,14 @@ func connectWith(cfg map[string]any, clientID string, onConnect mqtt.OnConnectHa
 	if onConnect != nil {
 		opts.SetOnConnectHandler(onConnect)
 	}
+	// paho's built-in dialer only proxies tcp/ssl connections via the
+	// all_proxy/ALL_PROXY SOCKS variable, never HTTP(S)_PROXY — so under the
+	// jail (no network interface but loopback, egress only through the
+	// HTTP(S)_PROXY CONNECT proxy) a plain tcp:// or ssl:// broker is
+	// unreachable unless we open the connection ourselves. ws/wss already go
+	// through gorilla's dialer, which paho defaults to http.ProxyFromEnvironment,
+	// so only tcp/ssl need the override.
+	opts.SetCustomOpenConnectionFn(openConnViaJail)
 
 	client := mqtt.NewClient(opts)
 	tok := client.Connect()
@@ -227,6 +240,34 @@ func connectWith(cfg map[string]any, clientID string, onConnect mqtt.OnConnectHa
 		return nil, fmt.Errorf("%s", tokErr(tok))
 	}
 	return client, nil
+}
+
+// openConnViaJail is paho's CustomOpenConnectionFn: it replaces ALL of
+// paho's scheme handling (not just tcp/ssl), so ws/wss are reproduced here
+// too, via the same exported helper paho's own openConnection uses — which
+// already defaults to http.ProxyFromEnvironment, so those two are unchanged
+// in behavior. tcp/mqtt and ssl/tls/mqtts/tcps go through plugin.DialContext
+// instead of a raw net.Dial, so they honor the jail's egress proxy.
+func openConnViaJail(uri *url.URL, o mqtt.ClientOptions) (net.Conn, error) {
+	switch uri.Scheme {
+	case "ws":
+		return mqtt.NewWebsocket(uri.String(), nil, o.ConnectTimeout, o.HTTPHeaders, o.WebsocketOptions)
+	case "wss":
+		return mqtt.NewWebsocket(uri.String(), o.TLSConfig, o.ConnectTimeout, o.HTTPHeaders, o.WebsocketOptions)
+	case "ssl", "tls", "mqtts", "mqtt+ssl", "tcps":
+		conn, err := plugin.DialContext(context.Background(), "tcp", uri.Host)
+		if err != nil {
+			return nil, err
+		}
+		tlsConn := tls.Client(conn, o.TLSConfig)
+		if err := tlsConn.HandshakeContext(context.Background()); err != nil {
+			conn.Close()
+			return nil, err
+		}
+		return tlsConn, nil
+	default: // "tcp", "mqtt"
+		return plugin.DialContext(context.Background(), "tcp", uri.Host)
+	}
 }
 
 // qosOf resolves the QoS: the per-call option if present and valid, else the

@@ -785,8 +785,11 @@ func TestDescribe(t *testing.T) {
 	if len(d.Capabilities.Commands) != 0 || d.Capabilities.Spawns {
 		t.Fatalf("capabilities: must not spawn/command: %#v", d.Capabilities)
 	}
-	if d.Capabilities.Egress == nil || len(d.Capabilities.Egress) != 0 {
-		t.Fatalf("capabilities.egress: want declared-empty ([]string{}), got %#v", d.Capabilities.Egress)
+	if !contains(d.Capabilities.Egress, "config:base_url") || !contains(d.Capabilities.Egress, "config:webhook.smee") {
+		t.Fatalf("capabilities.egress: want config:base_url and config:webhook.smee, got %#v", d.Capabilities.Egress)
+	}
+	if !contains(d.Capabilities.Listen, "config:webhook.listen") {
+		t.Fatalf("capabilities.listen: want config:webhook.listen, got %#v", d.Capabilities.Listen)
 	}
 	want := []string{
 		"series", "series_get", "lookup", "add_series", "delete_series",
@@ -867,4 +870,14 @@ func waitForListener(t *testing.T, addr string) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("listener at %s never came up", addr)
+}
+
+// contains reports whether want is present in s.
+func contains(s []string, want string) bool {
+	for _, v := range s {
+		if v == want {
+			return true
+		}
+	}
+	return false
 }

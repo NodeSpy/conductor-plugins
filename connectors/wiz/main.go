@@ -110,9 +110,14 @@ func (w *wizPlugin) Describe() plugin.Decl {
 		Verbs: wizVerbs(),
 		// Wiz's OAuth token endpoint is a single fixed host; the GraphQL API
 		// host is tenant/region-specific (api.us1.app.wiz.io, api.eu1.app.wiz.io,
-		// ...), so the manifest documents the pattern rather than one literal
-		// host. Operators SHOULD narrow `network:` to their actual tenant host.
-		Capabilities: plugin.Capabilities{Egress: []string{"auth.app.wiz.io:443", "api.*.app.wiz.io:443"}},
+		// ...), so egress resolves it from the required api_url connection
+		// field instead of a guessed host pattern. webhook.smee is an optional
+		// outbound smee.io-style relay the source dials out to; Listen is the
+		// webhook receiver's own inbound address.
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"auth.app.wiz.io:443", "config:api_url", "config:webhook.smee"},
+			Listen: []string{"config:webhook.listen"},
+		},
 	}
 }
 

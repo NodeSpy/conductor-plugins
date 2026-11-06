@@ -3,7 +3,6 @@ package main
 import (
 	"net/http"
 	"net/url"
-	"reflect"
 	"strconv"
 	"testing"
 
@@ -214,8 +213,11 @@ func TestDescribe(t *testing.T) {
 	if len(d.Verbs) != 0 {
 		t.Fatalf("expected no verbs, got %v", d.Verbs)
 	}
-	if !reflect.DeepEqual(d.Capabilities, plugin.Capabilities{}) {
-		t.Fatalf("expected empty capabilities, got %#v", d.Capabilities)
+	if len(d.Capabilities.Listen) != 1 || d.Capabilities.Listen[0] != "config:listen" {
+		t.Fatalf("capabilities.Listen: %#v", d.Capabilities.Listen)
+	}
+	if len(d.Capabilities.Egress) != 1 || d.Capabilities.Egress[0] != "config:smee" {
+		t.Fatalf("capabilities.Egress: %#v", d.Capabilities.Egress)
 	}
 	if len(d.Events) != 1 || d.Events[0].Name != "monitor" {
 		t.Fatalf("expected single 'monitor' event, got %#v", d.Events)

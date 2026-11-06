@@ -174,13 +174,14 @@ func TestDescribe(t *testing.T) {
 	if d.Kind != plugin.KindConnector || d.Type != "libation" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	if len(d.Capabilities.Commands) != 1 || d.Capabilities.Commands[0] != "LibationCli" || !d.Capabilities.Spawns {
+	if len(d.Capabilities.Commands) != 1 || d.Capabilities.Commands[0] != "LibationCli" {
 		t.Fatalf("capabilities: %#v", d.Capabilities)
 	}
-	// Libation reaches Audible; this connector does not dial anything itself,
-	// so declaring egress would widen what the operator is asked to accept.
-	if len(d.Capabilities.Egress) != 0 {
-		t.Fatalf("declared egress: %v", d.Capabilities.Egress)
+	// LibationCli itself reaches Audible's API and CDN hosts under the jail,
+	// so the declaration must name them even though this connector dials
+	// nothing directly.
+	if len(d.Capabilities.Egress) == 0 {
+		t.Fatalf("expected declared Audible egress, got none")
 	}
 	want := []string{"scan", "export", "liberate", "set_status", "search", "list_accounts", "cli"}
 	got := map[string]bool{}

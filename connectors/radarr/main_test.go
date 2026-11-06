@@ -389,8 +389,12 @@ func TestDescribe(t *testing.T) {
 	if len(d.Capabilities.Commands) != 0 || d.Capabilities.Spawns {
 		t.Fatalf("capabilities: connector must not spawn/command: %#v", d.Capabilities)
 	}
-	if d.Capabilities.Egress == nil || len(d.Capabilities.Egress) != 0 {
-		t.Fatalf("capabilities.egress: want declared-empty ([]string{}), got %#v", d.Capabilities.Egress)
+	wantEgress := []string{"config:base_url", "config:webhook.smee"}
+	if len(d.Capabilities.Egress) != len(wantEgress) || d.Capabilities.Egress[0] != wantEgress[0] || d.Capabilities.Egress[1] != wantEgress[1] {
+		t.Fatalf("capabilities.egress: want %#v, got %#v", wantEgress, d.Capabilities.Egress)
+	}
+	if len(d.Capabilities.Listen) != 1 || d.Capabilities.Listen[0] != "config:webhook.listen" {
+		t.Fatalf("capabilities.listen: want [\"config:webhook.listen\"], got %#v", d.Capabilities.Listen)
 	}
 	want := []string{"movies", "movie_get", "lookup", "add_movie", "delete_movie", "command",
 		"queue", "calendar", "wanted_missing", "quality_profiles", "root_folders", "health", "api"}

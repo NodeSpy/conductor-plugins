@@ -261,8 +261,11 @@ func TestDescribe(t *testing.T) {
 	if d.Kind != plugin.KindConnector || d.Type != "docker" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	if !contains(d.Capabilities.Commands, "docker") || !contains(d.Capabilities.Commands, "podman") || !d.Capabilities.Spawns {
+	if !contains(d.Capabilities.Commands, "docker") || !contains(d.Capabilities.Commands, "podman") {
 		t.Fatalf("capabilities: %#v", d.Capabilities)
+	}
+	if !contains(d.Capabilities.Write, "/var/run/docker.sock") {
+		t.Fatalf("expected the default docker socket in write, got %#v", d.Capabilities.Write)
 	}
 	want := []string{"run", "exec", "build", "pull", "push", "ps", "images", "logs",
 		"stop", "start", "rm", "inspect", "compose", "buildx", "bake", "cli"}

@@ -40,8 +40,44 @@ func (terraspacePlugin) Describe() plugin.Decl {
 			"env":     {Type: "map", Desc: "extra process environment for every invocation"},
 			"timeout": {Type: "duration", Desc: "default per-verb timeout (default 10m); a verb's timeout option overrides it"},
 		},
-		Verbs:        terraspaceVerbs(),
-		Capabilities: plugin.Capabilities{Commands: []string{"terraspace", "terraform", "tofu"}, Spawns: true, Egress: []string{}},
+		Verbs: terraspaceVerbs(),
+		Capabilities: plugin.Capabilities{
+			// terraspace's own CLI entry point is a Ruby gem shim
+			// (#!/usr/bin/env ruby): the kernel execs /usr/bin/env, which
+			// execs ruby, to run it — both must be declared alongside the
+			// command itself. terraspace in turn drives terraform/tofu as
+			// subprocesses for the actual plan/apply work.
+			Commands: []string{"terraspace", "env", "ruby", "terraform", "tofu"},
+			// The wrapped terraform/tofu calls still need the module/
+			// provider registry; the same limitation noted on the
+			// terraform connector applies here too — provider API egress
+			// beyond AWS (the most common case) cannot be declared
+			// generically, since it depends on the project's own .tf files.
+			Egress: []string{
+				"registry.terraform.io:443", "registry.opentofu.org:443",
+				"*.amazonaws.com:443", "169.254.169.254:80",
+			},
+			// dir is the terraspace project root: stacks, generated
+			// Terraform config, and its own .terraspace-cache all live
+			// there. ~/.terraform.d is the wrapped terraform's provider
+			// plugin cache.
+			Write: []string{"config:dir", "~/.terraform.d"},
+			// ~/.terraformrc / ~/.aws mirror the terraform connector
+			// (registry credentials, AWS provider's ambient credential
+			// chain); ~/.gem and ~/.bundle are the Ruby runtime's package
+			// caches, needed just to start the interpreter.
+			Read: []string{"~/.terraformrc", "~/.aws", "~/.gem", "~/.bundle"},
+			// AWS_* / TF_* mirror the terraform connector's rationale.
+			// GEM_HOME/GEM_PATH/BUNDLE_GEMFILE are Ruby/Bundler's own
+			// locations for the terraspace gem and its dependencies.
+			Env: []string{
+				"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+				"AWS_PROFILE", "AWS_DEFAULT_REGION", "AWS_REGION",
+				"AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE", "AWS_CA_BUNDLE",
+				"HOME", "GEM_HOME", "GEM_PATH", "BUNDLE_GEMFILE",
+				"TF_LOG", "TF_DATA_DIR", "TF_PLUGIN_CACHE_DIR",
+			},
+		},
 	}
 }
 

@@ -73,7 +73,7 @@ func (p *keycloakPlugin) Describe() plugin.Decl {
 	return plugin.Decl{
 		Kind: plugin.KindConnector,
 		Type: "keycloak",
-		Desc: "Keycloak identity/SSO admin: realms, users, groups, clients, roles, sessions, and events over the Keycloak Admin REST API, plus a raw api escape hatch. Self-managed OAuth2 client_credentials admin-token fetch (Keycloak's token endpoint is deployment+realm specific). Self-hosted; declares no egress (narrow with network: per instance). No source.",
+		Desc: "Keycloak identity/SSO admin: realms, users, groups, clients, roles, sessions, and events over the Keycloak Admin REST API, plus a raw api escape hatch. Self-managed OAuth2 client_credentials admin-token fetch (Keycloak's token endpoint is deployment+realm specific, but lives on the same host as base_url). No source.",
 		Connection: plugin.Schema{
 			"base_url": {Type: "string", Required: true, Desc: "Keycloak server root, e.g. https://keycloak.example.com"},
 			"realm":    {Type: "string", Desc: `target realm for admin operations (default "master")`},
@@ -89,10 +89,9 @@ func (p *keycloakPlugin) Describe() plugin.Decl {
 			},
 		},
 		Verbs: keycloakVerbs(),
-		// Keycloak is self-hosted: there is no fixed public host to declare.
-		// The operator narrows egress to their own instance with
-		// `network: ["keycloak.example.com:443"]` on the connector instance.
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// Egress resolves base_url at launch: every admin API call and the
+		// self-managed OAuth2 token fetch both go to the same Keycloak host.
+		Capabilities: plugin.Capabilities{Egress: []string{"config:base_url"}},
 	}
 }
 
@@ -277,7 +276,10 @@ func (c keycloakConn) tokenURL() string {
 func (c keycloakConn) httpClient() *http.Client {
 	client := &http.Client{Timeout: 30 * time.Second}
 	if c.insecureSkipVerify {
-		client.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+		client.Transport = &http.Transport{
+			Proxy:           http.ProxyFromEnvironment,
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
 	}
 	return client
 }

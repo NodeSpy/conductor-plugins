@@ -52,8 +52,11 @@ func (pushoverPlugin) Describe() plugin.Decl {
 		},
 		Verbs: pushoverVerbs(),
 		// The permission manifest conductor records at install: this plugin
-		// only ever calls the Pushover API, and spawns nothing.
-		Capabilities: plugin.Capabilities{Egress: []string{"api.pushover.net:443"}},
+		// only ever calls the Pushover API (the default host, declared
+		// explicitly since api_base is optional and unset in the common
+		// case) or whatever host an operator points api_base at instead
+		// (a private gateway), and spawns nothing.
+		Capabilities: plugin.Capabilities{Egress: []string{"api.pushover.net:443", "config:api_base"}},
 	}
 }
 

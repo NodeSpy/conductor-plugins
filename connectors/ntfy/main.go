@@ -11,7 +11,8 @@
 // Connection (used for both Invoke and StartSource):
 //
 //	server: "https://ntfy.sh"  # base URL (default); point at a self-hosted
-//	                            # server to change/widen the egress target
+//	                            # server instead (config:server is granted
+//	                            # alongside the hosted default)
 //	token: "<access token>"    # Bearer auth
 //	username: "<user>"         # Basic auth (paired with password)
 //	password: "<pass>"
@@ -44,7 +45,7 @@ func (ntfyPlugin) Describe() plugin.Decl {
 		Type: "ntfy",
 		Desc: "ntfy.sh push notifications: publish a message (verb), and subscribe to topics as a live source over ntfy's JSON-stream endpoint.",
 		Connection: plugin.Schema{
-			"server":    {Type: "string", Desc: "ntfy server base URL (default https://ntfy.sh); a self-hosted server changes/widens the egress target beyond the declared capability"},
+			"server":    {Type: "string", Desc: "ntfy server base URL (default https://ntfy.sh); a self-hosted server is covered by capabilities.egress's config:server entry"},
 			"token":     {Type: "string", Secret: true, Desc: "Bearer access token"},
 			"username":  {Type: "string", Desc: "Basic auth username (paired with password)"},
 			"password":  {Type: "string", Desc: "Basic auth password (paired with username)"},
@@ -100,10 +101,11 @@ func (ntfyPlugin) Describe() plugin.Decl {
 			},
 		},
 		// It only ever calls out to the configured ntfy server (publish POST,
-		// subscribe GET) and spawns nothing.
+		// subscribe GET) and spawns nothing. ntfy.sh:443 is the hosted
+		// default; config:server is also granted so a self-hosted server
+		// (a real, documented connection option) isn't jailed out.
 		Capabilities: plugin.Capabilities{
-			Egress: []string{"ntfy.sh:443"},
-			Spawns: false,
+			Egress: []string{"ntfy.sh:443", "config:server"},
 		},
 	}
 }

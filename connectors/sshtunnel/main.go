@@ -82,7 +82,34 @@ func (p *sshtunnelPlugin) Describe() plugin.Decl {
 			exposurekit.OpenVerb("open an ssh reverse tunnel to a local address"),
 			exposurekit.CloseVerb(),
 		},
-		Capabilities: plugin.Capabilities{Commands: []string{"ssh"}, Spawns: true},
+		Capabilities: plugin.Capabilities{
+			Commands: []string{"ssh"},
+			// The tunnel host, at its two documented default ports (generic
+			// presets use 22; pinggy uses 443). `host` and `port` are
+			// separate connection fields, and an entry can only resolve ONE
+			// field, so a `port` value other than these two defaults isn't
+			// expressible here — such an instance needs its jail widened
+			// explicitly.
+			//
+			// NOT declarable at all: the ssh -R forward's own local dial
+			// (ssh connects out to localhost:<port from local_addr> to
+			// deliver each forwarded connection). local_addr arrives as the
+			// "open" verb's OPTION, filled in per call by the engine via the
+			// `exposes` semantic — never a Connection field — so there is no
+			// config: reference for it. That leg will be refused by the
+			// egress proxy under the jail.
+			Egress: []string{"config:host:22", "config:host:443"},
+			// ssh writes the accepted host key here under -o
+			// StrictHostKeyChecking=accept-new (Write implies read, so this
+			// also covers reading back a previously-accepted entry).
+			Write: []string{"~/.ssh/known_hosts", "env:SSH_AUTH_SOCK"}, // the agent socket, when SSH_AUTH_SOCK is set
+			// ssh's own config, and (when identity_file is unset) its
+			// default private keys, plus the configured identity file.
+			Read: []string{"~/.ssh", "/etc/ssh/ssh_config", "config:identity_file"},
+			// SSH_AUTH_SOCK: lets ssh use an already-running ssh-agent
+			// instead of (or in addition to) identity_file.
+			Env: []string{"SSH_AUTH_SOCK"},
+		},
 	}
 }
 

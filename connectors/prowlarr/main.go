@@ -39,10 +39,11 @@
 //	  allow_unsigned: false           # explicit opt-in to run with no shared token
 //	  smee: "<smee.io channel URL>"   # optional relay for endpoints with no public URL
 //
-// The Prowlarr host is operator-specific and self-hosted, so this plugin
-// declares NO egress in its capability manifest — the operator is expected to
-// scope `network:` on the connector instance to their own Prowlarr host (see
-// docs/connectors/prowlarr.md).
+// The Prowlarr host is operator-specific and self-hosted, so egress is
+// scoped to whatever host the operator puts in base_url (plus webhook.smee,
+// when a smee.io-style relay is configured for the webhook source) rather
+// than any fixed hostname; `network:` on the connector instance can narrow
+// this further, but not widen it (see docs/connectors/prowlarr.md).
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -83,11 +84,17 @@ func (prowlarrPlugin) Describe() plugin.Decl {
 		Verbs:  prowlarrVerbs(),
 		// Prowlarr is always self-hosted — there is no fixed hostname this
 		// plugin can declare the way api.github.com is fixed for the github
-		// connector. An empty manifest is the honest declaration; the
-		// operator MUST narrow `network:` on the connector instance to their
-		// own instance's host themselves (documented in
-		// docs/connectors/prowlarr.md).
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// connector, so egress is scoped to whatever host the operator puts
+		// in base_url. webhook.smee is also granted egress: when set, it is
+		// an optional smee.io-style relay URL the source dials out to for
+		// endpoints with no public URL of their own. webhook.listen is
+		// granted as the source's inbound listen address. network: can
+		// narrow any of this further per instance, but not widen it
+		// (documented in docs/connectors/prowlarr.md).
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"config:base_url", "config:webhook.smee"},
+			Listen: []string{"config:webhook.listen"},
+		},
 	}
 }
 

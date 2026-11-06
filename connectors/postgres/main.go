@@ -30,6 +30,20 @@ import (
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
 )
 
+// connect opens a connection the way the jail allows: pgx's own default
+// dialer is a plain net.Dialer that never looks at HTTP(S)_PROXY, so under
+// the jail (no network interface but loopback) a remote Postgres host is
+// unreachable unless the connection goes through plugin.DialContext (an HTTP
+// CONNECT tunnel through conductor's egress proxy) instead.
+func connect(ctx context.Context, url string) (*pgx.Conn, error) {
+	cfg, err := pgx.ParseConfig(url)
+	if err != nil {
+		return nil, err
+	}
+	cfg.DialFunc = plugin.DialContext
+	return pgx.ConnectConfig(ctx, cfg)
+}
+
 type pgPlugin struct{}
 
 func (pgPlugin) Describe() plugin.Decl {
@@ -87,9 +101,9 @@ func (pgPlugin) Describe() plugin.Decl {
 				},
 			},
 		},
-		// The database host is operator-specific (config), so no fixed egress is
-		// declared — narrow it per instance with network:. Spawns nothing.
-		Capabilities: plugin.Capabilities{Spawns: false},
+		// url carries host:port (default 5432 for a bare host/no port); egress
+		// goes through plugin.DialContext (see connect below), not a raw dial.
+		Capabilities: plugin.Capabilities{Egress: []string{"config:url:5432"}},
 	}
 }
 
@@ -105,7 +119,7 @@ func (pgPlugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeResult, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	conn, err := pgx.Connect(ctx, url)
+	conn, err := connect(ctx, url)
 	if err != nil {
 		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, req.Verb+": connect: "+err.Error())
 	}
@@ -204,7 +218,7 @@ func (pgPlugin) StartSource(ctx context.Context, req plugin.StartSourceRequest, 
 // a notification event per NOTIFY until the connection drops or ctx is
 // cancelled. Reconnection/backoff is the caller's job.
 func listenOnce(ctx context.Context, url string, channels []string, instance string, emit func(any) error) error {
-	conn, err := pgx.Connect(ctx, url)
+	conn, err := connect(ctx, url)
 	if err != nil {
 		return err
 	}

@@ -100,8 +100,9 @@ func (testPlugin) Describe() plugin.Decl {
 				},
 			},
 		},
-		// Purely synthetic: no network, no filesystem, no processes.
-		Capabilities: plugin.Capabilities{Spawns: false},
+		// Purely synthetic: no network, no filesystem, no processes — the
+		// empty manifest is the strongest claim available.
+		Capabilities: plugin.Capabilities{},
 	}
 }
 

@@ -234,7 +234,7 @@ func TestDescribe(t *testing.T) {
 	if d.Kind != plugin.KindConnector || d.Type != "helm" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	if !contains(d.Capabilities.Commands, "helm") || !d.Capabilities.Spawns {
+	if !contains(d.Capabilities.Commands, "helm") || len(d.Capabilities.Egress) == 0 {
 		t.Fatalf("capabilities: %#v", d.Capabilities)
 	}
 	want := []string{"install", "upgrade", "uninstall", "rollback", "list", "status",

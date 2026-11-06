@@ -42,8 +42,20 @@ func (helmPlugin) Describe() plugin.Decl {
 			"env":          {Type: "map", Desc: "default process environment for every invocation"},
 			"timeout":      {Type: "duration", Desc: "default per-verb timeout (default 10m); a verb's timeout option overrides it"},
 		},
-		Verbs:        helmVerbs(),
-		Capabilities: plugin.Capabilities{Commands: []string{"helm"}, Spawns: true},
+		Verbs: helmVerbs(),
+		// Like kubectl, the cluster's API server host lives inside the
+		// kubeconfig FILE's content, not a declarable connection field; repo_add
+		// also takes an arbitrary chart-repo URL as a per-call OPTION, which
+		// Capabilities (resolved only from Connection fields) cannot name either.
+		// A port-only wildcard is the honest expression of both. helm reads/
+		// writes its repo cache, plugin list and local chart cache under
+		// ~/.cache/helm, ~/.config/helm and ~/.local/share/helm (XDG dirs).
+		Capabilities: plugin.Capabilities{
+			Commands: []string{"helm"},
+			Egress:   []string{"*:443", "*:6443", "*:80"},
+			Read:     []string{"config:kubeconfig"},
+			Write:    []string{"~/.kube", "~/.cache/helm", "~/.config/helm", "~/.local/share/helm"},
+		},
 	}
 }
 

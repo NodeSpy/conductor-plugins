@@ -20,8 +20,13 @@ func TestDescribe(t *testing.T) {
 	if d.Kind != plugin.KindConnector || d.Type != "jira" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	if len(d.Capabilities.Egress) != 1 || d.Capabilities.Egress[0] != "*.atlassian.net:443" {
+	wantEgress := []string{"*.atlassian.net:443", "config:webhook.smee"}
+	if !reflect.DeepEqual(d.Capabilities.Egress, wantEgress) {
 		t.Fatalf("capabilities.egress: %#v", d.Capabilities.Egress)
+	}
+	wantListen := []string{"config:webhook.listen"}
+	if !reflect.DeepEqual(d.Capabilities.Listen, wantListen) {
+		t.Fatalf("capabilities.listen: %#v", d.Capabilities.Listen)
 	}
 	if _, ok := d.Connection["base_url"]; !ok || !d.Connection["base_url"].Required {
 		t.Fatalf("connection.base_url must be present and required: %#v", d.Connection["base_url"])

@@ -51,9 +51,15 @@ func (pagerduty) Describe() plugin.Decl {
 				"priorities":  {Type: "list", Desc: "P1, P2, … (empty = any)"},
 			},
 		}},
-		// Inbound only: it LISTENS, it never dials out, and it spawns nothing.
-		// An empty manifest is the strongest thing this plugin can say.
-		Capabilities: plugin.Capabilities{},
+		// A webhook receiver: it LISTENS on the configured address
+		// (config:listen) and spawns nothing. When smee is set it also
+		// dials out to that relay (config:smee) to pull forwarded
+		// deliveries over SSE instead of (or alongside) listening
+		// directly — see internal/relay.
+		Capabilities: plugin.Capabilities{
+			Listen: []string{"config:listen"},
+			Egress: []string{"config:smee"},
+		},
 	}
 }
 

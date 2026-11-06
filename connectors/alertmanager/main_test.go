@@ -1,6 +1,7 @@
 package main
 
 import (
+	"reflect"
 	"testing"
 
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
@@ -149,16 +150,22 @@ func TestDedupFiringThenResolved(t *testing.T) {
 	}
 }
 
-// TestDescribe asserts the declared surface: kind, type, empty capabilities,
-// the single "alert" event, and its filter keys.
+// TestDescribe asserts the declared surface: kind, type, capabilities (a
+// webhook listener and the optional smee relay egress, nothing else), the
+// single "alert" event, and its filter keys.
 func TestDescribe(t *testing.T) {
 	d := alertmanager{}.Describe()
 	if d.Kind != plugin.KindConnector || d.Type != "alertmanager" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	if len(d.Capabilities.Egress) != 0 || len(d.Capabilities.Commands) != 0 ||
-		len(d.Capabilities.FS) != 0 || d.Capabilities.Spawns {
-		t.Fatalf("capabilities: want empty manifest, got %#v", d.Capabilities)
+	if len(d.Capabilities.Commands) != 0 || len(d.Capabilities.FS) != 0 || d.Capabilities.Spawns {
+		t.Fatalf("capabilities: want no commands/fs/spawns, got %#v", d.Capabilities)
+	}
+	if want := []string{"config:listen"}; !reflect.DeepEqual(d.Capabilities.Listen, want) {
+		t.Errorf("listen: got %v want %v", d.Capabilities.Listen, want)
+	}
+	if want := []string{"config:smee"}; !reflect.DeepEqual(d.Capabilities.Egress, want) {
+		t.Errorf("egress: got %v want %v", d.Capabilities.Egress, want)
 	}
 	if len(d.Events) != 1 || d.Events[0].Name != "alert" {
 		t.Fatalf("events: %#v", d.Events)

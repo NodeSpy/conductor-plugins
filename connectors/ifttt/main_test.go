@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -22,8 +23,13 @@ func TestDescribe(t *testing.T) {
 	if d.Kind != plugin.KindConnector || d.Type != "ifttt" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	if len(d.Capabilities.Egress) != 1 || d.Capabilities.Egress[0] != "maker.ifttt.com:443" {
-		t.Fatalf("capabilities: %#v", d.Capabilities)
+	wantEgress := []string{"maker.ifttt.com:443", "config:base_url", "config:webhook.smee"}
+	if !reflect.DeepEqual(d.Capabilities.Egress, wantEgress) {
+		t.Fatalf("capabilities.egress: %#v", d.Capabilities.Egress)
+	}
+	wantListen := []string{"config:webhook.listen"}
+	if !reflect.DeepEqual(d.Capabilities.Listen, wantListen) {
+		t.Fatalf("capabilities.listen: %#v", d.Capabilities.Listen)
 	}
 	verbs := map[string]bool{}
 	for _, v := range d.Verbs {

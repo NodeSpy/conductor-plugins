@@ -167,9 +167,9 @@ func (p *protectPlugin) Describe() plugin.Decl {
 			},
 		},
 		// A UniFi Protect console is self-hosted: there is no fixed public host
-		// to declare. The operator narrows egress to their own console with
-		// `network: ["192.168.1.1:443"]` on the connector instance.
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// to declare, so egress resolves to whatever base_url this instance is
+		// configured with.
+		Capabilities: plugin.Capabilities{Egress: []string{"config:base_url"}},
 	}
 }
 
@@ -252,7 +252,10 @@ func (p *protectPlugin) clientFor(conn protectConn) *http.Client {
 	if c, ok := p.clients[key]; ok {
 		return c
 	}
-	transport := &http.Transport{}
+	// Proxy must be set explicitly: a bare &http.Transport{} does not honor
+	// HTTP(S)_PROXY, so under the jail this client would never reach the
+	// egress proxy at all.
+	transport := &http.Transport{Proxy: http.ProxyFromEnvironment}
 	if conn.insecureSkipVerify {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402 -- opt-in per connection for self-signed consoles
 	}

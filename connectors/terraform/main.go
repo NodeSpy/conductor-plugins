@@ -47,8 +47,51 @@ func (terraformPlugin) Describe() plugin.Decl {
 			"env":     {Type: "map", Desc: "process environment for every invocation, e.g. TF_VAR_*, AWS_*"},
 			"timeout": {Type: "duration", Desc: "default per-verb timeout (default 10m); a verb's timeout option overrides it"},
 		},
-		Verbs:        terraformVerbs(),
-		Capabilities: plugin.Capabilities{Commands: []string{"terraform"}, Spawns: true},
+		Verbs: terraformVerbs(),
+		Capabilities: plugin.Capabilities{
+			// terraform/tofu/terragrunt are the only plausible values for
+			// engine/binary — all three are argv-compatible siblings.
+			Commands: []string{"terraform", "tofu", "terragrunt"},
+			// registry.terraform.io / registry.opentofu.org serve init's
+			// module and provider downloads. The actual infrastructure
+			// managed by `plan`/`apply` talks to whatever host each
+			// provider in the operator's .tf files calls — that is not
+			// knowable from this connector's own config, so it cannot be
+			// declared generically. *.amazonaws.com and the EC2/ECS
+			// metadata service are included because AWS is the single most
+			// common case (mirrors the aws-cli connector's declaration);
+			// any other cloud (GCP, Azure, ...) needs its own egress added
+			// by whoever packages this plugin for that use — see the
+			// package-level report on this limitation.
+			Egress: []string{
+				"registry.terraform.io:443", "registry.opentofu.org:443",
+				"*.amazonaws.com:443", "169.254.169.254:80",
+			},
+			// chdir is the working directory terraform/tofu/terragrunt
+			// operates on: state, lock files, and the .terraform/ provider
+			// cache all live there. ~/.terraform.d is the global provider
+			// plugin cache (read AND written across runs).
+			Write: []string{"config:chdir", "~/.terraform.d"},
+			// ~/.terraformrc holds registry/module credentials
+			// (credentials.tfrc.json); ~/.aws is the AWS provider's ambient
+			// credential chain (same default the AWS SDK and the aws-cli
+			// connector use).
+			Read: []string{"~/.terraformrc", "~/.aws"},
+			// AWS_* mirrors the aws-cli connector's declaration (the AWS
+			// provider reads the identical ambient credential chain). The
+			// TF_* vars are terraform's own. TF_VAR_<name> is an
+			// operator-chosen, unbounded suffix and can't be named here —
+			// use the connection's own `env` map instead, which is config
+			// data passed to the child process directly, not a
+			// daemon-environment passthrough gated by this list.
+			Env: []string{
+				"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+				"AWS_PROFILE", "AWS_DEFAULT_REGION", "AWS_REGION",
+				"AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE", "AWS_CA_BUNDLE",
+				"HOME", "TF_LOG", "TF_DATA_DIR", "TF_PLUGIN_CACHE_DIR",
+				"TF_IN_AUTOMATION", "TF_CLI_ARGS",
+			},
+		},
 	}
 }
 

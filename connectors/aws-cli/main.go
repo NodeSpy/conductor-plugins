@@ -42,8 +42,29 @@ func (awsPlugin) Describe() plugin.Decl {
 			"env":          {Type: "map", Desc: "default process environment for every invocation, e.g. AWS_PROFILE/AWS_ACCESS_KEY_ID"},
 			"timeout":      {Type: "duration", Desc: "default per-verb timeout (default 10m); a verb's timeout option overrides it"},
 		},
-		Verbs:        awsVerbs(),
-		Capabilities: plugin.Capabilities{Commands: []string{"aws"}, Spawns: true},
+		Verbs: awsVerbs(),
+		// Shells out to the aws CLI: its ambient credential chain reads the
+		// AWS_* env vars, ~/.aws/credentials and ~/.aws/config (or
+		// AWS_CONFIG_FILE/AWS_SHARED_CREDENTIALS_FILE overrides), an assumed-role
+		// or SSO cache under ~/.aws, or an EC2/ECS instance role over the
+		// link-local metadata service — never this connector's own config.
+		// `run` is generic-first (any AWS service/operation), hence the broad
+		// egress; endpoint_url redirects it per instance (LocalStack, a VPC
+		// endpoint). NOTE: s3 cp/sync/mv against a LOCAL path (not s3://...) can't
+		// be granted here — src/dst are verb options, not a connection field, so
+		// there is no capability reference for an arbitrary caller-chosen path;
+		// only s3://... URIs and paths under the call's staging dir work in the jail.
+		Capabilities: plugin.Capabilities{
+			Commands: []string{"aws"},
+			Egress:   []string{"*.amazonaws.com:443", "169.254.169.254:80", "config:endpoint_url"},
+			Write:    []string{"~/.aws", "env:AWS_CONFIG_FILE", "env:AWS_SHARED_CREDENTIALS_FILE"},
+			Env: []string{
+				"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+				"AWS_PROFILE", "AWS_DEFAULT_REGION", "AWS_REGION",
+				"AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE", "AWS_CA_BUNDLE",
+				"HOME",
+			},
+		},
 	}
 }
 

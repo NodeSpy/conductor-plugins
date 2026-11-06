@@ -21,6 +21,12 @@ func TestDescribe(t *testing.T) {
 	if !contains(d.Capabilities.Egress, "hooks.zapier.com:443") {
 		t.Fatalf("egress: %#v", d.Capabilities.Egress)
 	}
+	if !contains(d.Capabilities.Egress, "config:webhook.smee") {
+		t.Fatalf("egress: %#v", d.Capabilities.Egress)
+	}
+	if len(d.Capabilities.Listen) != 1 || d.Capabilities.Listen[0] != "config:webhook.listen" {
+		t.Fatalf("listen: got %#v", d.Capabilities.Listen)
+	}
 	if len(d.Capabilities.Commands) != 0 || d.Capabilities.Spawns || len(d.Capabilities.FS) != 0 {
 		t.Fatalf("expected no commands/spawns/fs, got %#v", d.Capabilities)
 	}

@@ -70,8 +70,12 @@ func (smartPlugin) Describe() plugin.Decl {
 			},
 		},
 		// Every verb is a smartctl shell-out, optionally through sudo. It
-		// dials nothing.
-		Capabilities: plugin.Capabilities{Commands: []string{"smartctl", "sudo"}, Spawns: true},
+		// dials nothing. The configured `devices` are opened directly (SMART
+		// self-tests issue a write command to the device), so they need a
+		// jail grant; a device found only by --scan-open discovery (none
+		// configured) is NOT declared here and will fail to open under the
+		// jail — the operator must list it in `devices` to use it.
+		Capabilities: plugin.Capabilities{Commands: []string{"smartctl", "sudo"}, Write: []string{"config:devices"}},
 	}
 }
 

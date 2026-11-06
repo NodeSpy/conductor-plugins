@@ -365,8 +365,13 @@ func TestDescribe(t *testing.T) {
 	if len(d.Events) != 1 || d.Events[0].Name != "event" {
 		t.Fatalf("events: %#v", d.Events)
 	}
-	if d.Capabilities.Egress == nil || len(d.Capabilities.Egress) != 0 {
-		t.Fatalf("capabilities.egress should be an empty (non-nil) list: %#v", d.Capabilities.Egress)
+	wantEgress := []string{"config:base_url", "config:webhook.smee"}
+	if !reflect.DeepEqual(d.Capabilities.Egress, wantEgress) {
+		t.Fatalf("capabilities.egress: got %#v want %#v", d.Capabilities.Egress, wantEgress)
+	}
+	wantListen := []string{"config:webhook.listen"}
+	if !reflect.DeepEqual(d.Capabilities.Listen, wantListen) {
+		t.Fatalf("capabilities.listen: got %#v want %#v", d.Capabilities.Listen, wantListen)
 	}
 }
 

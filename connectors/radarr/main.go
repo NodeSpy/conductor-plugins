@@ -37,10 +37,10 @@
 //	  allow_unsigned: false           # explicit opt-in to run with no shared token
 //	  smee: "<smee.io channel URL>"   # optional relay for endpoints with no public URL
 //
-// The Radarr host is operator-specific and self-hosted, so this plugin
-// declares NO egress in its capability manifest — the operator is expected to
-// scope `network:` on the connector instance to their own Radarr host (see
-// docs/connectors/radarr.md).
+// The Radarr host is operator-specific and self-hosted, so egress is the
+// connection's own base_url. The webhook source needs the same treatment:
+// webhook.smee, when set, is an outbound relay URL this plugin dials out to,
+// and webhook.listen is the inbound address it serves the webhook on.
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -79,13 +79,10 @@ func (radarrPlugin) Describe() plugin.Decl {
 		},
 		Events: []plugin.Event{radarrEvent()},
 		Verbs:  radarrVerbs(),
-		// Radarr is always self-hosted — there is no fixed hostname this
-		// plugin can declare the way api.github.com is fixed for the github
-		// connector. An empty manifest is the honest declaration; the
-		// operator MUST narrow `network:` on the connector instance to their
-		// own instance's host themselves (documented in
-		// docs/connectors/radarr.md).
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"config:base_url", "config:webhook.smee"},
+			Listen: []string{"config:webhook.listen"},
+		},
 	}
 }
 

@@ -39,10 +39,10 @@
 //	  allow_unsigned: false           # explicit opt-in to run with no shared token
 //	  smee: "<smee.io channel URL>"   # optional relay for endpoints with no public URL
 //
-// The Lidarr host is operator-specific and self-hosted, so this plugin
-// declares NO egress in its capability manifest — the operator is expected to
-// scope `network:` on the connector instance to their own Lidarr host (see
-// docs/connectors/lidarr.md).
+// The Lidarr host is operator-specific and self-hosted, so this plugin has no
+// fixed hostname to declare statically; its egress is the connection's own
+// base_url (plus webhook.smee, when the operator relays the webhook through
+// smee.io).
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -83,11 +83,14 @@ func (lidarrPlugin) Describe() plugin.Decl {
 		Verbs:  lidarrVerbs(),
 		// Lidarr is always self-hosted — there is no fixed hostname this
 		// plugin can declare the way api.github.com is fixed for the github
-		// connector. An empty manifest is the honest declaration; the
-		// operator MUST narrow `network:` on the connector instance to their
-		// own instance's host themselves (documented in
-		// docs/connectors/lidarr.md).
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// connector, so egress is the connection's own base_url. The webhook
+		// source needs the same treatment: webhook.smee, when set, is an
+		// outbound relay URL this plugin dials out to, and webhook.listen is
+		// the inbound address it serves the webhook on.
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"config:base_url", "config:webhook.smee"},
+			Listen: []string{"config:webhook.listen"},
+		},
 	}
 }
 

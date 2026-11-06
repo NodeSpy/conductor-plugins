@@ -669,8 +669,8 @@ func TestDescribe(t *testing.T) {
 		}
 	}
 
-	if len(d.Capabilities.Egress) != 0 {
-		t.Errorf("expected empty egress (self-hosted), got %v", d.Capabilities.Egress)
+	if want := []string{"config:base_url"}; len(d.Capabilities.Egress) != 1 || d.Capabilities.Egress[0] != want[0] {
+		t.Errorf("expected egress %v (resolved from base_url), got %v", want, d.Capabilities.Egress)
 	}
 }
 

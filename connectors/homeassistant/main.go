@@ -78,10 +78,15 @@ func (haPlugin) Describe() plugin.Decl {
 			},
 		},
 		Verbs: haVerbs(),
-		// Egress is operator-specific (the Home Assistant instance's own
-		// base_url/host, which varies per install) and is documented rather
-		// than declared, so the manifest makes no claim here.
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// Egress resolves from the connection at launch: base_url is the
+		// Home Assistant instance itself, and webhook.smee is the optional
+		// smee.io-style relay channel the source falls back to when the
+		// install has no public listen address. Listen resolves
+		// webhook.listen, the source's inbound webhook receiver address.
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"config:base_url", "config:webhook.smee"},
+			Listen: []string{"config:webhook.listen"},
+		},
 	}
 }
 

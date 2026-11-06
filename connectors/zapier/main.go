@@ -103,7 +103,14 @@ func (zapierPlugin) Describe() plugin.Decl {
 				},
 			},
 		},
-		Capabilities: plugin.Capabilities{Egress: []string{zapierHookHost + ":443"}},
+		// send only ever POSTs to hooks.zapier.com (validateHookURL enforces
+		// it). webhook.smee, when set, is an outbound smee.io-style relay the
+		// source dials out to; Listen is the webhook receiver's own inbound
+		// address.
+		Capabilities: plugin.Capabilities{
+			Egress: []string{zapierHookHost + ":443", "config:webhook.smee"},
+			Listen: []string{"config:webhook.listen"},
+		},
 	}
 }
 

@@ -58,9 +58,13 @@ func (sentry) Describe() plugin.Decl {
 			ev("error_alert", "a Sentry error alert fired"),
 			ev("event_alert", "a Sentry metric/event alert fired"),
 		},
-		// Inbound only: it LISTENS for Sentry webhooks, never dials out, and
-		// spawns nothing. An empty manifest is the strongest claim available.
-		Capabilities: plugin.Capabilities{},
+		// Inbound only: it LISTENS for Sentry webhooks on the configured
+		// address, and dials out only to an optional smee.io relay for
+		// endpoints with no public URL. Spawns nothing.
+		Capabilities: plugin.Capabilities{
+			Listen: []string{"config:listen"},
+			Egress: []string{"config:smee"},
+		},
 	}
 }
 

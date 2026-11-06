@@ -67,7 +67,7 @@ func (p *pfsensePlugin) Describe() plugin.Decl {
 	return plugin.Decl{
 		Kind: plugin.KindConnector,
 		Type: "pfsense",
-		Desc: "pfSense: firewall rules, firewall aliases, firewall-change apply, interface status, service status/control, DHCP leases, system status, and gateway status over the pfSense REST API v2. Requires the pfSense REST API v2 package (pfSense-pkg-RESTAPI) to be installed on the target firewall. Self-hosted; declares no egress (narrow with network: per instance). No source — the pfSense REST API is request/response only.",
+		Desc: "pfSense: firewall rules, firewall aliases, firewall-change apply, interface status, service status/control, DHCP leases, system status, and gateway status over the pfSense REST API v2. Requires the pfSense REST API v2 package (pfSense-pkg-RESTAPI) to be installed on the target firewall. Self-hosted; egress is scoped to the configured base_url (narrow further with network: per instance). No source — the pfSense REST API is request/response only.",
 		Connection: plugin.Schema{
 			"base_url":             {Type: "string", Required: true, Desc: "pfSense instance root, e.g. https://pfsense.example.com (no trailing /api/v2)"},
 			"api_key":              {Type: "string", Required: true, Desc: "pfSense REST API key, sent as the X-API-Key header"},
@@ -175,10 +175,11 @@ func (p *pfsensePlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{"result": {Type: "any"}, "items": {Type: "list"}, "status_code": {Type: "integer"}},
 			},
 		},
-		// pfSense is self-hosted: there is no fixed public host to declare.
-		// The operator narrows egress to their own instance with
-		// `network: ["pfsense.example.com:443"]` on the connector instance.
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// pfSense is self-hosted: there is no fixed public host to declare
+		// statically, so egress is scoped to whatever host the operator puts
+		// in base_url. network: can narrow this further per instance, but
+		// not widen it.
+		Capabilities: plugin.Capabilities{Egress: []string{"config:base_url"}},
 	}
 }
 
@@ -445,6 +446,7 @@ func (p *pfsensePlugin) clientFor(conn pfsenseConn) *http.Client {
 	client := &http.Client{Timeout: 30 * time.Second}
 	if conn.insecureSkipVerify {
 		client.Transport = &http.Transport{
+			Proxy:           http.ProxyFromEnvironment,
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- explicit, documented opt-out for self-signed LAN instances
 		}
 	}

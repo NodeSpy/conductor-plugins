@@ -91,10 +91,10 @@ func (p *grafanaPlugin) Describe() plugin.Decl {
 				},
 			},
 		},
-		// Grafana is commonly self-hosted: there is no fixed public host to
-		// declare. The operator narrows egress to their own instance with
-		// `network: ["grafana.example.com:443"]` on the connector instance.
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// Grafana is commonly self-hosted: egress is the instance's own
+		// base_url (host:port derived from the URL, http default 80, https
+		// default 443).
+		Capabilities: plugin.Capabilities{Egress: []string{"config:base_url"}},
 	}
 }
 
@@ -493,6 +493,7 @@ func (p *grafanaPlugin) clientFor(conn grafanaConn) *http.Client {
 	client := &http.Client{Timeout: 30 * time.Second}
 	if conn.insecureSkipVerify {
 		client.Transport = &http.Transport{
+			Proxy:           http.ProxyFromEnvironment,             // honor the jail's egress proxy, same as DefaultTransport
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- explicit, documented opt-out for self-signed LAN instances
 		}
 	}

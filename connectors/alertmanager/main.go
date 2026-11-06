@@ -68,10 +68,14 @@ func (alertmanager) Describe() plugin.Decl {
 				"status": {Type: "string"}, "receiver": {Type: "string"},
 			},
 		}},
-		// Inbound only: it LISTENS for Alertmanager/Grafana webhooks, never
-		// dials out, and spawns nothing. An empty manifest is the strongest
-		// claim available.
-		Capabilities: plugin.Capabilities{},
+		// Inbound: it LISTENS for Alertmanager/Grafana webhooks on its own
+		// address, or receives them relayed over an outbound smee-style SSE
+		// connection when \`smee\` is configured instead of (or alongside) a
+		// public listen address.
+		Capabilities: plugin.Capabilities{
+			Listen: []string{"config:listen"},
+			Egress: []string{"config:smee"},
+		},
 	}
 }
 

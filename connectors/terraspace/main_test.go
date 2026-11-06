@@ -317,11 +317,14 @@ func TestDescribe(t *testing.T) {
 	if !contains(d.Capabilities.Commands, "terraspace") || !contains(d.Capabilities.Commands, "terraform") || !contains(d.Capabilities.Commands, "tofu") {
 		t.Fatalf("capabilities.Commands: %#v", d.Capabilities.Commands)
 	}
-	if !d.Capabilities.Spawns {
-		t.Fatalf("capabilities.Spawns: want true")
+	if !contains(d.Capabilities.Commands, "env") || !contains(d.Capabilities.Commands, "ruby") {
+		t.Fatalf("capabilities.Commands missing ruby shebang interpreter: %#v", d.Capabilities.Commands)
 	}
-	if len(d.Capabilities.Egress) != 0 {
-		t.Fatalf("capabilities.Egress: want empty, got %#v", d.Capabilities.Egress)
+	if !contains(d.Capabilities.Egress, "registry.terraform.io:443") {
+		t.Fatalf("capabilities.Egress: %#v", d.Capabilities.Egress)
+	}
+	if !contains(d.Capabilities.Write, "config:dir") {
+		t.Fatalf("capabilities.Write: %#v", d.Capabilities.Write)
 	}
 	want := []string{"up", "down", "plan", "all_up", "all_down", "all_plan",
 		"output", "logs", "list", "new", "import", "console", "state",

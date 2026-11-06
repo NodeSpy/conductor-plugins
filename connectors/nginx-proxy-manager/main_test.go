@@ -568,9 +568,19 @@ func TestDescribe(t *testing.T) {
 	if len(d.Verbs) != len(want) {
 		t.Errorf("verb count: got %d want %d", len(d.Verbs), len(want))
 	}
-	if len(d.Capabilities.Egress) != 0 {
-		t.Errorf("expected empty egress (self-hosted), got %v", d.Capabilities.Egress)
+	if !contains(d.Capabilities.Egress, "config:base_url") {
+		t.Errorf("expected egress config:base_url (self-hosted), got %v", d.Capabilities.Egress)
 	}
+}
+
+// contains reports whether want is present in s.
+func contains(s []string, want string) bool {
+	for _, v := range s {
+		if v == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestInsecureSkipVerifyUsesSeparateClient(t *testing.T) {

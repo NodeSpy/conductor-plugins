@@ -22,9 +22,10 @@
 //	insecure_skip_verify:  false                          # skip TLS verification (self-signed certs)
 //	poll_interval:         "30s"                           # source poll period (default 30s)
 //
-// Proxmox is always self-hosted, so this plugin declares NO egress — the
-// operator narrows `network:` on the connector instance to their own PVE
-// host (see docs/connectors/proxmox.md).
+// Proxmox is always self-hosted, so this plugin declares egress as
+// "config:base_url": conductor resolves it to the configured instance's own
+// PVE host:port at launch, rather than a fixed public destination (see
+// docs/connectors/proxmox.md).
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -66,10 +67,9 @@ func (proxmoxPlugin) Describe() plugin.Decl {
 		},
 		Verbs:  proxmoxVerbs(),
 		Events: []plugin.Event{proxmoxTaskEvent()},
-		// Proxmox is self-hosted: there is no fixed public host to declare.
-		// The operator narrows egress to their own instance with
-		// `network: ["pve.example.com:8006"]` on the connector instance.
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// Proxmox is self-hosted: the only destination is the configured
+		// instance's own base_url, resolved at launch rather than hardcoded.
+		Capabilities: plugin.Capabilities{Egress: []string{"config:base_url"}},
 	}
 }
 
@@ -291,7 +291,10 @@ func (c pveConn) apiBase() string { return c.baseURL + "/api2/json" }
 func (c pveConn) httpClient() *http.Client {
 	client := &http.Client{Timeout: 30 * time.Second}
 	if c.insecureSkipVerify {
-		client.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+		// Proxy must be set explicitly: a custom Transport does not inherit
+		// http.DefaultTransport's ProxyFromEnvironment, and the jail reaches
+		// base_url only through conductor's egress proxy.
+		client.Transport = &http.Transport{Proxy: http.ProxyFromEnvironment, TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	}
 	return client
 }

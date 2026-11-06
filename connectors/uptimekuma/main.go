@@ -79,10 +79,13 @@ func (uptimekuma) Describe() plugin.Decl {
 				"status":        {Type: "string"}, "monitor": {Type: "string"}, "monitor_type": {Type: "string"},
 			},
 		}},
-		// Inbound only: it LISTENS for Uptime Kuma webhooks, never dials out,
-		// and spawns nothing. An empty manifest is the strongest claim
-		// available.
-		Capabilities: plugin.Capabilities{},
+		// Inbound by default: it LISTENS for Uptime Kuma webhooks on its own
+		// address, and spawns nothing. smee is the optional outbound relay
+		// it dials when the listener has no public URL.
+		Capabilities: plugin.Capabilities{
+			Listen: []string{"config:listen"},
+			Egress: []string{"config:smee"},
+		},
 	}
 }
 

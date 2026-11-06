@@ -504,8 +504,12 @@ func (p *asanaPlugin) Describe() plugin.Decl {
 		},
 		// Conductor performs the OAuth2 exchange with app.asana.com/-/oauth_token
 		// on this plugin's behalf; the plugin itself only ever calls the REST
-		// API on the same host.
-		Capabilities: plugin.Capabilities{Egress: []string{"app.asana.com:443"}},
+		// API on the same host. Listen is the webhook receiver's own address
+		// (StartSource only; no smee relay option here, see package comment).
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"app.asana.com:443"},
+			Listen: []string{"config:webhook.listen"},
+		},
 		Auth: &plugin.AuthSpec{
 			Grants:   []string{"authorization_code", "refresh_token"},
 			TokenURL: "https://app.asana.com/-/oauth_token",

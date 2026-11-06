@@ -88,7 +88,17 @@ func (p *cloudflaredPlugin) Describe() plugin.Decl {
 			exposurekit.OpenVerb("start a Cloudflare quick or named tunnel to a local address"),
 			exposurekit.CloseVerb(),
 		},
-		Capabilities: plugin.Capabilities{Commands: []string{"cloudflared"}, Spawns: true},
+		// cloudflared reads its named-mode credentials/cert from credentials_file
+		// (or its own default search path, ~/.cloudflared) and an optional
+		// config.yml. NO EGRESS IS DECLARED: cloudflared dials Cloudflare's edge
+		// over QUIC (UDP) and resolves it via DNS, neither of which the jail's
+		// TCP-only, DNS-less egress proxy can carry — this connector cannot
+		// actually reach Cloudflare while jailed (see brief: report, don't hack
+		// around it).
+		Capabilities: plugin.Capabilities{
+			Commands: []string{"cloudflared"},
+			Read:     []string{"~/.cloudflared", "config:credentials_file", "config:config"},
+		},
 	}
 }
 

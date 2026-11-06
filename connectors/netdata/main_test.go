@@ -359,8 +359,8 @@ func TestDescribe(t *testing.T) {
 	if d.Kind != plugin.KindConnector || d.Type != "netdata" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	if len(d.Capabilities.Egress) != 0 {
-		t.Fatalf("netdata is self-hosted, but egress is declared: %v", d.Capabilities.Egress)
+	if !contains(d.Capabilities.Egress, "config:base_url") {
+		t.Fatalf("netdata is self-hosted: egress should be config:base_url, got %v", d.Capabilities.Egress)
 	}
 	want := []string{"info", "charts", "chart", "data", "alarms", "alarm_log", "alerts", "contexts", "api"}
 	got := map[string]bool{}
@@ -488,6 +488,16 @@ func TestAlarmEvent(t *testing.T) {
 			t.Fatal("a status change must re-emit")
 		}
 	})
+}
+
+// contains reports whether want is present in s.
+func contains(s []string, want string) bool {
+	for _, v := range s {
+		if v == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestSortedKeys(t *testing.T) {

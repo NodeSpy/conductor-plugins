@@ -125,7 +125,20 @@ func (p *smeePlugin) Describe() plugin.Decl {
 			},
 			exposurekit.CloseVerb(),
 		},
-		Capabilities: plugin.Capabilities{Egress: []string{"smee.io:443"}},
+		// Egress: the default smee.io relay host, plus whatever host a
+		// self-hosted `smee_base` override names (config:smee_base covers
+		// both createChannel's GET .../new and relay's long-lived SSE GET).
+		// NOT declarable: relayFrame's local POST target. The destination is
+		// `local_addr` (+ `path`), an "open" verb OPTION the engine fills in
+		// per call via the `exposes` semantic (exposurekit.ExposesWithPath)
+		// — never a Connection field — so Capabilities (which only resolves
+		// config:/env: references against the Connection schema) has no way
+		// to name it. The daemon grants no per-call exception for an
+		// exposes-verb's own local_addr either (checked against the SDK this
+		// plugin is pinned to). Until one of those exists, every relayed
+		// delivery's local POST will be refused by the egress proxy under
+		// the jail even though the inbound SSE leg above works fine.
+		Capabilities: plugin.Capabilities{Egress: []string{"smee.io:443", "config:smee_base"}},
 	}
 }
 

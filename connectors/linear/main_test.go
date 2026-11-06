@@ -24,8 +24,11 @@ func TestDescribe(t *testing.T) {
 	if d.Type != "linear" {
 		t.Fatalf("Type = %q, want linear", d.Type)
 	}
-	if !contains(d.Capabilities.Egress, "api.linear.app:443") {
-		t.Fatalf("Capabilities.Egress = %v, want api.linear.app:443", d.Capabilities.Egress)
+	if !contains(d.Capabilities.Egress, "api.linear.app:443") || !contains(d.Capabilities.Egress, "config:webhook.smee") {
+		t.Fatalf("Capabilities.Egress = %v, want api.linear.app:443 and config:webhook.smee", d.Capabilities.Egress)
+	}
+	if !contains(d.Capabilities.Listen, "config:webhook.listen") {
+		t.Fatalf("Capabilities.Listen = %v, want config:webhook.listen", d.Capabilities.Listen)
 	}
 	if d.Capabilities.Spawns || len(d.Capabilities.Commands) != 0 {
 		t.Fatalf("Capabilities should declare no commands/spawns: %#v", d.Capabilities)

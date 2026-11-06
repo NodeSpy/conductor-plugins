@@ -17,8 +17,8 @@ func TestDescribe(t *testing.T) {
 	if d.Kind != plugin.KindConnector || d.Type != "qbittorrent" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	if len(d.Capabilities.Egress) != 0 || len(d.Capabilities.Commands) != 0 || d.Capabilities.Spawns {
-		t.Fatalf("expected an empty capabilities manifest (self-hosted), got %#v", d.Capabilities)
+	if want := []string{"config:base_url"}; len(d.Capabilities.Egress) != 1 || d.Capabilities.Egress[0] != want[0] || len(d.Capabilities.Commands) != 0 || d.Capabilities.Spawns {
+		t.Fatalf("expected egress %v resolved from base_url (self-hosted), got %#v", want, d.Capabilities)
 	}
 	want := []string{
 		"torrents", "torrent_properties", "add", "delete", "pause", "resume",

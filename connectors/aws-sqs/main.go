@@ -113,9 +113,13 @@ func (sqsPlugin) Describe() plugin.Decl {
 				},
 			},
 		},
-		// The endpoint is region-derived (or an operator override), so no fixed
-		// egress is declared — narrow it per instance with network:. Spawns nothing.
-		Capabilities: plugin.Capabilities{Spawns: false},
+		// The endpoint defaults to sqs.<region>.amazonaws.com, or an operator
+		// override (LocalStack, a VPC endpoint, tests). Credentials fall back to
+		// the standard AWS_* env vars when not set in config (awskit.Load).
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"sqs.*.amazonaws.com:443", "config:endpoint"},
+			Env:    []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"},
+		},
 	}
 }
 

@@ -86,21 +86,32 @@ func decl() plugin.Decl {
 	return plugin.Decl{
 		Kind: plugin.KindConnector,
 		Type: Type,
-		// The plugin's permission manifest (the bundled connector, in
-		// process, has none to declare): the public API, GitHub Enterprise
-		// Cloud with data residency, and the smee relay. A GHES host on its
-		// own domain, or a test double, is outside it — an INSTALLED plugin
-		// is confined to this list; a local development build is not.
-		// check_failures reads an Actions job's log, which GitHub serves by
-		// redirecting to a signed URL on its log hosts: the results service's
-		// blob storage, and the older pipelines host.
-		// gh: the write chain's `gh auth token` (Q8); its token variables, for a
-		// box that authenticates gh through the environment rather than its
-		// config file.
-		// git and github.com: pr_snapshot's fetch of a PR over HTTPS.
-		Capabilities: plugin.Capabilities{Egress: []string{"api.github.com:443", "*.ghe.com:443", "smee.io:443",
-			"productionresultssa*.blob.core.windows.net:443", "*.actions.githubusercontent.com:443", "github.com:443"}, Commands: []string{"gh", "git"},
-			Env: []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_HOST", "GH_CONFIG_DIR"}},
+		// What the plugin needs, and nothing more: conductor runs it jailed
+		// to exactly this.
+		//
+		// Network: the API (api.github.com, a GHES api_base, GitHub
+		// Enterprise Cloud with data residency); github.com for pr_snapshot's
+		// git fetch over HTTPS; the smee relay (webhook.smee_url); and the
+		// hosts an Actions job log redirects to (check_failures): the results
+		// service's blob storage and the older pipelines host. It serves the
+		// webhook receiver on webhook.listen.
+		//
+		// Commands: gh, for the write chain's `gh auth token`, and git, for
+		// pr_snapshot. gh reads its login from its config dir (GH_CONFIG_DIR,
+		// else $XDG_CONFIG_HOME/gh, else ~/.config/gh), or from its token
+		// variables, or on macOS from the Keychain. A GitHub App's private
+		// key is read from app.private_key_path. PC_GITHUB_API_BASE points
+		// the API at a test double.
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"api.github.com:443", "github.com:443", "*.ghe.com:443", "config:api_base",
+				"config:webhook.smee_url", "productionresultssa*.blob.core.windows.net:443", "*.actions.githubusercontent.com:443"},
+			Listen:   []string{"config:webhook.listen"},
+			Read:     []string{"~/.config/gh", "env:GH_CONFIG_DIR", "env:XDG_CONFIG_HOME/gh", "config:app.private_key_path"},
+			Commands: []string{"gh", "git"},
+			Keychain: true,
+			Env: []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_HOST", "GH_CONFIG_DIR",
+				"XDG_CONFIG_HOME", "PC_GITHUB_API_BASE"},
+		},
 		Desc: "GitHub: PR/issue/check/release events in; comments, reviews, and review requests out.",
 		Connection: plugin.Schema{
 			"app":             {Type: "map", Desc: "GitHub App credentials: app_id, private_key_path"},

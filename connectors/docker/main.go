@@ -44,8 +44,26 @@ func (dockerPlugin) Describe() plugin.Decl {
 			"env":         {Type: "map", Desc: "default process environment for every invocation"},
 			"timeout":     {Type: "duration", Desc: "default per-verb timeout (default 10m); a verb's timeout option overrides it"},
 		},
-		Verbs:        dockerVerbs(),
-		Capabilities: plugin.Capabilities{Commands: []string{"docker", "podman"}, Spawns: true},
+		Verbs: dockerVerbs(),
+		// Shells out to docker/podman. The default local socket (or podman's
+		// rootless default under XDG_RUNTIME_DIR) is granted directly; HOME (and
+		// DOCKER_CONFIG) are needed for the CLI's own ~/.docker config/context/auth
+		// files. docker_host/context pointing at a REMOTE engine (tcp://, ssh://,
+		// or a non-default unix:// path) cannot be granted here: the field's value
+		// may be a filesystem path or a network endpoint depending on its scheme,
+		// and the capability syntax has no conditional reference for that —
+		// declaring it either way would hard-fail every instance using the OTHER
+		// shape. Remote engines are therefore unsupported under the jail.
+		Capabilities: plugin.Capabilities{
+			Commands: []string{"docker", "podman"},
+			Write: []string{
+				"/var/run/docker.sock",
+				"env:XDG_RUNTIME_DIR/podman/podman.sock",
+				"~/.docker",
+			},
+			Read: []string{"config:cert_path"},
+			Env:  []string{"HOME", "DOCKER_CONFIG", "XDG_RUNTIME_DIR"},
+		},
 	}
 }
 
