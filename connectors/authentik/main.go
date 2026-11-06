@@ -177,10 +177,9 @@ func (p *authentikPlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{"result": {Type: "any"}, "items": {Type: "list", Desc: "hoisted from result.results when present"}, "status_code": {Type: "integer"}},
 			},
 		},
-		// authentik is self-hosted: there is no fixed public host to declare.
-		// The operator narrows egress to their own instance with
-		// `network: ["authentik.example.com:443"]` on the connector instance.
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// authentik is self-hosted: egress is the instance's own base_url
+		// (host:port derived from the URL, http default 80, https default 443).
+		Capabilities: plugin.Capabilities{Egress: []string{"config:base_url"}},
 	}
 }
 
@@ -485,6 +484,7 @@ func (p *authentikPlugin) clientFor(conn authentikConn) *http.Client {
 	client := &http.Client{Timeout: 30 * time.Second}
 	if conn.insecureSkipVerify {
 		client.Transport = &http.Transport{
+			Proxy:           http.ProxyFromEnvironment,             // honor the jail's egress proxy, same as DefaultTransport
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- explicit, documented opt-out for self-signed LAN instances
 		}
 	}

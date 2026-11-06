@@ -32,9 +32,8 @@
 // against a man-in-the-middle. Prefer importing the box's real certificate
 // instead when possible.
 //
-// NPM is self-hosted with no fixed public host, so Capabilities.Egress is
-// declared empty; the operator's `network:` allowlist on the connector
-// instance is the actual scope. This connector is verb-only: it has no
+// NPM is self-hosted with no fixed public host, so egress is the
+// connection's own base_url. This connector is verb-only: it has no
 // Events and does not implement SourceHandler.
 //
 // stdout is the RPC transport; all logging goes to stderr.
@@ -75,7 +74,7 @@ func (p *npmPlugin) Describe() plugin.Decl {
 	return plugin.Decl{
 		Kind: plugin.KindConnector,
 		Type: "nginx-proxy-manager",
-		Desc: "Nginx Proxy Manager: proxy hosts (list/get/create/update/delete/enable/disable), redirection hosts, streams, dead (404) hosts, access lists, certificates, a host report summary, and a raw `api` escape hatch. Token (JWT) auth. Self-hosted; declares no egress (narrow with network: per instance). No source.",
+		Desc: "Nginx Proxy Manager: proxy hosts (list/get/create/update/delete/enable/disable), redirection hosts, streams, dead (404) hosts, access lists, certificates, a host report summary, and a raw `api` escape hatch. Token (JWT) auth. Self-hosted; egress is the connection's own base_url. No source.",
 		Connection: plugin.Schema{
 			"base_url":             {Type: "string", Required: true, Desc: "NPM admin root, e.g. http://npm.example.com:81 (no trailing /api)"},
 			"email":                {Type: "string", Required: true, Desc: "NPM user identity, exchanged (with password) for a JWT via POST /api/tokens"},
@@ -178,10 +177,9 @@ func (p *npmPlugin) Describe() plugin.Decl {
 				Outputs: list,
 			},
 		},
-		// NPM is self-hosted: there is no fixed public host to declare. The
-		// operator narrows egress to their own instance with
-		// `network: ["npm.example.com:81"]` on the connector instance.
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// NPM is self-hosted: there is no fixed public host to declare
+		// statically, so egress is the connection's own base_url.
+		Capabilities: plugin.Capabilities{Egress: []string{"config:base_url"}},
 	}
 }
 
@@ -216,8 +214,11 @@ func httpClientFor(conn npmConn) *http.Client {
 		return &http.Client{Timeout: 30 * time.Second}
 	}
 	return &http.Client{
-		Timeout:   30 * time.Second,
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec // opt-in per connection, for self-signed home-lab certs
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			Proxy:           http.ProxyFromEnvironment,
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // opt-in per connection, for self-signed home-lab certs
+		},
 	}
 }
 

@@ -282,11 +282,11 @@ func TestDescribe(t *testing.T) {
 	if d.Kind != plugin.KindConnector || d.Type != "kubernetes" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	if !contains(d.Capabilities.Commands, "kubectl") || !d.Capabilities.Spawns {
+	if !contains(d.Capabilities.Commands, "kubectl") {
 		t.Fatalf("capabilities: %#v", d.Capabilities)
 	}
-	if len(d.Capabilities.Egress) != 0 {
-		t.Fatalf("expected no declared egress, got %#v", d.Capabilities.Egress)
+	if len(d.Capabilities.Egress) == 0 {
+		t.Fatalf("expected a jail egress allowance (the API server host lives in the kubeconfig file, not a connection field), got %#v", d.Capabilities.Egress)
 	}
 	want := []string{"apply", "delete", "get", "describe", "logs", "exec", "rollout",
 		"scale", "patch", "create", "label", "annotate", "wait", "top",

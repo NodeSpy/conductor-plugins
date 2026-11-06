@@ -184,10 +184,9 @@ func (p *synologyPlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{"result": {Type: "any"}, "items": {Type: "list"}, "status_code": {Type: "integer"}},
 			},
 		},
-		// A Synology NAS is self-hosted: there is no fixed public host to
-		// declare. The operator narrows egress to their own NAS with
-		// `network: ["nas.example.com:5001"]` on the connector instance.
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// A Synology NAS is self-hosted at an operator-chosen host, so egress
+		// is the connection's own base_url rather than a fixed hostname.
+		Capabilities: plugin.Capabilities{Egress: []string{"config:base_url"}},
 	}
 }
 
@@ -282,7 +281,10 @@ func (p *synologyPlugin) sessionFor(c synConn) *synologySession {
 	if s, ok := p.sessions[key]; ok {
 		return s
 	}
-	transport := &http.Transport{}
+	// Proxy must be set explicitly: a custom http.Transport (unlike
+	// http.DefaultTransport) does not honor HTTP(S)_PROXY on its own, and the
+	// jail reaches the operator's declared NAS host only through that proxy.
+	transport := &http.Transport{Proxy: http.ProxyFromEnvironment}
 	if c.insecureSkipVerify {
 		// Per-connection tls.Config, never process-wide: this only affects
 		// requests made through THIS session's client.

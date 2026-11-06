@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -34,10 +35,10 @@ func TestPluginsDeclareKindAndManifest(t *testing.T) {
 			kind: "connectors", name: "sentry",
 			wantKind: plugin.KindConnector, wantType: "sentry",
 			check: func(t *testing.T, c plugin.Capabilities) {
-				// Inbound only: it listens, it never dials out, it spawns
-				// nothing. The empty manifest is the claim.
-				if len(c.Egress) != 0 || len(c.Commands) != 0 || c.Spawns {
-					t.Fatalf("a source-only connector declared capabilities: %+v", c)
+				// Inbound only: it serves its listen address, reaches only the
+				// optional smee relay, and spawns nothing.
+				if !reflect.DeepEqual(c.Listen, []string{"config:listen"}) || !reflect.DeepEqual(c.Egress, []string{"config:smee"}) || len(c.Commands) != 0 {
+					t.Fatalf("a source-only connector should declare its listener and relay only: %+v", c)
 				}
 			},
 		},
@@ -45,8 +46,10 @@ func TestPluginsDeclareKindAndManifest(t *testing.T) {
 			kind: "connectors", name: "pagerduty",
 			wantKind: plugin.KindConnector, wantType: "pagerduty",
 			check: func(t *testing.T, c plugin.Capabilities) {
-				if len(c.Egress) != 0 || len(c.Commands) != 0 || c.Spawns {
-					t.Fatalf("a source-only connector declared capabilities: %+v", c)
+				// Inbound only: it serves its listen address, reaches only the
+				// optional smee relay, and spawns nothing.
+				if !reflect.DeepEqual(c.Listen, []string{"config:listen"}) || !reflect.DeepEqual(c.Egress, []string{"config:smee"}) || len(c.Commands) != 0 {
+					t.Fatalf("a source-only connector should declare its listener and relay only: %+v", c)
 				}
 			},
 		},
@@ -61,6 +64,11 @@ func TestPluginsDeclareKindAndManifest(t *testing.T) {
 				// decision on the confined write credential), and pr_snapshot's git.
 				if len(c.Commands) != 2 || c.Commands[0] != "gh" || c.Commands[1] != "git" {
 					t.Fatalf("the github connector should declare exactly the gh and git commands: %+v", c)
+				}
+				// git runs git-remote-https from its exec path, outside the
+				// commands: it must be declared, or pr_snapshot cannot fetch.
+				if !reflect.DeepEqual(c.Exec, []string{"command:git/../../lib/git-core", "command:git/../../libexec/git-core"}) {
+					t.Fatalf("the github connector should declare git's exec path: %v", c.Exec)
 				}
 				var sawAPI bool
 				for _, e := range c.Egress {
@@ -77,13 +85,35 @@ func TestPluginsDeclareKindAndManifest(t *testing.T) {
 			kind: "runtimes", name: "paseo",
 			wantKind: plugin.KindRuntime, wantType: "paseo",
 			check: func(t *testing.T, c plugin.Capabilities) {
-				// Every verb is a `paseo ...` shell-out, so that is exactly the
-				// one command conductor confines its PATH to.
-				if len(c.Commands) != 1 || c.Commands[0] != "paseo" {
-					t.Fatalf("declared commands = %v, want exactly [paseo]", c.Commands)
+				// Every verb is a `paseo ...` shell-out. The paseo CLI's own
+				// launcher is a `#!/usr/bin/env -S node ...` script, so "env"
+				// and "node" are on the exec chain too — all three, and only
+				// those three, are the commands conductor confines its PATH to.
+				wantCommands := map[string]bool{"paseo": true, "env": true, "node": true}
+				if len(c.Commands) != len(wantCommands) {
+					t.Fatalf("declared commands = %v, want exactly %v", c.Commands, wantCommands)
 				}
+				for _, cmd := range c.Commands {
+					if !wantCommands[cmd] {
+						t.Fatalf("unexpected declared command %q: %v", cmd, c.Commands)
+					}
+				}
+				// Egress cannot be honestly declared: the CLI dials the local
+				// daemon on a port it reads at call time from its own pid-lock
+				// file (ephemeral unless pinned), or an arbitrary host via
+				// PASEO_HOST — neither is a static value this plugin's own
+				// declaration can name. See the runtime's Describe() comment.
 				if len(c.Egress) != 0 {
-					t.Fatalf("the paseo runtime dials nothing itself: %v", c.Egress)
+					t.Fatalf("the paseo runtime's egress cannot be statically declared: %v", c.Egress)
+				}
+				wantEnv := map[string]bool{"PASEO_HOME": true, "PASEO_HOST": true, "PASEO_PASSWORD": true}
+				if len(c.Env) != len(wantEnv) {
+					t.Fatalf("declared env = %v, want exactly %v", c.Env, wantEnv)
+				}
+				for _, e := range c.Env {
+					if !wantEnv[e] {
+						t.Fatalf("unexpected declared env %q: %v", e, c.Env)
+					}
 				}
 			},
 		},

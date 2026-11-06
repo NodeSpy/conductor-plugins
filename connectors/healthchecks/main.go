@@ -20,9 +20,10 @@
 //	  allow_unsigned: false              # explicitly accept an unauthenticated listener
 //	  smee:           "https://smee.io/abc123" # optional smee.io-style SSE relay channel
 //
-// Self-hosted Healthchecks: point api_base/ping_base at your instance and
-// narrow the connector's declared egress (network:) to that host — the
-// default Capabilities only cover the hosted healthchecks.io / hc-ping.com.
+// Self-hosted Healthchecks: point api_base/ping_base at your instance — the
+// declared Capabilities cover both the hosted healthchecks.io / hc-ping.com
+// and whatever host api_base/ping_base name, so no self-hosted override is
+// ever denied by the jail.
 //
 // The shared relay.Listener.ServeReq hands the callback the full request
 // (headers, query, body), so the ?token= query case is checked directly —
@@ -153,10 +154,17 @@ func (p *healthchecksPlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{"result": {Type: "any"}},
 			},
 		},
-		// Egress covers the hosted service. Self-hosted operators override
-		// api_base/ping_base and should narrow/replace this via the
-		// connector instance's own network: declaration.
-		Capabilities: plugin.Capabilities{Egress: []string{"healthchecks.io:443", "hc-ping.com:443"}},
+		// Egress covers the hosted service by default, plus whatever
+		// api_base/ping_base resolve to for a self-hosted instance, and
+		// webhook.smee for the optional smee.io-style relay. Listen is
+		// the webhook source's own inbound receiver address.
+		Capabilities: plugin.Capabilities{
+			Egress: []string{
+				"healthchecks.io:443", "hc-ping.com:443",
+				"config:api_base", "config:ping_base", "config:webhook.smee",
+			},
+			Listen: []string{"config:webhook.listen"},
+		},
 	}
 }
 

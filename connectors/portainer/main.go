@@ -48,8 +48,11 @@ func newPortainerPlugin() *portainerPlugin {
 	return &portainerPlugin{
 		client: &http.Client{Timeout: 30 * time.Second},
 		insecureClient: &http.Client{
-			Timeout:   30 * time.Second,
-			Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec // opt-in per connection, for self-signed home-lab certs
+			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				Proxy:           http.ProxyFromEnvironment,
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // opt-in per connection, for self-signed home-lab certs
+			},
 		},
 	}
 }
@@ -68,17 +71,18 @@ func (p *portainerPlugin) Describe() plugin.Decl {
 	return plugin.Decl{
 		Kind: plugin.KindConnector,
 		Type: "portainer",
-		Desc: "Portainer: environments (endpoints), stacks, and Docker containers/images proxied through Portainer's docker-proxy, over the Portainer CE REST API, plus a raw `api` escape hatch. Self-hosted; declares no egress (narrow with network: per instance).",
+		Desc: "Portainer: environments (endpoints), stacks, and Docker containers/images proxied through Portainer's docker-proxy, over the Portainer CE REST API, plus a raw `api` escape hatch. Self-hosted; egress is scoped to the configured base_url (narrow further with network: per instance).",
 		Connection: plugin.Schema{
 			"base_url":             {Type: "string", Required: true, Desc: "Portainer server root, e.g. https://portainer.example.com (no trailing /api)"},
 			"api_key":              {Type: "string", Required: true, Desc: "Portainer API key, sent as X-API-Key: <api_key>"},
 			"insecure_skip_verify": {Type: "boolean", Desc: "skip TLS certificate verification (default false) — common with self-signed certs, but disables protection against a man-in-the-middle"},
 		},
 		Verbs: portainerVerbs(),
-		// Portainer is self-hosted: there is no fixed public host to declare.
-		// The operator narrows egress to their own instance with
-		// `network: ["portainer.example.com:443"]` on the connector instance.
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// Portainer is self-hosted: there is no fixed public host to declare
+		// statically, so egress is scoped to whatever host the operator puts
+		// in base_url. network: can narrow this further per instance, but
+		// not widen it.
+		Capabilities: plugin.Capabilities{Egress: []string{"config:base_url"}},
 	}
 }
 

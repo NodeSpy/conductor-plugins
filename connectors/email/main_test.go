@@ -360,8 +360,17 @@ func TestDescribe(t *testing.T) {
 			t.Errorf("event missing context key %q", k)
 		}
 	}
-	if len(d.Capabilities.Egress) != 0 {
-		t.Errorf("egress should be operator-specific (empty by default): %v", d.Capabilities.Egress)
+	for _, want := range []string{"config:smtp.host:587", "config:imap.host:993"} {
+		found := false
+		for _, e := range d.Capabilities.Egress {
+			if e == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("egress missing %q: %v", want, d.Capabilities.Egress)
+		}
 	}
 }
 

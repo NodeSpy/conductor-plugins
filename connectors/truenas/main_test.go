@@ -513,8 +513,8 @@ func TestDescribe(t *testing.T) {
 			t.Errorf("alert event missing filter %q", f)
 		}
 	}
-	if len(d.Capabilities.Egress) != 0 {
-		t.Errorf("expected empty egress (self-hosted), got %v", d.Capabilities.Egress)
+	if len(d.Capabilities.Egress) != 1 || d.Capabilities.Egress[0] != "config:base_url" {
+		t.Errorf("expected egress [config:base_url] (self-hosted), got %v", d.Capabilities.Egress)
 	}
 }
 

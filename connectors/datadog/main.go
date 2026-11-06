@@ -167,12 +167,21 @@ func (datadogPlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{"result": {Type: "any"}, "status_code": {Type: "integer"}},
 			},
 		},
-		// Egress is scoped to the DEFAULT site only. A non-default `site`
-		// (datadoghq.eu, us5.datadoghq.com, ...) reaches a different host, so an
-		// operator using one MUST widen `network:` on the connector instance to
-		// match — Capabilities can only be narrowed, never widened, so the
-		// default manifest cannot cover every site up front.
-		Capabilities: plugin.Capabilities{Egress: []string{"api.datadoghq.com:443"}},
+		// Egress lists every Datadog site's API host (a short, Datadog-documented
+		// set) since `site` picks one at config time and a connector instance's
+		// network: can only narrow the manifest, never widen it — a single
+		// default host would strand every non-default site. Listen/the second
+		// Egress entry are the webhook source's own address and optional smee
+		// relay.
+		Capabilities: plugin.Capabilities{
+			Egress: []string{
+				"api.datadoghq.com:443", "api.datadoghq.eu:443",
+				"api.us3.datadoghq.com:443", "api.us5.datadoghq.com:443",
+				"api.ap1.datadoghq.com:443", "api.ddog-gov.com:443",
+				"config:webhook.smee",
+			},
+			Listen: []string{"config:webhook.listen"},
+		},
 	}
 }
 

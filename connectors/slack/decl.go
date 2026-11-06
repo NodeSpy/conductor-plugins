@@ -212,14 +212,25 @@ func Decl() plugin.Decl {
 				},
 			},
 		},
-		// Socket Mode dials out to Slack only; it listens on nothing and
-		// spawns nothing. The Web API lives on slack.com itself, but the
-		// Socket Mode WSS URL apps.connections.open returns, and Slack's
-		// file download/upload URLs, are on subdomains (wss-primary.slack.com
-		// and files.slack.com, among others) — declaring only the bare host
-		// would have conductor's egress sandbox (internal/sandbox.go,
-		// EgressAllowed) block them.
-		Capabilities: plugin.Capabilities{Egress: []string{"slack.com:443", "*.slack.com:443"}},
+		// Socket Mode dials out to Slack only; it listens on nothing, execs
+		// nothing, and reads no daemon env vars. The Web API lives on
+		// slack.com itself, but the Socket Mode WSS URL apps.connections.open
+		// returns, and Slack's file download/upload URLs, are on subdomains
+		// (wss-primary.slack.com and files.slack.com, among others) —
+		// declaring only the bare host would have conductor's egress jail
+		// block them. api_base is an operator-configured connection field
+		// (a test double's base URL). An incoming-webhook URL is on
+		// hooks.slack.com, covered by the wildcard; webhook_url is a secret,
+		// which conductor does not let a declaration reference, so a webhook
+		// on any other host needs trust: full.
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"slack.com:443", "*.slack.com:443", "config:api_base"},
+			// download's fallback staging root (files.go stagingRoot), used
+			// only when the host gives this call no per-call Staging dir
+			// (an older host) — a modern host's own staging grant already
+			// covers the normal path.
+			Write: []string{"~/.cache/conductor-slack"},
+		},
 	}
 }
 

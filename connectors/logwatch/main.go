@@ -62,6 +62,17 @@ func (logwatchPlugin) Describe() plugin.Decl {
 				"groups": {Type: "map", Desc: "named regexp capture groups from the match"},
 			},
 		}},
+		// A path watch always runs `tail -n0 -F <path>`, so "tail" is the one
+		// fixed command. Everything else this connector needs is operator-named
+		// at config time under an ARBITRARY watch name (`watches.<name>.path` or
+		// `watches.<name>.command`), and Capabilities' config: references can
+		// only reach a fixed field name, not a caller-chosen map key — so
+		// neither a watch's file (Read) nor a command watch's own binary
+		// (Commands) can be named here. Declared honestly, that means a path
+		// watch cannot read its file and a command watch cannot exec its
+		// program under the jail until the capability schema grows a way to
+		// grant a map field's own values (see the report for this batch).
+		Capabilities: plugin.Capabilities{Commands: []string{"tail"}},
 	}
 }
 

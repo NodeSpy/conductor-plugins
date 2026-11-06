@@ -295,7 +295,10 @@ func (p *tailscalePlugin) Describe() plugin.Decl {
 		// Conductor performs the OAuth2 client_credentials exchange with
 		// api.tailscale.com's token endpoint on this plugin's behalf; the
 		// plugin itself only ever calls the Tailscale API host. funnel_open/
-		// funnel_close additionally shell out to the LOCAL tailscale CLI.
+		// funnel_close additionally shell out to the LOCAL tailscale CLI,
+		// which — not this plugin directly — talks to the already-running
+		// tailscaled over its LocalAPI unix socket; that socket is the Write
+		// entry below so the jailed CLI subprocess can still reach it.
 		//
 		// SingleProcess: true — funnelMapping (above) keeps an IN-MEMORY
 		// refcount on the box's one `tailscale serve`/`funnel --https=443`
@@ -311,7 +314,15 @@ func (p *tailscalePlugin) Describe() plugin.Decl {
 		// instance of this plugin in ONE process (docs/wiki/Plugins.md
 		// "Multi-instance isolation"), so funnelMap's refcount is the single
 		// source of truth it was written to be.
-		Capabilities: plugin.Capabilities{Egress: []string{"api.tailscale.com:443"}, Commands: []string{"tailscale"}, Spawns: true, SingleProcess: true},
+		Capabilities: plugin.Capabilities{
+			Egress:   []string{"api.tailscale.com:443"},
+			Commands: []string{"tailscale"},
+			// tailscaled's LocalAPI unix socket (Linux default path): the
+			// spawned tailscale CLI dials this to talk to the daemon already
+			// running on the host, for funnel_open/funnel_close/status.
+			Write:         []string{"/var/run/tailscale/tailscaled.sock"},
+			SingleProcess: true,
+		},
 		Auth: &plugin.AuthSpec{
 			Grants:   []string{"client_credentials"},
 			TokenURL: "https://api.tailscale.com/api/v2/oauth/token",

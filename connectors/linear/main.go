@@ -179,7 +179,15 @@ func (l *linearPlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{"result": {Type: "any"}},
 			},
 		},
-		Capabilities: plugin.Capabilities{Egress: []string{"api.linear.app:443"}},
+		// api.linear.app is the fixed, hosted GraphQL endpoint; config:api_base
+		// covers the test-only endpoint override. The webhook source needs its
+		// own entries: webhook.smee, when set, is an outbound relay URL this
+		// plugin dials out to, and webhook.listen is the inbound address it
+		// serves the webhook on.
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"api.linear.app:443", "config:api_base", "config:webhook.smee"},
+			Listen: []string{"config:webhook.listen"},
+		},
 	}
 }
 

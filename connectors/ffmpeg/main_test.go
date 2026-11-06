@@ -246,11 +246,14 @@ func TestDescribe(t *testing.T) {
 	if d.Kind != plugin.KindConnector || d.Type != "ffmpeg" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	if !contains(d.Capabilities.Commands, "ffmpeg") || !contains(d.Capabilities.Commands, "ffprobe") || !d.Capabilities.Spawns {
+	if !contains(d.Capabilities.Commands, "ffmpeg") || !contains(d.Capabilities.Commands, "ffprobe") {
 		t.Fatalf("capabilities: %#v", d.Capabilities)
 	}
 	if len(d.Capabilities.Egress) != 0 {
 		t.Fatalf("egress: want empty, got %#v", d.Capabilities.Egress)
+	}
+	if !contains(d.Capabilities.Write, "config:dir") {
+		t.Fatalf("expected config:dir in write, got %#v", d.Capabilities.Write)
 	}
 	want := []string{"transcode", "extract_audio", "thumbnail", "extract_frames", "trim",
 		"scale", "to_gif", "concat", "remux", "overlay", "probe", "cli"}

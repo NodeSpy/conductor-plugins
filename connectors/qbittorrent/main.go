@@ -16,8 +16,8 @@
 // later call).
 //
 // qBittorrent is self-hosted with no fixed public host, so Capabilities.Egress
-// is declared empty; the operator's `network:` allowlist on the connector
-// instance is the actual scope (see docs/connectors/qbittorrent.md).
+// is declared as "config:base_url": conductor resolves it to the configured
+// instance's own host:port at launch (see docs/connectors/qbittorrent.md).
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -52,11 +52,9 @@ func (*qbittorrentPlugin) Describe() plugin.Decl {
 			"password": {Type: "string", Desc: "WebUI password"},
 		},
 		Verbs: qbitVerbs(),
-		// qBittorrent is self-hosted software with no fixed public host: an
-		// empty manifest is the strongest thing this plugin can say up front.
-		// Scope the actual egress with the connector instance's `network:`
-		// allowlist — see docs/connectors/qbittorrent.md.
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// qBittorrent is self-hosted: the only destination is the configured
+		// instance's own base_url, resolved at launch rather than hardcoded.
+		Capabilities: plugin.Capabilities{Egress: []string{"config:base_url"}},
 	}
 }
 

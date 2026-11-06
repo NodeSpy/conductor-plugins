@@ -46,11 +46,30 @@ func (libationPlugin) Describe() plugin.Decl {
 			"timeout": {Type: "duration", Desc: "default per-verb timeout (default 60m — downloads are slow); a verb's timeout option overrides it"},
 		},
 		Verbs: libationVerbs(),
-		// Every verb is a LibationCli shell-out. Libation itself reaches
-		// Audible and its CDN; this connector dials nothing directly, so it
-		// declares no egress and the operator scopes the network the
-		// subprocess gets with the instance's `network:`.
-		Capabilities: plugin.Capabilities{Commands: []string{"LibationCli"}, Spawns: true},
+		// Every verb is a LibationCli shell-out; LibationCli itself talks to
+		// Audible's unofficial API (api.audible.<tld>, one per storefront
+		// region) and its content-delivery host (cds.audible.com) to sync the
+		// library and download/decrypt titles. Audible publishes neither
+		// officially, so this list is best-effort from the regions Audible
+		// actually sells in; verify against a real run if a title 403s.
+		// LIBATION_FILES_DIR (set via connection.env) is where LibationCli
+		// keeps its database, settings and downloaded books; `dir` is the
+		// working directory a verb's relative paths (e.g. export's path) land
+		// in when set.
+		Capabilities: plugin.Capabilities{
+			Commands: []string{"LibationCli"},
+			// A self-contained .NET app: its runtime libraries sit beside it.
+			// Optional: installed directly in /usr/bin there is no such
+			// directory to grant (the system's bin dir never is).
+			Exec: []string{"?command:LibationCli/.."},
+			Egress: []string{
+				"*.audible.com:443", "*.audible.co.uk:443", "*.audible.de:443",
+				"*.audible.fr:443", "*.audible.co.jp:443", "*.audible.ca:443",
+				"*.audible.com.au:443", "*.audible.in:443", "*.audible.it:443",
+				"*.audible.es:443",
+			},
+			Write: []string{"config:env.LIBATION_FILES_DIR", "config:dir"},
+		},
 	}
 }
 

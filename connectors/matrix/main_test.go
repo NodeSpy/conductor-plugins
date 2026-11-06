@@ -50,8 +50,8 @@ func TestDescribe(t *testing.T) {
 			t.Errorf("Describe missing verb %q", w)
 		}
 	}
-	if len(d.Capabilities.Egress) != 0 {
-		t.Errorf("Capabilities.Egress: got %v, want empty (homeserver is operator-configured, documented in Connection)", d.Capabilities.Egress)
+	if !contains(d.Capabilities.Egress, "config:homeserver") || !contains(d.Capabilities.Egress, "config:api_base") {
+		t.Errorf("Capabilities.Egress: got %v, want config:homeserver and config:api_base", d.Capabilities.Egress)
 	}
 }
 
@@ -574,6 +574,16 @@ func TestInvoke_UnknownVerb(t *testing.T) {
 }
 
 // --- test helpers -----------------------------------------------------------
+
+// contains reports whether want is present in s.
+func contains(s []string, want string) bool {
+	for _, v := range s {
+		if v == want {
+			return true
+		}
+	}
+	return false
+}
 
 func decodeJSONBody(t *testing.T, r *http.Request, v *map[string]any) {
 	t.Helper()

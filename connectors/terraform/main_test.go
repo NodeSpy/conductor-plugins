@@ -395,8 +395,14 @@ func TestDescribe(t *testing.T) {
 	if d.Kind != plugin.KindConnector || d.Type != "terraform" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	if !contains(d.Capabilities.Commands, "terraform") || !d.Capabilities.Spawns {
-		t.Fatalf("capabilities: %#v", d.Capabilities)
+	if !contains(d.Capabilities.Commands, "terraform") || !contains(d.Capabilities.Commands, "tofu") || !contains(d.Capabilities.Commands, "terragrunt") {
+		t.Fatalf("capabilities.commands: %#v", d.Capabilities.Commands)
+	}
+	if !contains(d.Capabilities.Egress, "registry.terraform.io:443") {
+		t.Fatalf("capabilities.egress: %#v", d.Capabilities.Egress)
+	}
+	if !contains(d.Capabilities.Write, "config:chdir") {
+		t.Fatalf("capabilities.write: %#v", d.Capabilities.Write)
 	}
 	want := []string{"init", "validate", "plan", "apply", "destroy", "output", "show",
 		"fmt", "workspace", "state", "import", "refresh", "providers", "version", "cli"}

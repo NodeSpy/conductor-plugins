@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +21,10 @@ func TestDescribe(t *testing.T) {
 	if d.Kind != plugin.KindConnector || d.Type != "healthchecks" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	wantEgress := map[string]bool{"healthchecks.io:443": true, "hc-ping.com:443": true}
+	wantEgress := map[string]bool{
+		"healthchecks.io:443": true, "hc-ping.com:443": true,
+		"config:api_base": true, "config:ping_base": true, "config:webhook.smee": true,
+	}
 	if len(d.Capabilities.Egress) != len(wantEgress) {
 		t.Fatalf("egress: %#v", d.Capabilities.Egress)
 	}
@@ -28,6 +32,10 @@ func TestDescribe(t *testing.T) {
 		if !wantEgress[e] {
 			t.Errorf("unexpected egress %q", e)
 		}
+	}
+	wantListen := []string{"config:webhook.listen"}
+	if !reflect.DeepEqual(d.Capabilities.Listen, wantListen) {
+		t.Errorf("capabilities.listen: got %#v want %#v", d.Capabilities.Listen, wantListen)
 	}
 	wantVerbs := []string{"list_checks", "get_check", "create_check", "update_check", "pause_check", "delete_check", "ping", "get_pings", "api"}
 	got := map[string]bool{}

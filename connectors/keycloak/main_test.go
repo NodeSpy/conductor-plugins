@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -588,7 +589,8 @@ func TestDescribe(t *testing.T) {
 	if len(d.Verbs) != len(want) {
 		t.Errorf("verb count: got %d want %d", len(d.Verbs), len(want))
 	}
-	if len(d.Capabilities.Egress) != 0 {
-		t.Errorf("expected empty egress (self-hosted), got %v", d.Capabilities.Egress)
+	wantEgress := []string{"config:base_url"}
+	if !reflect.DeepEqual(d.Capabilities.Egress, wantEgress) {
+		t.Errorf("capabilities.egress: got %v want %v", d.Capabilities.Egress, wantEgress)
 	}
 }

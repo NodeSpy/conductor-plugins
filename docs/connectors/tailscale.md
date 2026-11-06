@@ -13,7 +13,7 @@ the LOCAL tailscale CLI. See **Funnel/serve exposure** below.
 - **Kind:** connector (verbs only — no source)
 - **Source:** [`connectors/tailscale/main.go`](../../connectors/tailscale/main.go)
 - **Provides:** `tailscale`
-- **Capabilities:** egress `["api.tailscale.com:443"]`; spawns `tailscale` (for `funnel_open`/`funnel_close` only); `single_process: true` (every configured instance shares one process — see **Funnel/serve exposure** and **Capabilities & security** below)
+- **Capabilities:** egress `["api.tailscale.com:443"]`; commands `["tailscale"]` plus write access to tailscaled's LocalAPI socket (for `funnel_open`/`funnel_close` only); `single_process: true` (every configured instance shares one process — see **Funnel/serve exposure** and **Capabilities & security** below)
 
 ## Setup
 
@@ -242,7 +242,9 @@ this plugin, talks to Tailscale's OAuth token endpoint for the managed
 `client_credentials` exchange. Scope the OAuth client (or the API key) to the
 least privilege the workflow needs; Tailscale OAuth clients can be scoped
 read-only (`all:read`) or to specific resource types. Also declares `Commands:
-["tailscale"]` and `Spawns: true`, used only by `funnel_open`/`funnel_close`.
+["tailscale"]` and write access to tailscaled's LocalAPI unix socket (the
+spawned CLI's own channel to the already-running daemon), used only by
+`funnel_open`/`funnel_close`.
 
 Declares `single_process: true`: the box's one serve/funnel mapping on port
 443 is tracked by an in-memory refcount this plugin keeps, which only stays

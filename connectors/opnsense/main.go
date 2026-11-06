@@ -59,7 +59,7 @@ func (p *opnsensePlugin) Describe() plugin.Decl {
 	return plugin.Decl{
 		Kind: plugin.KindConnector,
 		Type: "opnsense",
-		Desc: "OPNsense: firmware, services, firewall aliases, interfaces, DHCPv4 leases, gateway status, Unbound settings, and system reboot/status over the OPNsense REST API. Self-hosted; declares no egress (narrow with network: per instance). No source — the OPNsense API is request/response only.",
+		Desc: "OPNsense: firmware, services, firewall aliases, interfaces, DHCPv4 leases, gateway status, Unbound settings, and system reboot/status over the OPNsense REST API. Self-hosted; egress is the instance's own base_url. No source — the OPNsense API is request/response only.",
 		Connection: plugin.Schema{
 			"base_url":             {Type: "string", Required: true, Desc: "OPNsense instance root, e.g. https://opnsense.example.com (no trailing /api)"},
 			"api_key":              {Type: "string", Required: true, Desc: "OPNsense API key, sent as the HTTP Basic auth username"},
@@ -194,10 +194,11 @@ func (p *opnsensePlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{"result": {Type: "any"}, "items": {Type: "list"}, "status_code": {Type: "integer"}},
 			},
 		},
-		// OPNsense is self-hosted: there is no fixed public host to declare.
-		// The operator narrows egress to their own instance with
-		// `network: ["opnsense.example.com:443"]` on the connector instance.
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// OPNsense is self-hosted: there is no fixed public host, so egress
+		// is read from the instance's own base_url connection field.
+		// network: on the connector instance may narrow this further, but
+		// (unlike the pre-jail model) can never widen it past base_url.
+		Capabilities: plugin.Capabilities{Egress: []string{"config:base_url"}},
 	}
 }
 
@@ -497,6 +498,7 @@ func (p *opnsensePlugin) clientFor(conn opnsenseConn) *http.Client {
 	client := &http.Client{Timeout: 30 * time.Second}
 	if conn.insecureSkipVerify {
 		client.Transport = &http.Transport{
+			Proxy:           http.ProxyFromEnvironment,
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- explicit, documented opt-out for self-signed LAN instances
 		}
 	}

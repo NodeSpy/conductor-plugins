@@ -42,8 +42,12 @@ func (notifiarrPlugin) Describe() plugin.Decl {
 			"api_base":   {Type: "string", Desc: "override the Notifiarr API base URL (tests, or a private gateway)"},
 			"channel_id": {Type: "string", Desc: "default Discord channel id override (used by `notify` when its own channel_id option is omitted)"},
 		},
-		Verbs:        notifiarrVerbs(),
-		Capabilities: plugin.Capabilities{Egress: []string{"notifiarr.com:443"}},
+		Verbs: notifiarrVerbs(),
+		// notifiarr.com:443 is the hosted default; config:api_base is also
+		// granted because api_base is a real production override (a
+		// private gateway), not just a test hook — without it, pointing
+		// at anything but the hosted API would be denied outright.
+		Capabilities: plugin.Capabilities{Egress: []string{"notifiarr.com:443", "config:api_base"}},
 	}
 }
 

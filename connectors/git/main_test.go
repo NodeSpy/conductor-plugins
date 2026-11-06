@@ -542,7 +542,7 @@ func TestDescribe(t *testing.T) {
 	if d.Kind != plugin.KindConnector || d.Type != "git" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	if !contains(d.Capabilities.Commands, "git") || !contains(d.Capabilities.Commands, "ssh") || !d.Capabilities.Spawns {
+	if !contains(d.Capabilities.Commands, "git") || !contains(d.Capabilities.Commands, "ssh") {
 		t.Fatalf("capabilities: %#v", d.Capabilities)
 	}
 	if len(d.Capabilities.Egress) != 0 {

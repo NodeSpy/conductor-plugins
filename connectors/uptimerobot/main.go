@@ -162,7 +162,14 @@ func (uptimerobotPlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{"result": {Type: "any"}, "status_code": {Type: "integer"}},
 			},
 		},
-		Capabilities: plugin.Capabilities{Egress: []string{"api.uptimerobot.com:443"}},
+		// Talks to the fixed UptimeRobot API host (api_base only overrides
+		// it in tests) plus, when configured, an outbound smee.io-style
+		// relay this plugin dials out to for the webhook source. Listen is
+		// the webhook receiver's own inbound address (StartSource only).
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"api.uptimerobot.com:443", "config:webhook.smee"},
+			Listen: []string{"config:webhook.listen"},
+		},
 	}
 }
 

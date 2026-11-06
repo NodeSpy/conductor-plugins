@@ -81,11 +81,14 @@ func (sonarrPlugin) Describe() plugin.Decl {
 		Verbs:  sonarrVerbs(),
 		// Sonarr is always self-hosted — there is no fixed hostname this
 		// plugin can declare the way api.github.com is fixed for the github
-		// connector. An empty manifest is the honest declaration; the
-		// operator MUST narrow `network:` on the connector instance to their
-		// own instance's host themselves (documented in
-		// docs/connectors/sonarr.md).
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// connector, so egress is the connection's own base_url. The webhook
+		// source needs the same treatment: webhook.smee, when set, is an
+		// outbound relay URL this plugin dials out to, and webhook.listen is
+		// the inbound address it serves the webhook on.
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"config:base_url", "config:webhook.smee"},
+			Listen: []string{"config:webhook.listen"},
+		},
 	}
 }
 

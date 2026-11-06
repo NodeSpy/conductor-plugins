@@ -102,9 +102,14 @@ func (twilioPlugin) Describe() plugin.Decl {
 			},
 		},
 		Verbs: twilioVerbs(),
-		// The permission manifest conductor records at install: this plugin
-		// only ever calls the Twilio REST API, and spawns nothing.
-		Capabilities: plugin.Capabilities{Egress: []string{"api.twilio.com:443"}},
+		// The Twilio REST API's fixed host, plus api_base (an operator
+		// override for tests or a private gateway) and the optional smee
+		// relay the webhook source dials out to when it has no public URL.
+		// Listen is the webhook source's own inbound address.
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"api.twilio.com:443", "config:api_base", "config:webhook.smee"},
+			Listen: []string{"config:webhook.listen"},
+		},
 	}
 }
 

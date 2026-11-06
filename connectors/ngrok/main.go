@@ -69,7 +69,19 @@ func (p *ngrokPlugin) Describe() plugin.Decl {
 			exposurekit.OpenVerb("start an ngrok tunnel to a local address"),
 			exposurekit.CloseVerb(),
 		},
-		Capabilities: plugin.Capabilities{Commands: []string{"ngrok"}, Spawns: true},
+		// The ngrok binary itself dials its control connection to the
+		// connect.*.ngrok-agent.com family (ngrok agent >= 3.3; older agents
+		// use tunnel.*.ngrok.com) and fetches a CRL over plain HTTP from
+		// crl.ngrok-agent.com. This connector also polls ngrok's own local
+		// API (api_addr, default loopback :4040) to read the assigned
+		// public URL.
+		Capabilities: plugin.Capabilities{
+			Commands: []string{"ngrok"},
+			Egress: []string{
+				"*.ngrok-agent.com:443", "crl.ngrok-agent.com:80", "*.ngrok.com:443",
+				"config:api_addr:4040",
+			},
+		},
 	}
 }
 

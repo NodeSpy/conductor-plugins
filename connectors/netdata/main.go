@@ -64,7 +64,7 @@ func (p *netdataPlugin) Describe() plugin.Decl {
 	return plugin.Decl{
 		Kind: plugin.KindConnector,
 		Type: "netdata",
-		Desc: "Netdata: info, charts, chart, data, alarms, alarm_log, the newer v2 alerts, contexts, and a raw api escape hatch over the Netdata Agent REST API — plus a poll source that emits an alarm event for every alarm currently in WARNING or CRITICAL. Self-hosted; declares no egress (narrow with network: per instance).",
+		Desc: "Netdata: info, charts, chart, data, alarms, alarm_log, the newer v2 alerts, contexts, and a raw api escape hatch over the Netdata Agent REST API — plus a poll source that emits an alarm event for every alarm currently in WARNING or CRITICAL. Self-hosted; egress is the connection's own base_url.",
 		Connection: plugin.Schema{
 			"base_url":             {Type: "string", Required: true, Desc: "Netdata agent root, e.g. http://netdata.example.com:19999"},
 			"api_key":              {Type: "string", Desc: "bearer token, sent as Authorization: Bearer <api_key>; optional — a self-hosted agent is often open on the LAN and needs no auth header"},
@@ -94,9 +94,8 @@ func (p *netdataPlugin) Describe() plugin.Decl {
 			},
 		},
 		// Netdata is commonly self-hosted: there is no fixed public host to
-		// declare. The operator narrows egress to their own instance with
-		// `network: ["netdata.example.com:19999"]` on the connector instance.
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// declare statically, so egress is the connection's own base_url.
+		Capabilities: plugin.Capabilities{Egress: []string{"config:base_url"}},
 	}
 }
 
@@ -396,6 +395,7 @@ func (p *netdataPlugin) clientFor(conn netdataConn) *http.Client {
 	client := &http.Client{Timeout: 30 * time.Second}
 	if conn.insecureSkipVerify {
 		client.Transport = &http.Transport{
+			Proxy:           http.ProxyFromEnvironment,
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- explicit, documented opt-out for self-signed LAN instances
 		}
 	}

@@ -400,9 +400,12 @@ func TestDescribe(t *testing.T) {
 	if len(d.Capabilities.Commands) != 0 || d.Capabilities.Spawns {
 		t.Fatalf("wiz spawns nothing: %#v", d.Capabilities)
 	}
-	wantEgress := []string{"auth.app.wiz.io:443", "api.*.app.wiz.io:443"}
+	wantEgress := []string{"auth.app.wiz.io:443", "config:auth_url", "config:api_url", "config:webhook.smee"}
 	if !equalStrings(d.Capabilities.Egress, wantEgress) {
 		t.Fatalf("egress: got %#v want %#v", d.Capabilities.Egress, wantEgress)
+	}
+	if len(d.Capabilities.Listen) != 1 || d.Capabilities.Listen[0] != "config:webhook.listen" {
+		t.Fatalf("listen: got %#v", d.Capabilities.Listen)
 	}
 	wantVerbs := []string{"issues", "issue_get", "update_issue", "findings", "vulnerabilities", "projects", "graphql"}
 	got := map[string]bool{}

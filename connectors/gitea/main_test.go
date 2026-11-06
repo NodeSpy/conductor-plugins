@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -50,8 +51,11 @@ func TestDescribe(t *testing.T) {
 			t.Errorf("Describe missing verb %q", w)
 		}
 	}
-	if d.Capabilities.Egress == nil || len(d.Capabilities.Egress) != 0 {
-		t.Errorf("Describe: expected an empty (non-nil-in-spirit) Egress manifest, got %#v", d.Capabilities.Egress)
+	if want := []string{"config:url", "config:webhook.smee"}; !reflect.DeepEqual(d.Capabilities.Egress, want) {
+		t.Errorf("egress: got %v want %v", d.Capabilities.Egress, want)
+	}
+	if want := []string{"config:webhook.listen"}; !reflect.DeepEqual(d.Capabilities.Listen, want) {
+		t.Errorf("listen: got %v want %v", d.Capabilities.Listen, want)
 	}
 }
 

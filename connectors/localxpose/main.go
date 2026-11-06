@@ -55,7 +55,17 @@ func (p *localxposePlugin) Describe() plugin.Decl {
 			exposurekit.OpenVerb("start a LocalXpose tunnel to a local address"),
 			exposurekit.CloseVerb(),
 		},
-		Capabilities: plugin.Capabilities{Commands: []string{"loclx"}, Spawns: true},
+		// loclx talks to LocalXpose's control plane (api.localxpose.io) and
+		// its regional tunnel relays (both under *.loclx.io and
+		// *.localxpose.io). `account login` (and a cert loclx may generate)
+		// persist under $HOME/.localxpose — an access token first, trying the
+		// OS keyring (Keychain on macOS), falling back to a file there.
+		Capabilities: plugin.Capabilities{
+			Commands: []string{"loclx"},
+			Egress:   []string{"*.loclx.io:443", "*.localxpose.io:443"},
+			Write:    []string{"~/.localxpose"},
+			Keychain: true,
+		},
 	}
 }
 

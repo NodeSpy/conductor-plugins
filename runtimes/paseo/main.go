@@ -24,6 +24,11 @@
 //
 //	paseo_bin: "paseo"   # override the paseo binary path (default "paseo"; tests point this at a stub)
 //
+// CAPABILITIES: see the Describe() comment for what the `paseo` CLI itself
+// needs on this box (its launcher's shebang interpreters, its PASEO_HOME
+// state dir, the env vars it reads) and why its egress to the local daemon
+// cannot be statically declared.
+//
 // stdout is the RPC transport; all logging goes to stderr.
 package main
 
@@ -149,11 +154,34 @@ func (paseoPlugin) Describe() plugin.Decl {
 				Options: plugin.Schema{"id": {Type: "string", Required: true}},
 			},
 		},
-		// Every verb above is a `paseo ...` shell-out, so `paseo` is the one
-		// command this plugin spawns and the one conductor confines its PATH
-		// to. Egress is paseo's own business, not this plugin's: it talks to
-		// the local CLI over stdio and dials nothing itself.
-		Capabilities: plugin.Capabilities{Commands: []string{"paseo"}},
+		// Every verb above is a `paseo ...` shell-out. The paseo CLI's own
+		// launcher is `#!/usr/bin/env -S node --disable-warning=DEP0040`, so
+		// the kernel execs "env" and "node" to run it even though this
+		// plugin only ever names "paseo" — all three must be on the jail's
+		// PATH.
+		//
+		// The CLI resolves its daemon target and credentials from its own
+		// environment, not from anything this plugin passes: PASEO_HOME
+		// (default ~/.paseo) names its state dir — the daemon's
+		// pid/listen-address lock file, this CLI's own client-id and its
+		// saved local credential all live there — PASEO_HOST picks a
+		// non-default target, and PASEO_PASSWORD authenticates to one that
+		// requires a password.
+		//
+		// Egress is deliberately NOT declared: the CLI dials the daemon over
+		// a loopback WebSocket whose PORT it reads at call time from
+		// <PASEO_HOME>/paseo.pid — ephemeral unless PASEO_LISTEN pins the
+		// daemon to one — or an arbitrary host when PASEO_HOST names one.
+		// Neither is a literal "host:port" or a value carried by this
+		// plugin's own connection schema, so there is no honest static
+		// Egress entry for it: every verb here is refused by the jail's
+		// egress proxy until the daemon's address is pinned to something a
+		// connection field can name.
+		Capabilities: plugin.Capabilities{
+			Commands: []string{"paseo", "env", "node"},
+			Env:      []string{"PASEO_HOME", "PASEO_HOST", "PASEO_PASSWORD"},
+			Write:    []string{"~/.paseo", "env:PASEO_HOME"},
+		},
 	}
 }
 

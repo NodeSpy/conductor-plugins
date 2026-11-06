@@ -65,9 +65,17 @@ func (gitlabPlugin) Describe() plugin.Decl {
 			"token":   {Type: "string", Desc: "personal/project access token, sent as PRIVATE-TOKEN"},
 			"webhook": {Type: "map", Desc: "source transport: listen (optional if smee is set), path, secret, allow_unsigned, smee (smee.io-style SSE relay URL, e.g. https://smee.io/AbC123 — also (or instead) receive forwarded deliveries over SSE when the endpoint has no public URL)"},
 		},
-		Events:       gitlabEvents(),
-		Verbs:        gitlabVerbs(),
-		Capabilities: plugin.Capabilities{Egress: []string{"gitlab.com:443"}}, // self-managed: narrow/replace via `network:` to your instance's host:443
+		Events: gitlabEvents(),
+		Verbs:  gitlabVerbs(),
+		// gitlab.com covers the default (url unset); config:url additionally
+		// covers a self-managed instance's own host when url is set — both are
+		// declared since network: can only narrow the manifest, never widen or
+		// replace it. Listen/the smee egress are the webhook source's own
+		// address and optional relay.
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"gitlab.com:443", "config:url", "config:webhook.smee"},
+			Listen: []string{"config:webhook.listen"},
+		},
 	}
 }
 

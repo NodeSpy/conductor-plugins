@@ -196,10 +196,9 @@ func (p *audiobookshelfPlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{"result": {Type: "any"}, "items": {Type: "list"}, "status_code": {Type: "integer"}},
 			},
 		},
-		// Audiobookshelf is self-hosted: there is no fixed public host to
-		// declare. The operator narrows egress to their own instance with
-		// `network: ["abs.example.com:443"]` on the connector instance.
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// Audiobookshelf is self-hosted: egress is the instance's own base_url
+		// (host:port derived from the URL, http default 80, https default 443).
+		Capabilities: plugin.Capabilities{Egress: []string{"config:base_url"}},
 	}
 }
 

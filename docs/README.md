@@ -69,30 +69,30 @@ and installs it under conductor's **state dir**. Boot is offline.
 
 ## Capabilities — the permission manifest
 
-Every plugin declares, in its `Describe`, a **permission manifest**: the network
-hosts it calls (`Egress`), the commands it spawns (`Commands` / `Spawns`), and
-the filesystem paths it needs (`FS`). Conductor records it at install, **shows
-it to you** when you add the plugin, and confines the subprocess to it.
+Every plugin declares, in its `Describe`, what it needs: the hosts it connects
+to (`Egress`), addresses it listens on (`Listen`), paths it reads and writes
+(`Read` / `Write`), the commands it runs (`Commands` / `Spawns`), the
+directories those commands run helper programs from (`Exec` — git's
+`git-core`, say), the environment variables it reads (`Env`) and whether it
+reads a login from the macOS Keychain (`Keychain`). Conductor shows it to you
+at install, records it, and runs the plugin jailed to exactly that record. An
+update that declares more is held until you run `conductor plugin approve`.
 
-A connector instance's `network:` may **narrow** the declared egress, never
-widen it:
+Paths and hosts may name the plugin's own config (`config:<field>`) or a
+command's location (`command:git/../../lib/git-core`). Declare everything a
+call needs: base-system programs outside `Commands` and `Exec` do not run in
+the jail.
+
+A connector's `network:` / `allow_env:` may **narrow** what is declared, never
+widen it (`[]` grants nothing; unset grants everything declared):
 
 ```yaml
 connectors:
   gh: { use: github, network: ["api.github.com:443"] }
 ```
 
-OS isolation is available but **not** required — opt-in hardening for a
-locked-down box, not the default path:
-
-```yaml
-connectors:
-  mysentry: { use: sentry, isolation: { mode: namespace } }
-```
-
-A manifest is a *visible, can't-exceed-declaration* contract, not an OS jail on
-its own. See conductor's `docs/design/use-unification.md §D` for exactly what it
-does and does not enforce.
+`trust: full` on an entry runs that plugin without its jail. Conductor's
+`docs/wiki/Plugins.md` says exactly what the jail does and does not enforce.
 
 ## Authoring a plugin
 

@@ -16,10 +16,9 @@
 //	base_url: "http://sab:8080"  # REQUIRED: base of the instance (no trailing /api)
 //	api_key:  "<api key>"        # REQUIRED: SABnzbd Config > General > API Key
 //
-// The SABnzbd host is operator-specific and self-hosted, so this plugin
-// declares NO egress in its capability manifest — the operator is expected to
-// scope `network:` on the connector instance to their own SABnzbd host (see
-// docs/connectors/sabnzbd.md).
+// The SABnzbd host is operator-specific and self-hosted, so Capabilities.Egress
+// is declared as "config:base_url": conductor resolves it to the configured
+// instance's own host:port at launch (see docs/connectors/sabnzbd.md).
 //
 // stdout is the RPC transport; all logging goes to stderr.
 package main
@@ -51,13 +50,9 @@ func (sabnzbdPlugin) Describe() plugin.Decl {
 			"api_key":  {Type: "string", Required: true, Desc: "SABnzbd API key (Config > General > API Key)"},
 		},
 		Verbs: sabnzbdVerbs(),
-		// The SABnzbd host is operator-specific and self-hosted — there is no
-		// fixed hostname this plugin can declare the way api.github.com is
-		// fixed for the github connector. An empty manifest is the honest
-		// declaration; the operator MUST narrow `network:` on the connector
-		// instance to their own instance's host themselves (documented in
-		// docs/connectors/sabnzbd.md).
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// SABnzbd is self-hosted: the only destination is the configured
+		// instance's own base_url, resolved at launch rather than hardcoded.
+		Capabilities: plugin.Capabilities{Egress: []string{"config:base_url"}},
 	}
 }
 

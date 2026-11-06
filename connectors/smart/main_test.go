@@ -194,8 +194,11 @@ func TestDescribe(t *testing.T) {
 	if d.Kind != plugin.KindConnector || d.Type != "smart" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	if !contains(d.Capabilities.Commands, "smartctl") || !contains(d.Capabilities.Commands, "sudo") || !d.Capabilities.Spawns {
+	if !contains(d.Capabilities.Commands, "smartctl") || !contains(d.Capabilities.Commands, "sudo") {
 		t.Fatalf("capabilities: %#v", d.Capabilities)
+	}
+	if !contains(d.Capabilities.Write, "config:devices") {
+		t.Fatalf("capabilities: expected config:devices in Write: %#v", d.Capabilities)
 	}
 	if len(d.Capabilities.Egress) != 0 {
 		t.Fatalf("smartctl dials nothing, but egress is declared: %v", d.Capabilities.Egress)

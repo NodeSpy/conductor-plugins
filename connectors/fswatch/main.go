@@ -44,6 +44,15 @@ func (fswatchPlugin) Describe() plugin.Decl {
 		Connection: plugin.Schema{
 			"watches": {Type: "map", Required: true, Desc: "name -> { path, match, debounce, recursive, events }"},
 		},
+		// No egress, no commands — pure local fsnotify. The watched directories
+		// themselves (watches.<name>.path, for operator-chosen names) CANNOT be
+		// declared: a capability path reference dots into ONE field at a fixed
+		// depth ("config:field.sub"), but here the path is nested two levels
+		// under operator-chosen watch NAMES inside a map of maps, which the
+		// reference syntax has no way to iterate. This plugin cannot get Read
+		// access to its own watched paths under the jail (report, don't hack
+		// around it).
+		Capabilities: plugin.Capabilities{},
 		Events: []plugin.Event{{
 			Name:    "<watch>",
 			Dynamic: true,

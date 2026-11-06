@@ -738,8 +738,13 @@ func TestDescribe(t *testing.T) {
 	if len(d.Capabilities.Commands) != 0 || d.Capabilities.Spawns {
 		t.Fatalf("capabilities: must not spawn/command: %#v", d.Capabilities)
 	}
-	if d.Capabilities.Egress == nil || len(d.Capabilities.Egress) != 0 {
-		t.Fatalf("capabilities.egress: want declared-empty ([]string{}), got %#v", d.Capabilities.Egress)
+	wantEgress := []string{"config:base_url", "config:webhook.smee"}
+	if !reflect.DeepEqual(d.Capabilities.Egress, wantEgress) {
+		t.Fatalf("capabilities.egress: want %#v, got %#v", wantEgress, d.Capabilities.Egress)
+	}
+	wantListen := []string{"config:webhook.listen"}
+	if !reflect.DeepEqual(d.Capabilities.Listen, wantListen) {
+		t.Fatalf("capabilities.listen: want %#v, got %#v", wantListen, d.Capabilities.Listen)
 	}
 	want := []string{
 		"sessions", "library_sections", "scan_library", "search", "metadata",

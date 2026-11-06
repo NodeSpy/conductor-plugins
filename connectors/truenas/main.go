@@ -53,8 +53,12 @@ func newTruenasPlugin() *truenasPlugin {
 	return &truenasPlugin{
 		client: &http.Client{Timeout: 30 * time.Second},
 		insecureClient: &http.Client{
-			Timeout:   30 * time.Second,
-			Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec // opt-in per connection, for self-signed home-lab certs
+			Timeout: 30 * time.Second,
+			// Proxy must be set explicitly: a custom http.Transport (unlike
+			// http.DefaultTransport, used when Transport is nil) does not
+			// honor HTTP(S)_PROXY on its own, and the jail's egress proxy is
+			// how this plugin is allowed to reach the declared base_url host.
+			Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec // opt-in per connection, for self-signed home-lab certs
 		},
 	}
 }
@@ -73,7 +77,7 @@ func (p *truenasPlugin) Describe() plugin.Decl {
 	return plugin.Decl{
 		Kind: plugin.KindConnector,
 		Type: "truenas",
-		Desc: "TrueNAS SCALE: system info, pools, datasets, snapshots, replication, apps, alerts, and services over the SCALE middleware REST API (/api/v2.0), plus a raw `api` escape hatch and a poll source that emits an alert event for every active alert. Self-hosted; declares no egress (narrow with network: per instance).",
+		Desc: "TrueNAS SCALE: system info, pools, datasets, snapshots, replication, apps, alerts, and services over the SCALE middleware REST API (/api/v2.0), plus a raw `api` escape hatch and a poll source that emits an alert event for every active alert. Self-hosted; egress is the connection's own base_url.",
 		Connection: plugin.Schema{
 			"base_url":             {Type: "string", Required: true, Desc: "TrueNAS SCALE root, e.g. https://truenas.example.com"},
 			"api_key":              {Type: "string", Required: true, Desc: "TrueNAS API key, sent as Authorization: Bearer <api_key>"},
@@ -100,10 +104,11 @@ func (p *truenasPlugin) Describe() plugin.Decl {
 				},
 			},
 		},
-		// TrueNAS is self-hosted: there is no fixed public host to declare. The
-		// operator narrows egress to their own instance with
-		// `network: ["truenas.example.com:443"]` on the connector instance.
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// TrueNAS is self-hosted: there is no fixed public host to declare,
+		// so egress is the connection's own base_url (narrowed further, if
+		// wanted, with `network:` on the connector instance — it can only
+		// narrow this, never widen it).
+		Capabilities: plugin.Capabilities{Egress: []string{"config:base_url"}},
 	}
 }
 

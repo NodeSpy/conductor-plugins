@@ -49,8 +49,14 @@ func (notionPlugin) Describe() plugin.Decl {
 			"version":  {Type: "string", Desc: "Notion-Version header (default " + defaultNotionVersion + ")"},
 			"api_base": {Type: "string", Desc: "override the Notion API base URL (tests, or a private gateway)"},
 		},
-		Verbs:        notionVerbs(),
-		Capabilities: plugin.Capabilities{Egress: []string{"api.notion.com:443"}},
+		Verbs: notionVerbs(),
+		// api.notion.com:443 is the hosted default; config:api_base is also
+		// granted because api_base is a real production override (a
+		// private gateway), not just a test hook — without it, pointing at
+		// anything but the hosted API would be denied outright. Notion auth
+		// here is a plain integration token (no plugin.AuthSpec/OAuth2 flow),
+		// so there is no separate token-endpoint host to grant.
+		Capabilities: plugin.Capabilities{Egress: []string{"api.notion.com:443", "config:api_base"}},
 	}
 }
 

@@ -76,12 +76,12 @@ func (sns) Describe() plugin.Decl {
 				"subject":    {Type: "string"},
 			},
 		}},
-		// It fetches SNS signing certs and GETs SubscribeURL under
-		// *.amazonaws.com, and optionally relays through smee.io. It never
-		// spawns anything.
+		// It listens for SNS deliveries on its own address (or relays
+		// through smee.io), fetches SNS signing certs, and GETs
+		// SubscribeURL under *.amazonaws.com. It never spawns anything.
 		Capabilities: plugin.Capabilities{
+			Listen: []string{"config:listen"},
 			Egress: []string{"smee.io:443", "sns.*.amazonaws.com:443", "*.amazonaws.com:443"},
-			Spawns: false,
 		},
 	}
 }

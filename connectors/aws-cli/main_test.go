@@ -177,11 +177,14 @@ func TestDescribe(t *testing.T) {
 	if d.Kind != plugin.KindConnector || d.Type != "aws-cli" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	if !contains(d.Capabilities.Commands, "aws") || !d.Capabilities.Spawns {
+	if !contains(d.Capabilities.Commands, "aws") {
 		t.Fatalf("capabilities: %#v", d.Capabilities)
 	}
-	if len(d.Capabilities.Egress) != 0 {
-		t.Fatalf("expected no declared egress, got %#v", d.Capabilities.Egress)
+	if !contains(d.Capabilities.Egress, "*.amazonaws.com:443") || !contains(d.Capabilities.Egress, "config:endpoint_url") {
+		t.Fatalf("expected amazonaws.com + endpoint_url egress, got %#v", d.Capabilities.Egress)
+	}
+	if !contains(d.Capabilities.Env, "AWS_ACCESS_KEY_ID") {
+		t.Fatalf("expected AWS_ACCESS_KEY_ID in env, got %#v", d.Capabilities.Env)
 	}
 	want := []string{"run", "s3", "lambda_invoke", "sts_identity", "cli"}
 	got := map[string]bool{}

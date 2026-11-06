@@ -82,7 +82,11 @@ func (jevPlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{"models": {Type: "list", Desc: "[{id, name, released}]"}},
 			},
 		},
-		Capabilities: plugin.Capabilities{Egress: []string{"api.typesafe.ai:443"}},
+		// The hardcoded default origin, plus the connection field so a
+		// configured api_base (tests, a private gateway) is reachable too —
+		// "config:api_base" resolves to nothing when the field is unset, so
+		// the static entry still covers the default.
+		Capabilities: plugin.Capabilities{Egress: []string{"api.typesafe.ai:443", "config:api_base"}},
 	}
 }
 

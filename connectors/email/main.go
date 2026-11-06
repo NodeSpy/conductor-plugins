@@ -112,11 +112,19 @@ func (emailPlugin) Describe() plugin.Decl {
 				Outputs: plugin.Schema{"sent": {Type: "boolean"}},
 			},
 		},
-		// Egress is operator-specific: the smtp/imap host:port an operator
-		// points this instance at, not a fixed vendor API. Left empty; the
-		// operator's network: narrows what the plugin may actually dial, and
-		// docs/connectors/email.md documents the pattern.
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// Egress is the operator's own smtp/imap host, on each protocol's
+		// conventional ports: the capability syntax can reference only ONE
+		// connection field per entry, so a config:smtp.host:<port> reference
+		// cannot pick up the sibling smtp.port value — every well-known
+		// SMTP/IMAP port is declared instead of just one. A non-default port
+		// (e.g. a relay on 2525) falls outside this and cannot be reached, since
+		// an instance's network: can only narrow the manifest, never widen it.
+		Capabilities: plugin.Capabilities{
+			Egress: []string{
+				"config:smtp.host:587", "config:smtp.host:465", "config:smtp.host:25",
+				"config:imap.host:993", "config:imap.host:143",
+			},
+		},
 	}
 }
 
@@ -318,10 +326,32 @@ func parseSMTPConn(m map[string]any) (smtpConfig, error) {
 	return c, nil
 }
 
+// dialPlain and dialTLS are this plugin's ONLY dial paths for SMTP/IMAP: both
+// non-HTTP TCP protocols, so they must go through plugin.DialContext rather
+// than net.Dial/tls.Dial directly — a jailed plugin's egress proxy refuses
+// any destination not reached that way (see pkg/plugin/proxydial.go).
+func dialPlain(addr string) (net.Conn, error) {
+	return plugin.DialContext(context.Background(), "tcp", addr)
+}
+
+func dialTLS(addr, serverName string) (net.Conn, error) {
+	conn, err := plugin.DialContext(context.Background(), "tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	tlsConn := tls.Client(conn, &tls.Config{ServerName: serverName})
+	if err := tlsConn.Handshake(); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return tlsConn, nil
+}
+
 // sendSMTP delivers raw to rcpts, choosing the transport by cfg.TLS:
-// "starttls" (default, port 587) uses smtp.SendMail, which opportunistically
-// STARTTLS-upgrades; "tls" (port 465) dials straight into implicit TLS; "none"
-// is a plaintext connection for local/test relays only.
+// "starttls" (default, port 587) dials plaintext and opportunistically
+// upgrades when the server advertises STARTTLS; "tls" (port 465) dials
+// straight into implicit TLS; "none" is a plaintext connection for
+// local/test relays only.
 func sendSMTP(cfg smtpConfig, from string, rcpts []string, raw []byte) error {
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
 	var auth smtp.Auth
@@ -330,7 +360,7 @@ func sendSMTP(cfg smtpConfig, from string, rcpts []string, raw []byte) error {
 	}
 	switch cfg.TLS {
 	case "tls":
-		conn, err := tls.Dial("tcp", addr, &tls.Config{ServerName: cfg.Host})
+		conn, err := dialTLS(addr, cfg.Host)
 		if err != nil {
 			return err
 		}
@@ -342,7 +372,7 @@ func sendSMTP(cfg smtpConfig, from string, rcpts []string, raw []byte) error {
 		defer client.Close()
 		return smtpSendSequence(client, auth, from, rcpts, raw)
 	case "none":
-		conn, err := net.Dial("tcp", addr)
+		conn, err := dialPlain(addr)
 		if err != nil {
 			return err
 		}
@@ -354,7 +384,22 @@ func sendSMTP(cfg smtpConfig, from string, rcpts []string, raw []byte) error {
 		defer client.Close()
 		return smtpSendSequence(client, auth, from, rcpts, raw)
 	default: // "starttls"
-		return smtp.SendMail(addr, auth, from, rcpts, raw)
+		conn, err := dialPlain(addr)
+		if err != nil {
+			return err
+		}
+		client, err := smtp.NewClient(conn, cfg.Host)
+		if err != nil {
+			conn.Close()
+			return err
+		}
+		defer client.Close()
+		if ok, _ := client.Extension("STARTTLS"); ok {
+			if err := client.StartTLS(&tls.Config{ServerName: cfg.Host}); err != nil {
+				return err
+			}
+		}
+		return smtpSendSequence(client, auth, from, rcpts, raw)
 	}
 }
 
@@ -589,9 +634,9 @@ func dialIMAP(cfg imapConfig) (*imapClient, error) {
 	var conn net.Conn
 	var err error
 	if cfg.TLS {
-		conn, err = tls.Dial("tcp", addr, &tls.Config{ServerName: cfg.Host})
+		conn, err = dialTLS(addr, cfg.Host)
 	} else {
-		conn, err = net.Dial("tcp", addr)
+		conn, err = dialPlain(addr)
 	}
 	if err != nil {
 		return nil, err

@@ -556,8 +556,8 @@ func TestDescribe(t *testing.T) {
 			t.Errorf("alert event missing filter %q", f)
 		}
 	}
-	if len(d.Capabilities.Egress) != 0 {
-		t.Errorf("expected empty egress (self-hosted), got %v", d.Capabilities.Egress)
+	if want := []string{"config:base_url"}; !reflect.DeepEqual(d.Capabilities.Egress, want) {
+		t.Errorf("egress: got %v want %v", d.Capabilities.Egress, want)
 	}
 }
 

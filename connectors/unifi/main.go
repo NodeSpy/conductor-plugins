@@ -203,9 +203,9 @@ func (p *unifiPlugin) Describe() plugin.Decl {
 			},
 		},
 		// A UniFi Network controller is self-hosted: there is no fixed public
-		// host to declare. The operator narrows egress to their own controller
-		// with `network: ["unifi.example.com:443"]` on the connector instance.
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// host to declare, so egress resolves to whatever base_url this
+		// instance is configured with.
+		Capabilities: plugin.Capabilities{Egress: []string{"config:base_url"}},
 	}
 }
 
@@ -339,7 +339,10 @@ func (p *unifiPlugin) sessionFor(c unifiConn) *unifiSession {
 		return s
 	}
 	jar, _ := cookiejar.New(nil)
-	transport := &http.Transport{}
+	// Proxy must be set explicitly: a bare &http.Transport{} does not honor
+	// HTTP(S)_PROXY, so under the jail this session would never reach the
+	// egress proxy at all.
+	transport := &http.Transport{Proxy: http.ProxyFromEnvironment}
 	if c.insecureSkipVerify {
 		// Per-connection tls.Config, never process-wide: this only affects
 		// requests made through THIS session's client.

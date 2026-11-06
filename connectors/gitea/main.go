@@ -67,13 +67,15 @@ func (giteaPlugin) Describe() plugin.Decl {
 		},
 		Events: giteaEvents(),
 		Verbs:  giteaVerbs(),
-		// The Gitea/Forgejo host is operator-specific and self-hosted — there is
-		// no fixed hostname this plugin can declare the way api.github.com is
-		// fixed for the github connector. An empty manifest is the honest
-		// declaration; the operator MUST narrow `network:` on the connector
-		// instance to their own instance's host themselves (documented in
-		// docs/connectors/gitea.md).
-		Capabilities: plugin.Capabilities{Egress: []string{}},
+		// The Gitea/Forgejo host is operator-specific and self-hosted, but url IS
+		// a connection field, so egress can reference it directly instead of
+		// leaving an empty manifest an instance's network: could never widen.
+		// Listen/the smee egress are the webhook source's own address and
+		// optional relay.
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"config:url", "config:webhook.smee"},
+			Listen: []string{"config:webhook.listen"},
+		},
 	}
 }
 

@@ -73,9 +73,16 @@ func (jiraPlugin) Describe() plugin.Decl {
 			"api_token": {Type: "string", Desc: "Atlassian API token for HTTP Basic auth"},
 			"webhook":   {Type: "map", Desc: "source transport: listen, path (default /jira), secret, allow_unsigned, smee"},
 		},
-		Events:       jiraEvents(),
-		Verbs:        jiraVerbs(),
-		Capabilities: plugin.Capabilities{Egress: []string{"*.atlassian.net:443"}},
+		Events: jiraEvents(),
+		Verbs:  jiraVerbs(),
+		// Egress covers every Jira Cloud site (base_url is always
+		// *.atlassian.net) plus webhook.smee for the optional smee.io-style
+		// relay. Listen is the webhook source's own inbound receiver
+		// address.
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"*.atlassian.net:443", "config:webhook.smee"},
+			Listen: []string{"config:webhook.listen"},
+		},
 	}
 }
 

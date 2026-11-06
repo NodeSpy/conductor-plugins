@@ -193,8 +193,15 @@ func (telegram) Describe() plugin.Decl {
 				Outputs: verbOutputs,
 			},
 		},
-		// Talks to the Telegram Bot API and nothing else; spawns no processes.
-		Capabilities: plugin.Capabilities{Egress: []string{"api.telegram.org:443"}},
+		// Talks to the fixed Telegram Bot API host and nothing else; spawns
+		// no processes. The webhook source needs two more declarations:
+		// webhook.smee, when set, is an outbound smee.io-style relay URL this
+		// plugin dials out to, and webhook.listen is the inbound address it
+		// serves Telegram's webhook deliveries on.
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"api.telegram.org:443", "config:webhook.smee"},
+			Listen: []string{"config:webhook.listen"},
+		},
 	}
 }
 
