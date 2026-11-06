@@ -107,7 +107,10 @@ func decl() plugin.Decl {
 		// the API at a test double.
 		Capabilities: plugin.Capabilities{
 			Egress: []string{"api.github.com:443", "github.com:443", "*.ghe.com:443", "config:api_base",
-				"config:webhook.smee_url", "productionresultssa*.blob.core.windows.net:443", "*.actions.githubusercontent.com:443"},
+				"config:webhook.smee_url",
+				// smee.io literally too: conductors before the declared jail don't
+				// resolve config: references, and the webhook stream uses it.
+				"smee.io:443", "productionresultssa*.blob.core.windows.net:443", "*.actions.githubusercontent.com:443"},
 			Listen:   []string{"config:webhook.listen"},
 			Read:     []string{"~/.config/gh", "env:GH_CONFIG_DIR", "env:XDG_CONFIG_HOME/gh", "config:app.private_key_path"},
 			Commands: []string{"gh", "git"},
