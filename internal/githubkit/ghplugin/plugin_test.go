@@ -239,3 +239,23 @@ func TestDeclDeclaresListeners(t *testing.T) {
 		t.Fatalf("listener = %+v", l)
 	}
 }
+
+// While webhook.smee_url is accepted (deprecated, until the next major
+// release), the plugin dials smee.io itself — and a conductor older than the
+// declared jail does not resolve a config: egress reference. So smee.io stays
+// declared literally beside config:webhook.smee_url; dropping it is how a box
+// on such a conductor lost its webhook stream once already.
+func TestDeprecatedSmeeKeepsLiteralEgress(t *testing.T) {
+	eg := Decl().Capabilities.Egress
+	has := func(want string) bool {
+		for _, e := range eg {
+			if e == want {
+				return true
+			}
+		}
+		return false
+	}
+	if !has("smee.io:443") || !has("config:webhook.smee_url") {
+		t.Fatalf("egress %v: while smee_url is accepted, both smee.io:443 and config:webhook.smee_url stay declared", eg)
+	}
+}
