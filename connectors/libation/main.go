@@ -59,7 +59,9 @@ func (libationPlugin) Describe() plugin.Decl {
 		Capabilities: plugin.Capabilities{
 			Commands: []string{"LibationCli"},
 			// A self-contained .NET app: its runtime libraries sit beside it.
-			Exec: []string{"command:LibationCli/.."},
+			// Optional: installed directly in /usr/bin there is no such
+			// directory to grant (the system's bin dir never is).
+			Exec: []string{"?command:LibationCli/.."},
 			Egress: []string{
 				"*.audible.com:443", "*.audible.co.uk:443", "*.audible.de:443",
 				"*.audible.fr:443", "*.audible.co.jp:443", "*.audible.ca:443",

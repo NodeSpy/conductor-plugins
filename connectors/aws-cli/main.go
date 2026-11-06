@@ -57,7 +57,10 @@ func (awsPlugin) Describe() plugin.Decl {
 		Capabilities: plugin.Capabilities{
 			Commands: []string{"aws"},
 			// AWS CLI v2 is a bundle: the libraries it loads sit beside it.
-			Exec:   []string{"command:aws/.."},
+			// Optional: a distro's aws directly in /usr/bin has no bundle
+			// directory (its dir is the system's bin dir, never granted),
+			// and runs with what the base system has.
+			Exec:   []string{"?command:aws/.."},
 			Egress: []string{"*.amazonaws.com:443", "169.254.169.254:80", "config:endpoint_url"},
 			Write:  []string{"~/.aws", "env:AWS_CONFIG_FILE", "env:AWS_SHARED_CREDENTIALS_FILE"},
 			Env: []string{
