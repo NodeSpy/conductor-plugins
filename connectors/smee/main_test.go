@@ -635,3 +635,15 @@ func TestEgressDeclaresThePinnedChannel(t *testing.T) {
 		}
 	}
 }
+
+// The relay's local POST goes to the address the engine hands open; jailed,
+// only expose_local lets conductor grant it.
+func TestDeclaresExposeLocal(t *testing.T) {
+	d := newSmeePlugin().Describe()
+	if !d.Capabilities.ExposeLocal {
+		t.Fatal("smee does not declare expose_local: jailed, it cannot deliver to the listener it relays to")
+	}
+	if p := plugin.ValidateSemantics(d); len(p) > 0 {
+		t.Fatalf("the declaration does not hang together: %v", p)
+	}
+}

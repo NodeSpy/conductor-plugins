@@ -20,7 +20,7 @@ go 1.26.3
 // v0.90.0: the SDK that withholds config: and env: capability entries from
 // a conductor that cannot resolve them (up to v0.87 it reads them as literal
 // patterns and denies the plugin every host).
-require github.com/NodeSpy/conductor v0.90.0
+require github.com/NodeSpy/conductor v0.90.1-0.20261108050057-06cf098be226
 
 // The interpreters the four step engines embed. These are the SAME versions
 // conductor pinned while the engines lived in its binary, so the port is a

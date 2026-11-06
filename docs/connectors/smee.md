@@ -19,6 +19,10 @@ traffic aimed at the returned `public_url` arrives at `local_addr`.
 - **Provides:** `smee`
 - **Capabilities:** egress to `smee.io:443` plus the hosts of the configured
   `smee_base` and `channel` (a pinned channel on a self-hosted smee server);
+  `expose_local` — under conductor's plugin jail, it may POST to the
+  listeners conductor wires to it with `expose:`, and to nothing else on
+  the machine (never one of conductor's own ports, so not the bundled
+  `webhook` connector's listener unless this connector is `trust: full`);
   spawns nothing (no subprocess — the relay is an in-process HTTP client)
 
 ```yaml

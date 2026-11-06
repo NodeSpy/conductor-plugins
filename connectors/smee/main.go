@@ -129,22 +129,22 @@ func (p *smeePlugin) Describe() plugin.Decl {
 		// Egress: the default smee.io relay host, plus whatever host a
 		// self-hosted `smee_base` override names (config:smee_base covers
 		// both createChannel's GET .../new and relay's long-lived SSE GET).
-		// NOT declarable: relayFrame's local POST target. The destination is
-		// `local_addr` (+ `path`), an "open" verb OPTION the engine fills in
-		// per call via the `exposes` semantic (exposurekit.ExposesWithPath)
-		// — never a Connection field — so Capabilities (which only resolves
-		// config:/env: references against the Connection schema) has no way
-		// to name it. The daemon grants no per-call exception for an
-		// exposes-verb's own local_addr either (checked against the SDK this
-		// plugin is pinned to). Until one of those exists, every relayed
-		// delivery's local POST will be refused by the egress proxy under
-		// the jail even though the inbound SSE leg above works fine.
-		//
 		// config:channel covers a channel pinned on a host other than
 		// smee.io (a self-hosted relay). smee.io stays literal: a conductor
 		// older than the declared jail does not resolve config: references,
 		// and the relay's own default host must reach it.
-		Capabilities: plugin.Capabilities{Egress: []string{"smee.io:443", "config:smee_base", "config:channel"}},
+		//
+		// ExposeLocal: relayFrame POSTs each delivery to `local_addr`, the
+		// "open" option the engine fills in from the listener it wired to
+		// this connector (a listener's `expose:`). It is not a Connection
+		// field, so no egress entry can name it; expose_local asks the
+		// engine, which decides that address, to grant exactly it from the
+		// jail. A conductor without the capability ignores it (it is not
+		// must-understand), and does not jail plugins either.
+		Capabilities: plugin.Capabilities{
+			Egress:      []string{"smee.io:443", "config:smee_base", "config:channel"},
+			ExposeLocal: true,
+		},
 	}
 }
 
