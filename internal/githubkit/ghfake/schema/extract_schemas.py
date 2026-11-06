@@ -26,12 +26,8 @@ REST = [
     ("get", "/users/{username}/installation"),
     ("get", "/installation/repositories"),
     ("get", "/user"),
-    # TODO(next regeneration): add ("get", "/repos/{owner}/{repo}") — rest.go's
-    # hGetRepo serves it (the repo-visibility probe, contracterr.go's
-    # repoVisible), but this tuple can't be added until the file is
-    # regenerated from a real descriptions-next fetch (network access wasn't
-    # available when that handler was added). Until then fake_test.go's
-    # TestEveryResponseValidatesAgainstGitHubsSchema excludes it by name.
+    ("get", "/repos/{owner}/{repo}"),
+    ("get", "/repos/{owner}/{repo}/branches/{branch}"),
     ("get", "/repos/{owner}/{repo}/pulls"),
     ("post", "/repos/{owner}/{repo}/pulls"),
     ("get", "/repos/{owner}/{repo}/pulls/{pull_number}"),
@@ -80,6 +76,7 @@ REST = [
     ("post", "/repos/{owner}/{repo}/git/refs"),
     ("get", "/repos/{owner}/{repo}/git/ref/{ref}"),
     ("patch", "/repos/{owner}/{repo}/git/refs/{ref}"),
+    ("delete", "/repos/{owner}/{repo}/git/refs/{ref}"),
     ("get", "/repos/{owner}/{repo}/git/commits/{commit_sha}"),
     ("post", "/repos/{owner}/{repo}/git/commits"),
     ("post", "/repos/{owner}/{repo}/git/trees"),

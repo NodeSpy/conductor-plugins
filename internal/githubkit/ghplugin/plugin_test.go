@@ -162,6 +162,27 @@ func TestEventCarriesTheRoute(t *testing.T) {
 	}
 }
 
+// A trigger on the PR close builds (it is a known kind) and takes the close,
+// routed to it like any other event.
+func TestATriggerOnTheCloseTakesIt(t *testing.T) {
+	src, err := BuildSource("gh", map[string]any{
+		"token": "t", "me": map[string]any{"logins": []any{"me"}},
+		"webhook": map[string]any{"listen": "127.0.0.1:1", "secret": "s"}, "sweep": map[string]any{"enabled": false},
+	}, []plugin.SourceTrigger{{ID: "0:gh._closed", Name: "merged", Event: "_closed"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	trs := src.Translate(context.Background(), "pull_request",
+		[]byte(`{"action":"closed","repository":{"full_name":"o/r","name":"r","default_branch":"main","owner":{"login":"o"}},
+		"pull_request":{"number":3,"merged":true,"user":{"login":"me"},"head":{"sha":"h","ref":"feat","repo":{"full_name":"o/r"}},"base":{"ref":"main"}}}`))
+	if len(trs) != 1 {
+		t.Fatalf("want one close, got %d", len(trs))
+	}
+	if ev := Event("gh", trs[0]); ev.Trigger != "0:gh._closed" || ev.Kind != "_closed" || ev.Context["mine"] != true || ev.Context["head_ref"] != "feat" {
+		t.Fatalf("event: %+v", ev)
+	}
+}
+
 // The connection parses the bundled connector's spellings, and refuses the
 // retired app-block webhook keys the way it does.
 func TestParseConnection(t *testing.T) {

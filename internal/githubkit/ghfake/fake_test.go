@@ -416,6 +416,8 @@ func TestEveryResponseValidatesAgainstGitHubsSchema(t *testing.T) {
 	call("list_issues", map[string]any{})
 	call("search_issues", map[string]any{"q": "feature"})
 	call("checks", map[string]any{"ref": head})
+	gone := f.Push("acme/w", "to-delete", "me", "a merged head", "x.txt")
+	call("delete_branch", map[string]any{"branch": "to-delete", "expect_sha": gone})
 	lintRun, _ := f.CheckWith("acme/w", head, "lint", CheckOpts{Conclusion: "failure",
 		Steps: []JobStep{{Name: "Set up job", Conclusion: "success"}, {Name: "golangci-lint", Conclusion: "failure"}},
 		Log:   "2026-11-02T10:00:00.0000000Z ##[group]Run golangci-lint run\n2026-11-02T10:00:01.0000000Z main.go:3: unused\n2026-11-02T10:00:01.1000000Z ##[error]Process completed with exit code 1.\n",
@@ -523,15 +525,7 @@ func TestEveryResponseValidatesAgainstGitHubsSchema(t *testing.T) {
 	// too. Everything else the fake serves must have been seen here.
 	for _, ep := range Endpoints() {
 		if strings.Contains(ep, "/app/") || strings.HasSuffix(ep, "/installation") || strings.Contains(ep, "/assets") ||
-			strings.Contains(ep, "/releases/{release_id}") && strings.HasPrefix(ep, "GET") ||
-			// GET /repos/{owner}/{repo} (githubkit's repo-visibility probe,
-			// contracterr.go's repoVisible) answers 200 from repoJSON, which
-			// already implements GitHub's "repository" shape — but its own
-			// operation entry isn't in the vendored OpenAPI subset (adding it
-			// needs the real descriptions-next spec, fetched over the
-			// network by extract_schemas.py; out of reach here). Exercised
-			// and asserted on directly by contracterr_test.go instead.
-			ep == "GET /repos/{owner}/{repo}" {
+			strings.Contains(ep, "/releases/{release_id}") && strings.HasPrefix(ep, "GET") {
 			continue
 		}
 		if seen[ep] == 0 {

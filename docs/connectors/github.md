@@ -203,8 +203,13 @@ trigger's `assignee`).
 | `secret_scanning_alert` | a new secret-scanning alert | `secret_type` | — |
 
 Every event also takes `max_attempts_per_head`. Closing a PR emits conductor's
-`_closed` lifecycle event (merged or not, with revert facts) — no trigger is on
-it; the engine consumes it.
+`_closed` lifecycle event (merged or not, with revert facts); the engine
+consumes it, settling the PR. *(Since 2.9.0)* a trigger `on: <connector>._closed`
+takes it too, like any other event (for any PR, yours or not: check `mine`). It
+carries `merged`, `title`, `author`, `mine` (the PR's author is the connector's
+identity), `head_ref`, `head_sha` (the head when it closed), `head_repo` and
+`same_repo` (false for a fork's PR), `default_branch`, `reverts` and
+`reverts_corroborated`. With `delete_branch` it can remove a merged PR's branch.
 
 **`failing_checks` and `flaky_rerun`.** A check that concluded `cancelled`
 raises no `failing_checks`. A newer run superseded it (a workflow concurrency
@@ -385,6 +390,7 @@ flow on it passes `pr:` and names its own context.
 - **`put_file`** — create or update a file in one commit. `repo`*, `path`*, `content`* (UTF-8; base64-encoded for the API automatically), `message`*, `branch` (default: the default branch), `sha` (the blob sha being replaced — **required to update** an existing file; get it from `file`/`get_ref`). → `commit`, `sha` (the new blob sha).
 - **`delete_file`** — delete a file in one commit. `repo`*, `path`*, `message`*, `sha`* (blob sha to delete), `branch`. → `commit`.
 - **`apply_diff`** *(since 2.6.0)* — apply a unified diff in git's format (`git diff` output) to a branch's **current** head, as one commit, through the Git Data API: no git, no checkout, nothing kept between calls. The commit is the write identity's (`as: bot` is refused), and the branch moves fast-forward only (`force: false`), never forced. `repo`*, `branch`*, `diff`* (several diffs with text between them, such as headings, are applied in order), `message`*, `base` (the sha the diff was made against), `start_at` (apply only from the first line starting with this text — one section of a diff with headings, such as a step's `diff` output's `# committed, not pushed`; no such line is an error), `refuse_paths` (exact paths, or prefixes ending in `/`, the diff must not touch — e.g. CI config). Each hunk applies where its lines are, even if they shifted; a hunk the head already has is skipped. → `status` (`pushed`, `unchanged` — the head already has the diff —, `conflict`, `refused` or `rejected`), `pushed`, `rejected` (the branch moved again mid-call), `moved` (the head was not `base`), `onto` (the head applied to), `head` (the branch's head after), `files`, `conflicts` (paths that don't apply), `refused` (paths `refuse_paths` names), `reason`. A conflict, a refusal or a rejection commits nothing. Text files only (≤1 MB each); a binary, symlink or submodule change, a path outside the repository or under `.git`, or a diff cut short is an error.
+- **`delete_branch`** *(since 2.9.0)* — delete a branch, such as a merged PR's head, as the write identity (`as: bot` is refused). `repo`*, `branch`*, `expect_sha` (delete only while the branch's head is this commit, e.g. the merged head: a branch someone pushed to since is left alone). The repo's default branch and a protected branch are refused (an error). A branch that does not exist counts as done. → `deleted` (this call deleted it), `status` (`deleted`, `gone` or `moved`), `reason` (why nothing was deleted).
 - **`get_ref`** — the commit sha a branch/tag/ref points at. `repo`*, `ref`*. → `sha`.
 - **`create_branch`** — create a branch from another ref. `repo`*, `branch`* (new name), `from` (source branch/tag/sha, default: the default branch HEAD). → `sha`.
 

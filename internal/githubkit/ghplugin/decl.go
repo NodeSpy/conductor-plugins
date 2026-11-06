@@ -187,7 +187,15 @@ func decl() plugin.Decl {
 				plugin.Schema{"secret_type": {Type: "string"}}, nil),
 			githubEvent(ClosedEvent, "a PR closed (merged or not) — terminal for the PR: runs on it stop, and the outcome is recorded",
 				plugin.Schema{"merged": {Type: "boolean"}, "reverts": {Type: "list", Desc: "PR numbers this one reverts"},
-					"reverts_corroborated": {Type: "boolean", Desc: "the revert claim is backed by the commit messages"}}, nil),
+					"reverts_corroborated": {Type: "boolean", Desc: "the revert claim is backed by the commit messages"},
+					"title":                {Type: "string"},
+					"author":               {Type: "string", Desc: "the PR's author"},
+					"mine":                 {Type: "boolean", Desc: "the PR is yours: its author is the connector's identity (me)"},
+					"head_ref":             {Type: "string", Desc: "the PR's head branch"},
+					"head_sha":             {Type: "string", Desc: "the PR's head commit when it closed (the merged head)"},
+					"head_repo":            {Type: "string", Desc: "the repo the head branch is in (owner/name; differs from the base repo for a fork)"},
+					"same_repo":            {Type: "boolean", Desc: "the head branch is in this repo, not a fork"},
+					"default_branch":       {Type: "string", Desc: "the repo's default branch"}}, nil),
 		},
 		Verbs: []plugin.Verb{
 			{
@@ -485,6 +493,19 @@ func decl() plugin.Decl {
 				// each), more than the host's default 30s per call allows for a
 				// large diff.
 				Semantics: &plugin.VerbSemantics{CallTimeout: "2m", Optional: []string{"call_timeout"}},
+			},
+			{
+				Name: "delete_branch", Desc: "delete a branch (e.g. a merged PR's head) as the write identity; refuses the default branch and protected branches; a branch already gone is done",
+				Options: plugin.Schema{
+					"repo":       {Type: "string", Required: true, Scope: "repo"},
+					"branch":     {Type: "string", Required: true, Desc: "the branch to delete"},
+					"expect_sha": {Type: "string", Desc: "delete only while the branch's head is this commit (e.g. the merged head): a branch pushed to since is left alone (status moved)"},
+				},
+				Outputs: plugin.Schema{
+					"deleted": {Type: "boolean", Desc: "this call deleted the branch"},
+					"status":  {Type: "string", Desc: "deleted, gone (it did not exist) or moved (its head is not expect_sha; left alone)"},
+					"reason":  {Type: "string", Desc: "why nothing was deleted (empty when deleted)"},
+				},
 			},
 			{
 				Name: "put_file", Desc: "create or update a file in one commit",

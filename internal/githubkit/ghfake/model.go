@@ -52,6 +52,7 @@ type Repo struct {
 	Collaborators map[string]bool
 
 	Branches   map[string]string // ref → head sha
+	Protected  map[string]bool   // branches with branch protection (beyond the default branch's Protection)
 	Commits    map[string]*Commit
 	nextNumber int
 	Issues     map[int]*Issue // PRs are issues too (shared numbering)

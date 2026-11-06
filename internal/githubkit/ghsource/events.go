@@ -142,8 +142,11 @@ type prPayload struct {
 	Body    string `json:"body"`
 	HTMLURL string `json:"html_url"`
 	Head    struct {
-		SHA string `json:"sha"`
-		Ref string `json:"ref"`
+		SHA  string `json:"sha"`
+		Ref  string `json:"ref"`
+		Repo *struct {
+			FullName string `json:"full_name"`
+		} `json:"repo"` // nil when the head repo (a fork) was deleted
 	} `json:"head"`
 	Base struct {
 		Ref string `json:"ref"`
@@ -635,18 +638,37 @@ func (g *Source) pullRequestTriggers(ctx context.Context, repo string, p ghPaylo
 		if len(reverts) > 0 {
 			corroborated = g.corroborateRevert(ctx, p, pr.Number)
 		}
+		headRepo := ""
+		if pr.Head.Repo != nil {
+			headRepo = pr.Head.Repo.FullName
+		}
+		facts := map[string]any{
+			"merged":               pr.Merged,
+			"title":                pr.Title,
+			"reverts":              reverts,
+			"reverts_corroborated": corroborated,
+			"author":               pr.User.Login,
+			"mine":                 g.ownPR(pr.User.Login),
+			"head_ref":             pr.Head.Ref,
+			"head_sha":             pr.Head.SHA,
+			"head_repo":            headRepo,
+			"same_repo":            headRepo != "" && strings.EqualFold(headRepo, repo),
+			"default_branch":       p.Repository.DefaultBranch,
+		}
+		// A trigger on the close (e.g. one that deletes a merged PR's
+		// branch) takes it like any other event; the engine settles the
+		// target either way (closes_target).
+		if routed := g.emit(repo, KindClosed, g.prTarget(repo, pr), fmt.Sprintf("%s#%d closed", repo, pr.Number),
+			"closed@"+pr.Head.SHA, facts, nil); len(routed) > 0 {
+			return routed
+		}
 		return []Trigger{{Source: "github", Instance: g.name, Kind: KindClosed,
 			// GitHub assigns the repo and number, and the delivery is
 			// signature-verified: the target is the platform's, not the
 			// sender's (Trigger.TargetTrusted).
 			TargetTrusted: true,
 			Target:        g.prTarget(repo, pr),
-			Context: map[string]any{
-				"merged":               pr.Merged,
-				"title":                pr.Title,
-				"reverts":              reverts,
-				"reverts_corroborated": corroborated,
-			}}}
+			Context:       facts}}
 	case "review_requested":
 		t := g.prTarget(repo, pr)
 		labels := prLabelNames(pr)
