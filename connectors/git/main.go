@@ -56,6 +56,9 @@ func (gitPlugin) Describe() plugin.Decl {
 		Verbs: gitVerbs(),
 		Capabilities: plugin.Capabilities{
 			Commands: []string{"git", "ssh"},
+			// git's helper programs (its exec path): lib/git-core or
+			// libexec/git-core beside the git binary, by platform.
+			Exec: []string{"command:git/../../lib/git-core", "command:git/../../libexec/git-core"},
 			// No declared egress: a git remote's host is a VERB OPTION (clone's
 			// url, remote add's url, ...), not a connection field, so there is
 			// no capability reference to grant it — this connector cannot reach

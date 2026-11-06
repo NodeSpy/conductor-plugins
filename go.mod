@@ -21,7 +21,7 @@ go 1.26.3
 // semantic (plugin.VerbSemantics.CallTimeout), which is not in a conductor
 // release yet. This pseudo-version is the head of the conductor change that
 // adds it; it MUST be bumped to that change's release tag before this merges.
-require github.com/NodeSpy/conductor v0.86.1-0.20261106062737-8424c51555b8
+require github.com/NodeSpy/conductor v0.86.1-0.20261106172553-f7688499e927
 
 // The interpreters the four step engines embed. These are the SAME versions
 // conductor pinned while the engines lived in its binary, so the port is a

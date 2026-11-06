@@ -65,6 +65,11 @@ func TestPluginsDeclareKindAndManifest(t *testing.T) {
 				if len(c.Commands) != 2 || c.Commands[0] != "gh" || c.Commands[1] != "git" {
 					t.Fatalf("the github connector should declare exactly the gh and git commands: %+v", c)
 				}
+				// git runs git-remote-https from its exec path, outside the
+				// commands: it must be declared, or pr_snapshot cannot fetch.
+				if !reflect.DeepEqual(c.Exec, []string{"command:git/../../lib/git-core", "command:git/../../libexec/git-core"}) {
+					t.Fatalf("the github connector should declare git's exec path: %v", c.Exec)
+				}
 				var sawAPI bool
 				for _, e := range c.Egress {
 					if e == "api.github.com:443" {

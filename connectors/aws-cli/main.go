@@ -56,7 +56,9 @@ func (awsPlugin) Describe() plugin.Decl {
 		// only s3://... URIs and paths under the call's staging dir work in the jail.
 		Capabilities: plugin.Capabilities{
 			Commands: []string{"aws"},
-			Egress:   []string{"*.amazonaws.com:443", "169.254.169.254:80", "config:endpoint_url"},
+			// AWS CLI v2 is a bundle: the libraries it loads sit beside it.
+			Exec:   []string{"command:aws/.."},
+			Egress: []string{"*.amazonaws.com:443", "169.254.169.254:80", "config:endpoint_url"},
 			Write:    []string{"~/.aws", "env:AWS_CONFIG_FILE", "env:AWS_SHARED_CREDENTIALS_FILE"},
 			Env: []string{
 				"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",

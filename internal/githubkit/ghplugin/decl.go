@@ -97,7 +97,10 @@ func decl() plugin.Decl {
 		// webhook receiver on webhook.listen.
 		//
 		// Commands: gh, for the write chain's `gh auth token`, and git, for
-		// pr_snapshot. gh reads its login from its config dir (GH_CONFIG_DIR,
+		// pr_snapshot; git runs its HTTPS transport (git-remote-https) from
+		// its exec path, beside it in lib/git-core (most Linux distributions)
+		// or libexec/git-core (others, Homebrew, Xcode's command line tools).
+		// gh reads its login from its config dir (GH_CONFIG_DIR,
 		// else $XDG_CONFIG_HOME/gh, else ~/.config/gh), or from its token
 		// variables, or on macOS from the Keychain. A GitHub App's private
 		// key is read from app.private_key_path. PC_GITHUB_API_BASE points
@@ -108,6 +111,7 @@ func decl() plugin.Decl {
 			Listen:   []string{"config:webhook.listen"},
 			Read:     []string{"~/.config/gh", "env:GH_CONFIG_DIR", "env:XDG_CONFIG_HOME/gh", "config:app.private_key_path"},
 			Commands: []string{"gh", "git"},
+			Exec:     []string{"command:git/../../lib/git-core", "command:git/../../libexec/git-core"},
 			Keychain: true,
 			Env: []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_HOST", "GH_CONFIG_DIR",
 				"XDG_CONFIG_HOME", "PC_GITHUB_API_BASE"},

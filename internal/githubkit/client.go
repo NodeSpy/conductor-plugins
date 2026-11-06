@@ -150,10 +150,14 @@ func (c *Client) base() string {
 }
 
 // GhAuthToken shells out to `gh auth token` — the last link of the
-// write_token → gh → token credential chain.
+// write_token → gh → token credential chain. When gh itself fails, the login
+// it saved in hosts.yml is read directly (ghHostsToken).
 func GhAuthToken() (string, error) {
 	out, err := exec.Command("gh", "auth", "token").Output()
 	if err != nil {
+		if tok, herr := ghHostsToken(); herr == nil {
+			return tok, nil
+		}
 		return "", fmt.Errorf("gh auth token: %w", err)
 	}
 	tok := strings.TrimSpace(string(out))

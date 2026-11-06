@@ -56,6 +56,12 @@ func (dockerPlugin) Describe() plugin.Decl {
 		// shape. Remote engines are therefore unsupported under the jail.
 		Capabilities: plugin.Capabilities{
 			Commands: []string{"docker", "podman"},
+			// docker's CLI plugins (buildx, compose) and podman's helpers
+			// (conmon, netavark) live beside them, by platform.
+			Exec: []string{
+				"command:docker/../../lib/docker/cli-plugins", "command:docker/../../libexec/docker/cli-plugins",
+				"command:podman/../../lib/podman", "command:podman/../../libexec/podman",
+			},
 			Write: []string{
 				"/var/run/docker.sock",
 				"env:XDG_RUNTIME_DIR/podman/podman.sock",

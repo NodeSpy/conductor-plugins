@@ -64,9 +64,11 @@ func (terraspacePlugin) Describe() plugin.Decl {
 			Write: []string{"config:dir", "~/.terraform.d"},
 			// ~/.terraformrc / ~/.aws mirror the terraform connector
 			// (registry credentials, AWS provider's ambient credential
-			// chain); ~/.gem and ~/.bundle are the Ruby runtime's package
-			// caches, needed just to start the interpreter.
-			Read: []string{"~/.terraformrc", "~/.aws", "~/.gem", "~/.bundle"},
+			// chain); ~/.bundle is Bundler's config.
+			Read: []string{"~/.terraformrc", "~/.aws", "~/.bundle"},
+			// Ruby's own library tree and ~/.gem hold the gems terraspace
+			// loads, native extensions included: loaded code, so exec.
+			Exec: []string{"command:ruby/../../lib/ruby", "~/.gem"},
 			// AWS_* / TF_* mirror the terraform connector's rationale.
 			// GEM_HOME/GEM_PATH/BUNDLE_GEMFILE are Ruby/Bundler's own
 			// locations for the terraspace gem and its dependencies.
