@@ -25,7 +25,7 @@ go 1.26.3
 // The plugins are released on that tag BEFORE the conductor that jails
 // them, so every box auto-updates to builds that declare what they need
 // while still unjailed.
-require github.com/NodeSpy/conductor v0.86.1-0.20261106191340-20a50dc0970a
+require github.com/NodeSpy/conductor v0.87.0
 
 // The interpreters the four step engines embed. These are the SAME versions
 // conductor pinned while the engines lived in its binary, so the port is a
