@@ -321,10 +321,10 @@ func (g *Source) reviewTriggers(ctx context.Context, repo string, p ghPayload) [
 	// already emitted.
 	if g.ownPR(p.PullRequest.User.Login) && !g.isSelf(ri.Author) && !prClosedInPayload(p) {
 		// The review's ONE event, unless one of its comment deliveries
-		// already emitted it. A review with no inline comments emits nothing
-		// here unless it requested changes (its body alone never did); an
-		// unreadable one is left to its comments, which then stand alone.
-		rt, _ := g.reviewEvent(ctx, repo, p.Installation.ID, p.PullRequest, p.Review.ID, ri)
+		// already emitted it. A review with no inline comments is its body's
+		// event (an approval's body alone is none); an unreadable one is
+		// left to its comments, which then stand alone.
+		rt, _ := g.reviewEvent(ctx, repo, p.Installation.ID, p.PullRequest, p.Review.ID, ri, false)
 		trs = append(trs, rt...)
 	}
 	// Any submitted review may have made the PR merge-ready.

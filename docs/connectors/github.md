@@ -188,8 +188,8 @@ trigger's `assignee`).
 | event | fires when | extra context | options |
 |-------|-----------|---------------|---------|
 | `review_requested` | your review was requested (webhook, a draft becoming ready, or the sweep finding it pending) | — | `reviewer` |
-| `changes_requested` | a review requested changes, or left inline comments without approving — ONE event per review, carrying every review still waiting on you; or (sweep) that feedback when no webhook brought it | `head_ref`, `author`, `author_is_bot`, `review_id`, `review_body`, `review_state`, `review_comments`, `review_comments_omitted`, `outstanding_reviews`, `feedback_cursor`, `comment_id`, `comment_kind`, `reaction_subjects` | — |
-| `new_comment` | a standalone comment, or ONE submitted review no `changes_requested` trigger takes (always so for an approval) with all its inline comments; or (sweep) a comment the webhook missed | `author`, `author_is_bot`, `comment_body`, `head_ref`, `comment_id`, `comment_kind`, `review_*`, `reaction_subjects` | — |
+| `changes_requested` | a review requested changes, or left feedback without approving (inline comments, or a body with none) — ONE event per review, carrying every review still waiting on you; or (sweep) that feedback when no webhook brought it | `head_ref`, `author`, `author_is_bot`, `review_id`, `review_body`, `review_state`, `review_comments`, `review_comments_omitted`, `outstanding_reviews`, `feedback_cursor`, `comment_id`, `comment_kind`, `reaction_subjects` | — |
+| `new_comment` | a standalone comment, or ONE submitted review no `changes_requested` trigger takes (always so for an approval) with all its inline comments — or, with none, its body (an approval's body alone is no event); or (sweep) a comment or review the webhook missed | `author`, `author_is_bot`, `comment_body`, `head_ref`, `comment_id`, `comment_kind`, `review_*`, `reaction_subjects` | — |
 | `merge_conflict` | your PR became unmergeable | — | — |
 | `pr_behind` | your PR fell behind its base | — | — |
 | `failing_checks` | CI concluded failing (not `cancelled`: see below) | `failing_check`, `run_id`, `ignore_checks` (private: the trigger's own list, for `check_failures`' `ignore`) | `flaky_rerun`, `ignore_checks` (per trigger) |
@@ -236,6 +236,16 @@ A conductor that predates `remediate_triage` ignores it (the plugin lists it
 in no fixed order. Whichever delivery arrives first emits the review's ONE
 event and claims it; the rest emit nothing.
 
+A review with no inline comments is feedback on its body alone (a review bot
+that lists every finding in its summary): the same ONE event, `changes_requested`
+when a trigger takes it, else `new_comment` with the body as `comment_body`.
+An approval with only a body is no event. Such a review has no inline comment
+id, so its `new_comment` carries `comment_kind: review_submission` and
+`comment_id` = its submission (second, then review id): a mark of its own,
+apart from the `issue` and `review` comment marks, and ordered by submission
+like `feedback_cursor` below. The sweep recovers one the webhook missed (within
+the same 24h window as comments).
+
 **What a `changes_requested` run carries.** Not only the review that fired it:
 every piece of review feedback on the PR still waiting on you, read when the
 event is built. Two reviews submitted moments apart, or one landing while a run
@@ -250,12 +260,18 @@ on you means:
 - a reviewer's latest review requesting changes on the PR's current head —
   as `outstanding_reviews` (`{review_id, author, body, url}`). One on an older
   commit is not: you pushed since.
+- likewise a review that commented with a body and no inline comments, when it
+  is the reviewer's latest review with a body (a reply in a thread doesn't
+  replace it; a later summary or changes-request does), on the current head,
+  and the reviewer hasn't approved — also in `outstanding_reviews`. Answering
+  it in a PR comment doesn't clear it, just as for a changes-request; the
+  cursor keeps the run that carried it from running again for it.
 
 Each `review_comments` entry carries its `id` and `thread_id`, which is what an
 agent names when it reports the threads it addressed (`resolve_threads`).
 `reaction_subjects` covers the review that fired it (as a whole, not its
 comments one by one), each other thread's latest waiting comment, and each
-outstanding changes-request (capped at 10).
+outstanding review (capped at 10).
 
 `feedback_cursor` is the latest review **submission** the run covers (its second,
 then the review id). Conductor dispatches each submission once on it: a

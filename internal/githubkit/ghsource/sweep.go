@@ -447,10 +447,11 @@ func (g *Source) sweepRepo(ctx context.Context, emit EmitFunc, instID int64, own
 				"behind:"+info.Base.Ref+"/"+info.Head.SHA, nil)
 			st.behind += len(trs)
 		}
-		ct := g.sweepUnresolvedComments(ctx, instID, owner, name, repo, t)
+		read := g.feedbackOnce(ctx, instID, repo, pr.Number)
+		ct := g.sweepUnresolvedComments(repo, t, read)
 		st.comments += len(ct)
 		trs = append(trs, ct...)
-		nc := g.sweepMissedComments(ctx, instID, owner, name, repo, t, info.Head.Ref)
+		nc := g.sweepMissedComments(ctx, instID, owner, name, repo, t, info.Head.Ref, read)
 		st.newComments += len(nc)
 		trs = append(trs, nc...)
 		// NOTE: stuck_checks is NOT detected here — it runs on its own tight cadence
@@ -487,12 +488,12 @@ func (g *Source) sweepRepo(ctx context.Context, emit EmitFunc, instID int64, own
 // them launched a fresh changes_requested fixer on an approved PR every time
 // the head moved — which then re-requested the approver's review. Their
 // comments still reach the new_comment autopilot.
-func (g *Source) sweepUnresolvedComments(ctx context.Context, instID int64, owner, name, repo string, t Target) []Trigger {
+func (g *Source) sweepUnresolvedComments(repo string, t Target, read feedbackRead) []Trigger {
 	act, ok := g.actionFor(repo, "changes_requested")
 	if !ok || !act.IsEnabled() {
 		return nil
 	}
-	f, _, ok := g.readFold(ctx, instID, repo, t.Number)
+	f, _, ok := read()
 	if !ok || f.empty() {
 		return nil
 	}
@@ -507,8 +508,29 @@ func (g *Source) sweepUnresolvedComments(ctx context.Context, instID int64, owne
 	}
 	stampFold(extra, f)
 	return g.single(repo, "changes_requested", t,
-		fmt.Sprintf("sweep: %d unresolved comment thread(s), %d changes-request(s) on %s#%d", len(f.Threads), len(f.Reviews), repo, t.Number), sig,
+		fmt.Sprintf("sweep: %d unresolved comment thread(s), %d outstanding review(s) on %s#%d", len(f.Threads), len(f.Reviews), repo, t.Number), sig,
 		extra)
+}
+
+// feedbackRead reads and folds a PR's feedback (readFold).
+type feedbackRead func() (fold, prFeedback, bool)
+
+// feedbackOnce is a feedbackRead that reads at most once: one PR's sweep
+// shares it between the outstanding-feedback fold and missed-review recovery.
+func (g *Source) feedbackOnce(ctx context.Context, instID int64, repo string, number int) feedbackRead {
+	var (
+		done bool
+		f    fold
+		fb   prFeedback
+		ok   bool
+	)
+	return func() (fold, prFeedback, bool) {
+		if !done {
+			f, fb, ok = g.readFold(ctx, instID, repo, number)
+			done = true
+		}
+		return f, fb, ok
+	}
 }
 
 // maxThreadReactions caps the thread openers a sweep-recovered run reacts on.
@@ -529,21 +551,22 @@ const commentRecoveryWindow = 24 * time.Hour
 // already handled, so only genuinely-newer comments dispatch. Only runs when
 // new_comment is configured (avoids the extra fetch), and only on your own PRs
 // (new_comment autopilot pushes fixes to PRs you authored — matching the webhook
-// gate in commentTriggers).
-func (g *Source) sweepMissedComments(ctx context.Context, instID int64, owner, name, repo string, t Target, headRef string) []Trigger {
+// gate in commentTriggers). A review with no inline comments is in neither
+// comment listing; read names it (sweepBodyReviews).
+func (g *Source) sweepMissedComments(ctx context.Context, instID int64, owner, name, repo string, t Target, headRef string, read feedbackRead) []Trigger {
 	act, ok := g.actionFor(repo, "new_comment")
 	if !ok || !act.IsEnabled() {
 		return nil
 	}
+	cutoff := time.Now().Add(-commentRecoveryWindow)
+	out := g.sweepBodyReviews(repo, t, headRef, cutoff, read)
 	comments, err := g.restClient().recentComments(ctx, instID, owner, name, t.Number)
 	if err != nil || len(comments) == 0 {
-		return nil
+		return out
 	}
-	cutoff := time.Now().Add(-commentRecoveryWindow)
 	// Standalone comments recover one event each, as on the webhook path. An
 	// inline comment that names its review is part of that review's ONE event
 	// (reviewfold.go), so they are recovered per review instead.
-	var out []Trigger
 	byReview := map[int64][]prComment{}
 	var reviews []int64
 	for _, c := range comments {
@@ -609,6 +632,39 @@ func (g *Source) sweepReview(ctx context.Context, instID int64, repo string, t T
 		trs[i].Title = "sweep: " + trs[i].Title
 	}
 	return trs
+}
+
+// sweepBodyReviews recovers the reviews with no inline comments — feedback on
+// their body alone — that were submitted within the recovery window, as the
+// one new_comment the webhook path emits for each (deduped against it the
+// same way: the claim, and past a restart the engine's review_submission
+// mark). With a changes_requested trigger configured, none is: they are
+// changes_requested events, and sweepUnresolvedComments carries every one
+// still outstanding (so this skips the read).
+func (g *Source) sweepBodyReviews(repo string, t Target, headRef string, cutoff time.Time, read feedbackRead) []Trigger {
+	if g.wouldEmit(repo, "changes_requested", nil) {
+		return nil
+	}
+	_, fb, ok := read()
+	if !ok {
+		return nil
+	}
+	var out []Trigger
+	for _, r := range fb.Submitted {
+		ri := reviewInfo{State: strings.ToLower(r.State), Body: r.Body, Author: r.Author,
+			AuthorIsBot: r.AuthorIsBot, SubmittedAt: r.SubmittedAt}
+		if r.Inline > 0 || !bodyFeedback(ri) || g.isSelf(r.Author) ||
+			r.SubmittedAt.IsZero() || r.SubmittedAt.Before(cutoff) || g.reviews.claimed(r.ID, time.Now()) {
+			continue
+		}
+		g.reviews.put(r.ID, ri, time.Now())
+		trs := g.reviewNewComment(repo, t, headRef, r.ID, ri, nil)
+		for i := range trs {
+			trs[i].Title = "sweep: " + trs[i].Title
+		}
+		out = append(out, trs...)
+	}
+	return out
 }
 
 // sweepComment recovers one standalone comment as its own new_comment.

@@ -25,9 +25,14 @@ const KindClosed = "_closed"
 // engine keeps a separate high-water mark per sequence: conversation comments
 // (issues/{n}/comments) and inline review comments (pulls/{n}/comments). Same
 // values as conductor's store.CommentKindIssue / store.CommentKindReview.
+//
+// CommentKindReviewSubmission is a third stream: a review with no inline
+// comments, whose comment_id is its submission key (reviewfold.go). The
+// engine keeps a mark per stream name, so it needs no counterpart there.
 const (
-	CommentKindIssue  = "issue"
-	CommentKindReview = "review"
+	CommentKindIssue            = "issue"
+	CommentKindReview           = "review"
+	CommentKindReviewSubmission = "review_submission"
 )
 
 // FilterNotPrefix negates any `filter:` object key (sourcekit.FilterNotPrefix).

@@ -2,9 +2,9 @@ package ghsource
 
 import (
 	"context"
-	"fmt"
 	"crypto/rand"
 	"crypto/rsa"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -18,14 +18,21 @@ import (
 // auth against the fake's App, and the fake's own webhook deliveries fed to
 // the source in whatever order a test chooses.
 type fakeRig struct {
-	f  *ghfake.Fake
-	g  *Source
-	n  int
-	mu sync.Mutex
-	at time.Time
+	f   *ghfake.Fake
+	g   *Source
+	key *rsa.PrivateKey
+	n   int
+	mu  sync.Mutex
+	at  time.Time
 }
 
 func newFakeRig(t *testing.T) *fakeRig {
+	t.Helper()
+	return newFakeRigWith(t, map[string]Action{"changes_requested": {}})
+}
+
+// newFakeRigWith is newFakeRig with the given triggers configured.
+func newFakeRigWith(t *testing.T, actions map[string]Action) *fakeRig {
 	t.Helper()
 	r := &fakeRig{at: time.Now().UTC().Truncate(time.Second)}
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -55,20 +62,28 @@ func newFakeRig(t *testing.T) *fakeRig {
 	r.f.AddHook(sink.URL, "s3cret")
 	r.n = r.f.OpenPR("acme/w", "me", ghfake.PROpts{Title: "feature", Head: "feat"})
 	r.f.Flush()
+	r.key = key
+	r.g = r.source(t, actions)
+	return r
+}
 
-	r.g = newTestIntegration(t, Config{
+// source is a Source on the rig's fake with the given triggers — a fresh
+// one is a daemon restart (nothing remembered in memory).
+func (r *fakeRig) source(t *testing.T, actions map[string]Action) *Source {
+	t.Helper()
+	g := newTestIntegration(t, Config{
 		App:     AppConfig{AppID: 77, PrivateKeyPath: "x"},
 		Webhook: WebhookConfig{SmeeURL: "https://smee.io/x", Secret: "s3cret"},
 		Sweep:   SweepConfig{Enabled: boolp(true), Repos: []string{"acme/w"}},
 		Rules: []Rule{{
 			Match:   Match{Repos: []string{"acme/w"}},
 			Me:      Actors{Logins: []string{"me"}},
-			Actions: as1(map[string]Action{"changes_requested": {}}),
+			Actions: as1(actions),
 		}},
 	})
-	r.g.app = &appAuth{appID: 77, key: key, httpc: http.DefaultClient, apiBase: r.f.URL(), now: time.Now, cache: map[int64]cachedToken{}}
-	r.g.rest = newRESTClient(r.g.app)
-	return r
+	g.app = &appAuth{appID: 77, key: r.key, httpc: http.DefaultClient, apiBase: r.f.URL(), now: time.Now, cache: map[int64]cachedToken{}}
+	g.rest = newRESTClient(g.app)
+	return g
 }
 
 // tick is the fake's clock: every reading is a new second.
