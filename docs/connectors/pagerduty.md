@@ -1,15 +1,16 @@
 # `pagerduty` connector
 
-A **source-only** connector: it receives PagerDuty V3 webhook-subscription
-events, verifies the `X-PagerDuty-Signature` HMAC (which may carry several `v1=`
-values during key rotation), and streams a normalized `incident` event to the
-daemon.
+A **source** of PagerDuty V3 webhook-subscription events — it verifies the
+`X-PagerDuty-Signature` HMAC (which may carry several `v1=` values during key
+rotation) and streams a normalized `incident` event to the daemon — plus
+incident **verbs** over the REST API: `get_incident`, `list_incidents`,
+`acknowledge`, `resolve`, `add_note`, `escalate`.
 
-- **Kind:** connector (source only — no verbs)
+- **Kind:** connector (source + verbs)
 - **Source:** [`connectors/pagerduty/main.go`](../../connectors/pagerduty/main.go)
 - **Provides:** `pagerduty`
-- **Capabilities:** empty manifest — inbound only; never dials out, spawns
-  nothing.
+- **Capabilities:** egress `api.pagerduty.com:443` (the verbs); the source only
+  listens. Spawns nothing.
 - **Bundled in conductor?** No — removed from core. This plugin is the only way
   to get a pagerduty connector.
 
@@ -81,3 +82,31 @@ convenience `title` / `url`.
 **Filters** (list-contains): `event_types` (e.g. `incident.triggered`,
 `incident.escalated`), `services` (summary or id), `urgencies` (`high`/`low`),
 `priorities` (`P1`, `P2`, …). Empty = any.
+
+## Verbs
+
+The verbs call the REST API with an API key. PagerDuty requires a `From`
+header (a user's email) on writes; set `from:` on the connection.
+
+```yaml
+connectors:
+  pd:
+    use: pagerduty
+    listen: ":9098"
+    signing_secret: ${PAGERDUTY_SIGNING_SECRET}
+    api_token: ${PAGERDUTY_TOKEN}       # a REST API key
+    from: oncall-bot@example.com        # the user writes are made as
+```
+
+| verb | options | outputs |
+|---|---|---|
+| `get_incident` | `id` | `id`, `number`, `status`, `title`, `urgency`, `service`, `url`, `escalation_level` |
+| `list_incidents` | `statuses?` (default triggered + acknowledged), `service_ids?`, `since?`, `until?`, `limit?` (≤100) | `incidents`, `count` |
+| `acknowledge` | `id` | the incident |
+| `resolve` | `id` | the incident |
+| `add_note` | `id`, `content` | `note_id` |
+| `escalate` | `id`, `level` (1-based) | the incident |
+
+`acknowledge` is reversible (an acknowledged incident re-triggers on its
+timeout), which makes it a natural first action class to promote for an
+on-call bot; `resolve` and `escalate` change who gets paged.
