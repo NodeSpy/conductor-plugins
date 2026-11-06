@@ -524,3 +524,31 @@ func TestMergeStateOnClosedPRDropped(t *testing.T) {
 		}
 	}
 }
+
+// A trigger on the close takes it (routed), with the facts a merged PR's
+// clean-up needs: whose PR, its head branch, commit and repo (a fork's
+// differs), and the repo's default branch.
+func TestPullRequestClosedRoutesWithHeadFacts(t *testing.T) {
+	cfg := richConfig()
+	cfg.Rules[0].Actions = as1(map[string]Action{"_closed": {Name: "on_merged"}})
+	g := newTestIntegration(t, cfg)
+	closed := func(headRepo string) string {
+		return `{"action":"closed","repository":{"full_name":"acme/w","name":"w","default_branch":"main","owner":{"login":"acme"}},
+		"pull_request":{"number":6,"merged":true,"user":{"login":"me"},"head":{"sha":"h6","ref":"feat","repo":{"full_name":"` + headRepo + `"}},"base":{"ref":"main"}}}`
+	}
+	trs := g.triggersFor(context.Background(), "pull_request", []byte(closed("acme/w")))
+	if len(trs) != 1 || trs[0].Kind != "_closed" || trs[0].Variant != "on_merged" {
+		t.Fatalf("want one _closed routed to on_merged, got %+v", trs)
+	}
+	c := trs[0].Context
+	for k, want := range map[string]any{"merged": true, "mine": true, "author": "me", "head_ref": "feat", "head_sha": "h6",
+		"head_repo": "acme/w", "same_repo": true, "default_branch": "main"} {
+		if c[k] != want {
+			t.Errorf("%s = %v, want %v", k, c[k], want)
+		}
+	}
+	fork := g.triggersFor(context.Background(), "pull_request", []byte(closed("someone/w")))
+	if len(fork) != 1 || fork[0].Context["same_repo"] != false || fork[0].Context["head_repo"] != "someone/w" {
+		t.Fatalf("fork: %+v", fork)
+	}
+}

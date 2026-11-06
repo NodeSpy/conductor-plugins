@@ -188,6 +188,38 @@ func hUpdateGitRef(c *call) (int, any) {
 	return 200, c.f.gitRefJSON(c.repo, branch, sha)
 }
 
+// hDeleteGitRef deletes a branch, as GitHub does: 422 for a ref that does not
+// exist or a protected branch.
+func hDeleteGitRef(c *call) (int, any) {
+	branch, ok := strings.CutPrefix(c.p("ref"), "heads/")
+	if !ok || c.repo.Branches[branch] == "" {
+		return invalid("Reference", "ref", "invalid", "Reference does not exist")
+	}
+	if c.repo.Protected[branch] {
+		return invalid("Reference", "ref", "protected", "Cannot delete this protected branch")
+	}
+	delete(c.repo.Branches, branch)
+	return 204, nil
+}
+
+// hGetBranch reads one branch: its head and whether it is protected.
+func hGetBranch(c *call) (int, any) {
+	b := c.p("branch")
+	sha := c.repo.Branches[b]
+	if sha == "" {
+		return ghErr(404, "Branch not found")
+	}
+	cm := c.repo.Commits[sha]
+	if cm == nil {
+		return notFound()
+	}
+	protected := c.repo.Protected[b] || b == c.repo.DefaultBranch
+	self := c.f.api("/repos/%s/branches/%s", c.repo.FullName(), b)
+	return 200, map[string]any{"name": b, "protected": protected, "commit": c.f.commitJSON(c.repo, cm),
+		"_links":     map[string]any{"self": self, "html": htmlBase + "/" + c.repo.FullName() + "/tree/" + b},
+		"protection": map[string]any{"enabled": protected}, "protection_url": self + "/protection"}
+}
+
 func hGetGitCommit(c *call) (int, any) {
 	cm := c.repo.Commits[c.p("commit_sha")]
 	if cm == nil {

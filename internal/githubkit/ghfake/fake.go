@@ -392,6 +392,24 @@ func (f *Fake) AddCollaborator(repo, login string) {
 	f.repo(repo).Collaborators[lower(login)] = true
 }
 
+// ProtectBranch marks a branch protected: it cannot be deleted.
+func (f *Fake) ProtectBranch(repo, branch string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	r := f.repo(repo)
+	if r.Protected == nil {
+		r.Protected = map[string]bool{}
+	}
+	r.Protected[branch] = true
+}
+
+// BranchSHA is a branch's head ("" when it does not exist).
+func (f *Fake) BranchSHA(repo, branch string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.repo(repo).Branches[branch]
+}
+
 // SetProtection replaces repo's base-branch protection.
 func (f *Fake) SetProtection(repo string, p Protection) {
 	f.mu.Lock()

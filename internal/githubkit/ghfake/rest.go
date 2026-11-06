@@ -133,18 +133,27 @@ func match(method, path string) (*route, map[string]string) {
 		}
 		tsegs := strings.Split(strings.Trim(rt.path, "/"), "/")
 		// {path} in the contents API spans the rest of the path, as does a
-		// git ref's {ref} (heads/<branch>, which may itself hold slashes).
+		// git ref's {ref} (heads/<branch>, which may itself hold slashes) and
+		// a branch's {branch} — but not into a branch's own sub-resources
+		// (/branches/<b>/protection, /rename), which the fake doesn't serve.
 		last := ""
 		if len(tsegs) > 0 {
 			last = tsegs[len(tsegs)-1]
 		}
-		if (last == "{path}" || (last == "{ref}" && strings.Contains(rt.path, "/git/ref"))) && len(segs) >= len(tsegs) {
+		if (last == "{path}" || (last == "{ref}" && strings.Contains(rt.path, "/git/ref")) || last == "{branch}") && len(segs) >= len(tsegs) {
 			params := map[string]string{}
 			ok := true
 			for i, t := range tsegs[:len(tsegs)-1] {
 				if !segMatch(t, segs[i], params) {
 					ok = false
 					break
+				}
+			}
+			if ok && last == "{branch}" {
+				for _, s := range segs[len(tsegs):] {
+					if s == "protection" || s == "rename" {
+						ok = false
+					}
 				}
 			}
 			if ok {
@@ -489,6 +498,8 @@ func routes() []route {
 		{"POST", "/repos/{owner}/{repo}/git/refs", "repo", hCreateRef},
 		{"GET", "/repos/{owner}/{repo}/git/ref/{ref}", "repo", hGetGitRef},
 		{"PATCH", "/repos/{owner}/{repo}/git/refs/{ref}", "repo", hUpdateGitRef},
+		{"DELETE", "/repos/{owner}/{repo}/git/refs/{ref}", "repo", hDeleteGitRef},
+		{"GET", "/repos/{owner}/{repo}/branches/{branch}", "repo", hGetBranch},
 		{"GET", "/repos/{owner}/{repo}/git/commits/{commit_sha}", "repo", hGetGitCommit},
 		{"POST", "/repos/{owner}/{repo}/git/commits", "repo", hCreateGitCommit},
 		{"POST", "/repos/{owner}/{repo}/git/trees", "repo", hCreateTree},
@@ -645,7 +656,8 @@ func hCreatePull(c *call) (int, any) {
 // an installation token can't see it), so reaching here always means
 // visible.
 func hGetRepo(c *call) (int, any) {
-	return 200, c.f.repoJSON(c.repo)
+	// The full-repository shape: a repository's, plus its counts.
+	return 200, merge(c.f.repoJSON(c.repo), map[string]any{"network_count": 0, "subscribers_count": 0})
 }
 
 func hGetPull(c *call) (int, any) {
