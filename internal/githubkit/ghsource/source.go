@@ -603,6 +603,9 @@ var knownKinds = map[string]bool{
 	"self_review": true, "merge_ready": true, "issue_matched": true,
 	"release": true, "deployment_status": true, "dependabot_alert": true,
 	"secret_scanning_alert": true, "stuck_checks": true,
+	// A PR's close: the engine settles the PR on it either way; a trigger
+	// on it (e.g. deleting a merged PR's branch) takes it too.
+	KindClosed: true,
 	// issue_assigned + issue_project_moved were merged into issue_matched (v0.4.48).
 }
 
