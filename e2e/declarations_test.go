@@ -1,9 +1,11 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,7 +28,7 @@ func TestEveryDeclarationValidates(t *testing.T) {
 			if !e.IsDir() {
 				continue
 			}
-			if _, err := os.Stat(filepath.Join("..", kind, e.Name(), "main.go")); err != nil {
+			if !isMainPackage(t, filepath.Join("..", kind, e.Name())) {
 				continue
 			}
 			kind, name := kind, e.Name()
@@ -45,4 +47,27 @@ func TestEveryDeclarationValidates(t *testing.T) {
 			})
 		}
 	}
+}
+
+// isMainPackage reports whether dir holds a plugin binary's package: its
+// func main need not be in main.go.
+func isMainPackage(t *testing.T, dir string) bool {
+	t.Helper()
+	files, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.HasPrefix(b, []byte("package main\n")) || bytes.Contains(b, []byte("\npackage main\n")) {
+			return true
+		}
+	}
+	return false
 }

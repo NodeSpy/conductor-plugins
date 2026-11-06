@@ -91,7 +91,7 @@ connectors:
 |-----|------|---------|
 | `app_token` | string | Socket Mode app token (`xapp-…`) — needed for events and ask replies |
 | `bot_token` | string | bot token (`xoxb-…`) for the Web API verbs |
-| `webhook_url` | string | an incoming-webhook URL — post-only alternative to a bot token (no events, no `react`/`ask`/`thread`/`download`) |
+| `webhook_url` | string | an incoming-webhook URL — post-only alternative to a bot token (no events, no `react`/`ask`/`thread`/`download`). The jail allows Slack's own hosts (`hooks.slack.com`); a webhook elsewhere needs `trust: full` |
 | `api_base` | string | override the Slack Web API base URL — for tests against a fake server; leave unset in production |
 
 Set `bot_token` **or** `webhook_url`; `app_token` is required only if any
