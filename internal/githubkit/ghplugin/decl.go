@@ -91,7 +91,9 @@ func decl() plugin.Decl {
 		//
 		// Network: the API (api.github.com, a GHES api_base, GitHub
 		// Enterprise Cloud with data residency); github.com for pr_snapshot's
-		// git fetch over HTTPS; the smee relay (webhook.smee_url); and the
+		// git fetch over HTTPS; the deprecated in-plugin smee relay
+		// (webhook.smee_url — kept, literal smee.io included, until the field
+		// goes: an older conductor's box still streams through it); and the
 		// hosts an Actions job log redirects to (check_failures): the results
 		// service's blob storage and the older pipelines host. It serves the
 		// webhook receiver on webhook.listen.
@@ -123,7 +125,7 @@ func decl() plugin.Decl {
 		Connection: plugin.Schema{
 			"app":             {Type: "map", Desc: "GitHub App credentials: app_id, private_key_path"},
 			"token":           {Type: "string", Secret: true, Desc: "PAT used when no App is configured (chain: app → token → gh auth token)"},
-			"webhook":         {Type: "map", Desc: "event transport and delivery auth: smee_url and/or listen (+ path), expose, public_url, secret, verify_signature"},
+			"webhook":         {Type: "map", Desc: "event transport and delivery auth: listen (+ path), expose (an exposure connector in front of listen: smee, cloudflared, ngrok, …), public_url, secret, verify_signature; smee_url is deprecated (a smee connector in expose replaces it)"},
 			"sweep":           {Type: "map", Desc: "catch-up sweep: enabled, interval, min_interval, repos"},
 			"me":              {Type: "map", Desc: "your GitHub login(s): { logins: [...] } — defines \"you\""},
 			"repos":           {Type: "list", Desc: "default repo globs for triggers whose filter names no repo"},
