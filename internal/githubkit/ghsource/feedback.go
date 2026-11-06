@@ -25,6 +25,12 @@ import (
 //     whose latest review approved is left out: they signed off.
 //   - a reviewer's latest review requesting changes, submitted on the PR's
 //     current head: nothing has been pushed since it asked.
+//   - a review that commented with a body and no inline comments (a review
+//     bot that puts every finding in its summary), on the same terms: it is
+//     the reviewer's latest review with a body, submitted on the current
+//     head, and the reviewer hasn't approved. (Answering it in a comment
+//     doesn't address it, as it doesn't a changes-request; the cursor keeps
+//     a run that already carried it from running again.)
 //
 // The event's cursor (feedback_cursor) is the latest SUBMISSION among those,
 // not the highest comment id. GitHub numbers a review and its comments when
@@ -57,16 +63,24 @@ type fbThread struct {
 	Recent   []fbComment
 }
 
-// fbReview is a reviewer's latest opinionated review.
+// fbReview is a submitted review: a reviewer's latest opinionated one, or one
+// of the PR's recent comment/changes-request submissions.
 type fbReview struct {
 	ID          int64
 	Author      string
 	AuthorIsBot bool
-	State       string // APPROVED | CHANGES_REQUESTED | DISMISSED
+	State       string // APPROVED | CHANGES_REQUESTED | COMMENTED | DISMISSED
 	Body        string
 	URL         string
 	Commit      string
 	SubmittedAt time.Time
+	Inline      int // its inline comments (Submitted only)
+}
+
+// bodyOnlyComment reports whether the review commented with a body and no
+// inline comments.
+func (r fbReview) bodyOnlyComment() bool {
+	return r.State == "COMMENTED" && r.Inline == 0 && strings.TrimSpace(r.Body) != ""
 }
 
 // prFeedback is what the fold reads off a PR in one query.
@@ -74,11 +88,18 @@ type prFeedback struct {
 	Head    string
 	Threads []fbThread
 	Latest  []fbReview
+	// Submitted: the PR's most recent COMMENTED and CHANGES_REQUESTED
+	// reviews, oldest first, with their inline comment counts.
+	Submitted []fbReview
 }
 
 // fbRecentComments bounds the comments read per thread: the tail the fold
 // needs (replies since your last one) is short on any thread a human reads.
-const fbRecentComments = 30
+// fbRecentReviews bounds the recent reviews read for body-only ones.
+const (
+	fbRecentComments = 30
+	fbRecentReviews  = 30
+)
 
 var feedbackQuery = fmt.Sprintf(`query($o:String!,$n:String!,$num:Int!){
   repository(owner:$o,name:$n){ pullRequest(number:$num){
@@ -88,7 +109,36 @@ var feedbackQuery = fmt.Sprintf(`query($o:String!,$n:String!,$num:Int!){
       recent: comments(last:%d){nodes{databaseId author{login __typename} path line originalLine body url pullRequestReview{databaseId submittedAt}}}
     }}
     latestOpinionatedReviews(first:50){nodes{databaseId state body url submittedAt author{login __typename} commit{oid}}}
-  }}}`, fbRecentComments)
+    submitted: reviews(last:%d,states:[COMMENTED,CHANGES_REQUESTED]){nodes{databaseId state body url submittedAt author{login __typename} commit{oid} comments{totalCount}}}
+  }}}`, fbRecentComments, fbRecentReviews)
+
+// gqlFBReview is a review node of the feedback query.
+type gqlFBReview struct {
+	DatabaseID  int64     `json:"databaseId"`
+	State       string    `json:"state"`
+	Body        string    `json:"body"`
+	URL         string    `json:"url"`
+	SubmittedAt time.Time `json:"submittedAt"`
+	Author      *gqlActor `json:"author"`
+	Commit      *struct {
+		Oid string `json:"oid"`
+	} `json:"commit"`
+	Comments *struct {
+		TotalCount int `json:"totalCount"`
+	} `json:"comments"`
+}
+
+func (r gqlFBReview) review() fbReview {
+	rv := fbReview{ID: r.DatabaseID, State: r.State, Body: r.Body, URL: r.URL, SubmittedAt: r.SubmittedAt}
+	rv.Author, rv.AuthorIsBot = r.Author.login()
+	if r.Commit != nil {
+		rv.Commit = r.Commit.Oid
+	}
+	if r.Comments != nil {
+		rv.Inline = r.Comments.TotalCount
+	}
+	return rv
+}
 
 type gqlActor struct {
 	Login    string `json:"login"`
@@ -150,18 +200,11 @@ func (c *restClient) prFeedback(ctx context.Context, instID int64, owner, name s
 					} `json:"nodes"`
 				} `json:"reviewThreads"`
 				LatestOpinionatedReviews struct {
-					Nodes []struct {
-						DatabaseID  int64     `json:"databaseId"`
-						State       string    `json:"state"`
-						Body        string    `json:"body"`
-						URL         string    `json:"url"`
-						SubmittedAt time.Time `json:"submittedAt"`
-						Author      *gqlActor `json:"author"`
-						Commit      *struct {
-							Oid string `json:"oid"`
-						} `json:"commit"`
-					} `json:"nodes"`
+					Nodes []gqlFBReview `json:"nodes"`
 				} `json:"latestOpinionatedReviews"`
+				Submitted struct {
+					Nodes []gqlFBReview `json:"nodes"`
+				} `json:"submitted"`
 			} `json:"pullRequest"`
 		} `json:"repository"`
 	}
@@ -185,12 +228,10 @@ func (c *restClient) prFeedback(ctx context.Context, instID int64, owner, name s
 	}
 	sort.Slice(out.Threads, func(i, j int) bool { return out.Threads[i].ID < out.Threads[j].ID })
 	for _, r := range pr.LatestOpinionatedReviews.Nodes {
-		rv := fbReview{ID: r.DatabaseID, State: r.State, Body: r.Body, URL: r.URL, SubmittedAt: r.SubmittedAt}
-		rv.Author, rv.AuthorIsBot = r.Author.login()
-		if r.Commit != nil {
-			rv.Commit = r.Commit.Oid
-		}
-		out.Latest = append(out.Latest, rv)
+		out.Latest = append(out.Latest, r.review())
+	}
+	for _, r := range pr.Submitted.Nodes {
+		out.Submitted = append(out.Submitted, r.review())
 	}
 	return out, nil
 }
@@ -207,7 +248,8 @@ type fold struct {
 	// Comments: each unaddressed thread's opener (for context) and its
 	// unaddressed tail, thread by thread.
 	Comments []reviewComment
-	// Reviews: the outstanding changes-requests (their summaries).
+	// Reviews: the outstanding changes-requests and body-only reviews
+	// (their summaries).
 	Reviews []fbReview
 	// Threads: the unaddressed threads' ids (the sweep's signature).
 	Threads []string
@@ -270,13 +312,37 @@ func (g *Source) foldFeedback(fb prFeedback) fold {
 		if r.State != "CHANGES_REQUESTED" || g.isSelf(r.Author) || (fb.Head != "" && r.Commit != fb.Head) {
 			continue
 		}
-		out.Reviews = append(out.Reviews, r)
-		out.Subjects = append(out.Subjects, subject{githubkit.SubjectReview, r.ID, 0})
-		if k := submissionKey(r.SubmittedAt, r.ID); k > out.Cursor {
-			out.Cursor = k
+		out.addReview(r)
+	}
+	// Body-only reviews: each reviewer's latest review with a body, when it
+	// is one (a later changes-request or summary supersedes it; a reply in a
+	// thread, which GitHub also records as a COMMENTED review, has no body).
+	latest := map[string]fbReview{}
+	for _, r := range fb.Submitted {
+		a := strings.ToLower(r.Author)
+		if cur, ok := latest[a]; strings.TrimSpace(r.Body) != "" && (!ok || !r.SubmittedAt.Before(cur.SubmittedAt)) {
+			latest[a] = r
 		}
 	}
+	for _, r := range fb.Submitted {
+		a := strings.ToLower(r.Author)
+		if !r.bodyOnlyComment() || latest[a].ID != r.ID || g.isSelf(r.Author) || approved[a] ||
+			(fb.Head != "" && r.Commit != fb.Head) {
+			continue
+		}
+		out.addReview(r)
+	}
 	return out
+}
+
+// addReview adds an outstanding review: its summary, its reaction subject,
+// and its submission to the cursor.
+func (f *fold) addReview(r fbReview) {
+	f.Reviews = append(f.Reviews, r)
+	f.Subjects = append(f.Subjects, subject{githubkit.SubjectReview, r.ID, 0})
+	if k := submissionKey(r.SubmittedAt, r.ID); k > f.Cursor {
+		f.Cursor = k
+	}
 }
 
 func (c fbComment) reviewComment(threadID string) reviewComment {
@@ -299,6 +365,18 @@ func (g *Source) readFold(ctx context.Context, instID int64, repo string, number
 	return g.foldFeedback(fb), fb, true
 }
 
+// hasReview reports whether the read saw a review.
+func (fb prFeedback) hasReview(id int64) bool {
+	for _, rs := range [][]fbReview{fb.Latest, fb.Submitted} {
+		for _, r := range rs {
+			if r.ID == id {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // has reports whether the read saw a comment in any thread.
 func (fb prFeedback) has(commentID int64) bool {
 	for _, th := range fb.Threads {
@@ -315,7 +393,8 @@ func (fb prFeedback) has(commentID int64) bool {
 }
 
 // reviewFold is the fold a submitted review's event carries: the PR's
-// unaddressed feedback, plus the review's own comments and submission when
+// unaddressed feedback, plus the review's own comments and submission — and,
+// for a review whose feedback is its body alone, the review itself — when
 // the read does not show them yet (GitHub's reads can trail its webhooks)
 // or could not be made at all.
 func (g *Source) reviewFold(ctx context.Context, instID int64, repo string, number int, reviewID int64, ri reviewInfo, cs []reviewComment) fold {
@@ -328,6 +407,10 @@ func (g *Source) reviewFold(ctx context.Context, instID int64, repo string, numb
 		if c.ID > f.MaxCommentID {
 			f.MaxCommentID = c.ID
 		}
+	}
+	if len(cs) == 0 && bodyFeedback(ri) && !(ok && fb.hasReview(reviewID)) {
+		f.Reviews = append(f.Reviews, fbReview{ID: reviewID, Author: ri.Author, AuthorIsBot: ri.AuthorIsBot,
+			State: strings.ToUpper(ri.State), Body: ri.Body, SubmittedAt: ri.SubmittedAt})
 	}
 	if k := submissionKey(ri.SubmittedAt, reviewID); k > f.Cursor {
 		f.Cursor = k

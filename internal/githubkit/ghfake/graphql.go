@@ -978,14 +978,14 @@ func (g *gPull) field(name string, args map[string]any) (any, error) {
 			if rv.State == "PENDING" || (len(states) > 0 && !states[rv.State]) {
 				continue
 			}
-			ns = append(ns, &gReview{f, rv})
+			ns = append(ns, &gReview{f, g.r, p, rv})
 		}
 		return conn("PullRequestReviewConnection", page(ns, args), len(ns)), nil
 	case "latestOpinionatedReviews":
 		var ns []gqlNode
 		for _, rv := range p.Reviews { // in submission order, latest per author
 			if latest := p.latestReviews()[lower(rv.User.Login)]; latest == rv {
-				ns = append(ns, &gReview{f, rv})
+				ns = append(ns, &gReview{f, g.r, p, rv})
 			}
 		}
 		return conn("PullRequestReviewConnection", page(ns, args), len(ns)), nil
@@ -1007,12 +1007,20 @@ func strsOf(v any) []string {
 
 type gReview struct {
 	f  *Fake
+	r  *Repo
+	p  *Pull
 	rv *Review
 }
 
 func (g *gReview) typename() string { return "PullRequestReview" }
-func (g *gReview) field(name string, _ map[string]any) (any, error) {
+func (g *gReview) field(name string, args map[string]any) (any, error) {
 	switch name {
+	case "comments":
+		var ns []gqlNode
+		for _, cm := range g.rv.Comments {
+			ns = append(ns, &gComment{g.f, g.r, g.p, cm})
+		}
+		return conn("PullRequestReviewCommentConnection", page(ns, args), len(ns)), nil
 	case "state":
 		return g.rv.State, nil
 	case "author":
@@ -1103,7 +1111,7 @@ func (g *gComment) field(name string, _ map[string]any) (any, error) {
 	case "pullRequestReview":
 		for _, rv := range g.p.Reviews {
 			if rv.ID == cm.ReviewID {
-				return &gReview{g.f, rv}, nil
+				return &gReview{g.f, g.r, g.p, rv}, nil
 			}
 		}
 		return nil, nil
@@ -1222,7 +1230,7 @@ func (f *Fake) nodeByID(id string) gqlNode {
 				if is.Pull != nil {
 					for _, rv := range is.Pull.Reviews {
 						if rv.ID == num {
-							return &gReview{f, rv}
+							return &gReview{f, r, is.Pull, rv}
 						}
 					}
 				}

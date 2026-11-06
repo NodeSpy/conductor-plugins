@@ -22,13 +22,17 @@ import (
 // review and the triggers that would take it, never by its state alone:
 //
 //   - changes_requested, when a changes_requested trigger takes the review
-//     (its filter/repo gate) and the review is a changes-request or leaves
-//     inline comments without approving. That is how a review bot (Cursor
-//     Bugbot) reviews: COMMENTED, with inline findings — exactly the
-//     unresolved threads the sweep's changes_requested has always covered.
+//     (its filter/repo gate) and the review is feedback that didn't approve:
+//     a changes-request, inline comments, or a body with no inline comments.
+//     That is how review bots review: COMMENTED, with inline findings
+//     (exactly the unresolved threads the sweep's changes_requested has
+//     always covered) or with every finding in the review body.
 //   - otherwise ONE new_comment — an approval with inline suggestions (an
 //     approver has signed off: never a changes-request, never re-requested),
 //     or a review no changes_requested trigger takes.
+//
+// An approval with only a body (and any review with neither a body nor
+// inline comments) is not an event.
 //
 // Either way the event carries the review body and every inline comment.
 // Whichever delivery is handled first emits it and claims the review id; every
@@ -38,6 +42,16 @@ import (
 // unresolved, or the reviewer editing the review (Bugbot rewrites old reviews
 // as "stale") all re-derive comments at or below the mark. Only a submission
 // is an event — an "edited" review or comment is not.
+//
+// A body-only review has no inline comment id. Its new_comment carries
+// comment_id = its submission key (githubkit.SubmissionKey: submission
+// second, then review id) on its own stream, comment_kind
+// "review_submission". Review ids and comment ids are separate sequences, so
+// it is kept apart from the "review" and "issue" marks (it neither drops nor
+// is dropped by an inline comment); and it orders by submission, since
+// GitHub numbers a review when it is DRAFTED and a review drafted earlier but
+// submitted later would fall under a mark over review ids. Its
+// changes_requested is keyed on feedback_cursor, as every one is.
 //
 // A comment with no review (a conversation comment, or a review comment that
 // carries no review id) is its own new_comment, as it always was. So is a
@@ -202,13 +216,21 @@ func (g *Source) changesRequestedKeep(repo string, pr *prPayload, reviewer strin
 	}
 }
 
+// bodyFeedback reports whether a review's own body is feedback: something
+// written in a review that commented or requested changes (an approval's body
+// never is).
+func bodyFeedback(ri reviewInfo) bool {
+	return (ri.State == "commented" || ri.State == "changes_requested") && strings.TrimSpace(ri.Body) != ""
+}
+
 // takenAsChangesRequested reports whether a review is a changes_requested
 // event: a changes_requested trigger takes it, and it either requested changes
-// or left inline comments without approving (see the package note).
-func (g *Source) takenAsChangesRequested(repo string, pr *prPayload, ri reviewInfo, hasComments bool) bool {
+// or left feedback (inline comments, or a body without them) without
+// approving (see the package note).
+func (g *Source) takenAsChangesRequested(repo string, pr *prPayload, ri reviewInfo, feedback bool) bool {
 	switch {
 	case ri.State == "changes_requested":
-	case hasComments && ri.State != "approved":
+	case feedback && ri.State != "approved":
 	default:
 		return false
 	}
@@ -217,10 +239,12 @@ func (g *Source) takenAsChangesRequested(repo string, pr *prPayload, ri reviewIn
 
 // reviewEvent turns a submitted review into its ONE trigger (see the package
 // note), unless a delivery for it already did. handled=false means it is not
-// an event on its own — no inline comments (or they can't be read) and no
-// changes-request taken: a comment delivery then stands alone, a review
-// delivery emits nothing.
-func (g *Source) reviewEvent(ctx context.Context, repo string, instID int64, pr *prPayload, reviewID int64, ri reviewInfo) (trs []Trigger, handled bool) {
+// an event on its own — no feedback (no inline comments, no body, or its
+// comments can't be read) and no changes-request taken: a comment delivery
+// then stands alone, a review delivery emits nothing. fromComment says one of
+// the review's inline comments was delivered, so it is never body-only (an
+// empty listing is a read trailing the webhook).
+func (g *Source) reviewEvent(ctx context.Context, repo string, instID int64, pr *prPayload, reviewID int64, ri reviewInfo, fromComment bool) (trs []Trigger, handled bool) {
 	if g.reviews.claimed(reviewID, time.Now()) {
 		return nil, true
 	}
@@ -228,8 +252,12 @@ func (g *Source) reviewEvent(ctx context.Context, repo string, instID int64, pr 
 	if err != nil {
 		log.Printf("github[%s]: %s#%d review %d comments: %v", g.name, repo, pr.Number, reviewID, err)
 	}
+	// A review whose comments read as none is feedback on its body alone. One
+	// whose comments can't be read isn't known to be: its comment deliveries
+	// stand alone, and the sweep recovers it if it was.
+	bodyOnly := err == nil && !fromComment && len(cs) == 0 && bodyFeedback(ri)
 	t := g.prTarget(repo, pr)
-	if g.takenAsChangesRequested(repo, pr, ri, len(cs) > 0) {
+	if g.takenAsChangesRequested(repo, pr, ri, len(cs) > 0 || bodyOnly) {
 		if !g.reviews.claim(reviewID, time.Now()) {
 			return nil, true
 		}
@@ -246,7 +274,7 @@ func (g *Source) reviewEvent(ctx context.Context, repo string, instID int64, pr 
 			fmt.Sprintf("review:%d@%s", reviewID, pr.Head.SHA), extra,
 			g.changesRequestedKeep(repo, pr, ri.Author, ri.AuthorIsBot)), true
 	}
-	if len(cs) == 0 {
+	if len(cs) == 0 && !bodyOnly {
 		return nil, false
 	}
 	return g.reviewNewComment(repo, t, pr.Head.Ref, reviewID, ri, cs), true
@@ -265,7 +293,7 @@ func (g *Source) reviewCommentDelivery(ctx context.Context, repo string, p ghPay
 	if ri.Author == "" {
 		ri.Author, ri.AuthorIsBot = c.User.Login, isBotActor(c.User.Type, c.User.Login)
 	}
-	trs, handled = g.reviewEvent(ctx, repo, p.Installation.ID, pr, c.PullRequestReviewID, ri)
+	trs, handled = g.reviewEvent(ctx, repo, p.Installation.ID, pr, c.PullRequestReviewID, ri, true)
 	if !handled {
 		log.Printf("github[%s]: %s#%d review %d unreadable — comment %d stands alone",
 			g.name, repo, pr.Number, c.PullRequestReviewID, c.ID)
@@ -274,24 +302,28 @@ func (g *Source) reviewCommentDelivery(ctx context.Context, repo string, p ghPay
 }
 
 // reviewNewComment is the ONE new_comment a non-changes-requested review with
-// inline comments becomes. It claims the review first, so whichever delivery
-// gets here first is the only one that emits. Its fields are a comment's, so
-// a trigger written for single comments still reads sensibly — the reviewer
-// is author/comment_author, comment_body is the review body plus every inline
-// comment, comment_id is the review's highest (the engine's high-water mark
-// then drops any later recovery of it) — plus the review_* fields
-// changes_requested carries.
+// feedback (inline comments, or a body alone) becomes. It claims the review
+// first, so whichever delivery gets here first is the only one that emits.
+// Its fields are a comment's, so a trigger written for single comments still
+// reads sensibly — the reviewer is author/comment_author, comment_body is the
+// review body plus every inline comment, comment_id is the review's highest
+// (or, with none, its submission key on the review_submission stream; see
+// the package note), so the engine's high-water mark drops any later
+// recovery of it — plus the review_* fields changes_requested carries.
 func (g *Source) reviewNewComment(repo string, t Target, headRef string, reviewID int64, ri reviewInfo, cs []reviewComment) []Trigger {
 	if !g.reviews.claim(reviewID, time.Now()) {
 		return nil
 	}
-	maxID := maxCommentID(cs)
 	body := reviewSummary(ri.Body, cs)
 	extra := map[string]any{"author": ri.Author, "author_is_bot": ri.AuthorIsBot,
 		"comment_body": body, "head_ref": headRef,
-		"comment_id": maxID, "comment_kind": CommentKindReview,
 		"review_id": reviewID, "review_body": ri.Body, "review_state": ri.State,
 		"reaction_subjects": reactionSubjects(githubkit.SubjectReview, reviewID)}
+	if len(cs) > 0 {
+		extra["comment_id"], extra["comment_kind"] = maxCommentID(cs), CommentKindReview
+	} else if k := submissionKey(ri.SubmittedAt, reviewID); k > 0 {
+		extra["comment_id"], extra["comment_kind"] = k, CommentKindReviewSubmission
+	}
 	addReviewComments(extra, cs)
 	return g.emit(repo, "new_comment", t,
 		fmt.Sprintf("review by %s on %s#%d (%d inline comment(s))", ri.Author, repo, t.Number, len(cs)),

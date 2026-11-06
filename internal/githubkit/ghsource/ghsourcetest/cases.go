@@ -59,13 +59,20 @@ func review(n int, prState string, id int, state, reviewer string) string {
 		repoJSON, prJSON(n, "me", prState), id, state, reviewer)
 }
 
+// bodyReview is a submitted review with the given body, submitted at the
+// given time, by a Bot account.
+func bodyReview(n, id int, state, reviewer, body, submitted string) string {
+	return fmt.Sprintf(`{"action":"submitted",%s,"pull_request":%s,"review":{"id":%d,"state":%q,"body":%q,"submitted_at":%q,"user":{"login":%q,"type":"Bot"}}}`,
+		repoJSON, prJSON(n, "me", "open"), id, state, body, submitted, reviewer)
+}
+
 func reviewComment(n, id, reviewID int, reviewer string) string {
 	return fmt.Sprintf(`{"action":"created",%s,"pull_request":%s,"comment":{"id":%d,"body":"fix this","pull_request_review_id":%d,"user":{"login":%q,"type":"User"}}}`,
 		repoJSON, prJSON(n, "me", "open"), id, reviewID, reviewer)
 }
 
 func reviewComments(n, reviewID int, ids ...int) Route {
-	var cs []any
+	cs := []any{}
 	for _, id := range ids {
 		cs = append(cs, map[string]any{"id": id, "user": map[string]any{"login": "rev"}, "path": "a.go", "line": 3,
 			"body": "fix this", "html_url": fmt.Sprintf("https://github.example/c/%d", id)})
@@ -187,6 +194,36 @@ func Cases() []Case {
 			Want: []Want{{Kind: "new_comment", Trigger: "nc", Repo: repo, Number: 7, Context: map[string]any{
 				"review_id": 901, "comment_id": 1003, "review_state": "approved", "comment_kind": "review",
 			}}},
+		},
+		{
+			Name:       "a review with only a body is ONE new_comment, on its own comment stream",
+			Connection: base,
+			Triggers:   []Trigger{{On: "new_comment", Name: "nc"}},
+			Routes:     []Route{pull(7, "me", "open", "clean"), reviewComments(7, 920)},
+			Steps: []Step{
+				{Event: "pull_request_review", Body: bodyReview(7, 920, "commented", "review-bot[bot]",
+					"- [fixable] `bin/foo:41`: handle EOF", "2026-01-02T03:04:05Z")},
+			},
+			Want: []Want{{Kind: "new_comment", Trigger: "nc", Repo: repo, Number: 7, Context: map[string]any{
+				"review_id": 920, "review_state": "commented", "author": "review-bot[bot]", "author_is_bot": true,
+				"comment_body": "- [fixable] `bin/foo:41`: handle EOF", "comment_kind": "review_submission",
+			}}},
+		},
+		{
+			Name:       "a review with only a body is ONE changes_requested when one takes it; an approval's body is nothing",
+			Connection: base,
+			Triggers:   []Trigger{{On: "changes_requested", Name: "cr"}, {On: "new_comment", Name: "nc"}},
+			Routes:     []Route{pull(7, "me", "open", "clean"), reviewComments(7, 921), reviewComments(7, 922)},
+			Steps: []Step{
+				{Event: "pull_request_review", Body: bodyReview(7, 921, "commented", "review-bot[bot]",
+					"- [fixable] `bin/foo:41`: handle EOF", "2026-01-02T03:04:05Z")},
+				{Event: "pull_request_review", Body: bodyReview(7, 922, "approved", "review-bot[bot]",
+					"looks good", "2026-01-02T03:04:06Z")},
+			},
+			Want: []Want{{Kind: "changes_requested", Trigger: "cr", Repo: repo, Number: 7, Context: map[string]any{
+				"review_id": 921, "review_state": "commented", "author_is_bot": true,
+				"review_body": "- [fixable] `bin/foo:41`: handle EOF",
+			}, Len: map[string]int{"outstanding_reviews": 1}}},
 		},
 		{
 			Name:       "a closed PR's feedback is dropped; closing emits _closed",
