@@ -199,7 +199,7 @@ func (telegram) Describe() plugin.Decl {
 		// plugin dials out to, and webhook.listen is the inbound address it
 		// serves Telegram's webhook deliveries on.
 		Capabilities: plugin.Capabilities{
-			Egress: []string{"api.telegram.org:443", "config:webhook.smee"},
+			Egress: []string{"api.telegram.org:443", "config:webhook.smee", "smee.io:443"},
 			Listen: []string{"config:webhook.listen"},
 		},
 	}

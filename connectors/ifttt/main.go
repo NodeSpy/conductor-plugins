@@ -111,7 +111,7 @@ func (iftttPlugin) Describe() plugin.Decl {
 		// the webhook source's own inbound receiver address. It spawns
 		// no commands.
 		Capabilities: plugin.Capabilities{
-			Egress: []string{"maker.ifttt.com:443", "config:base_url", "config:webhook.smee"},
+			Egress: []string{"maker.ifttt.com:443", "config:base_url", "config:webhook.smee", "smee.io:443"},
 			Listen: []string{"config:webhook.listen"},
 		},
 	}

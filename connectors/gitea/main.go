@@ -73,7 +73,7 @@ func (giteaPlugin) Describe() plugin.Decl {
 		// Listen/the smee egress are the webhook source's own address and
 		// optional relay.
 		Capabilities: plugin.Capabilities{
-			Egress: []string{"config:url", "config:webhook.smee"},
+			Egress: []string{"config:url", "config:webhook.smee", "smee.io:443"},
 			Listen: []string{"config:webhook.listen"},
 		},
 	}

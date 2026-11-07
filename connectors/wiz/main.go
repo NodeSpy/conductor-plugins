@@ -115,7 +115,7 @@ func (w *wizPlugin) Describe() plugin.Decl {
 		// outbound smee.io-style relay the source dials out to; Listen is the
 		// webhook receiver's own inbound address.
 		Capabilities: plugin.Capabilities{
-			Egress: []string{"auth.app.wiz.io:443", "config:auth_url", "config:api_url", "config:webhook.smee"},
+			Egress: []string{"auth.app.wiz.io:443", "config:auth_url", "config:api_url", "config:webhook.smee", "smee.io:443"},
 			Listen: []string{"config:webhook.listen"},
 		},
 	}

@@ -63,7 +63,7 @@ func (sentry) Describe() plugin.Decl {
 		// endpoints with no public URL. Spawns nothing.
 		Capabilities: plugin.Capabilities{
 			Listen: []string{"config:listen"},
-			Egress: []string{"config:smee"},
+			Egress: []string{"config:smee", "smee.io:443"},
 		},
 	}
 }

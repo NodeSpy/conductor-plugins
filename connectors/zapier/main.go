@@ -108,7 +108,7 @@ func (zapierPlugin) Describe() plugin.Decl {
 		// source dials out to; Listen is the webhook receiver's own inbound
 		// address.
 		Capabilities: plugin.Capabilities{
-			Egress: []string{zapierHookHost + ":443", "config:webhook.smee"},
+			Egress: []string{zapierHookHost + ":443", "config:webhook.smee", "smee.io:443"},
 			Listen: []string{"config:webhook.listen"},
 		},
 	}

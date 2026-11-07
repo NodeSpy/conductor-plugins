@@ -107,7 +107,7 @@ func (twilioPlugin) Describe() plugin.Decl {
 		// relay the webhook source dials out to when it has no public URL.
 		// Listen is the webhook source's own inbound address.
 		Capabilities: plugin.Capabilities{
-			Egress: []string{"api.twilio.com:443", "config:api_base", "config:webhook.smee"},
+			Egress: []string{"api.twilio.com:443", "config:api_base", "config:webhook.smee", "smee.io:443"},
 			Listen: []string{"config:webhook.listen"},
 		},
 	}

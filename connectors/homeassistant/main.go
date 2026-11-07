@@ -84,7 +84,7 @@ func (haPlugin) Describe() plugin.Decl {
 		// install has no public listen address. Listen resolves
 		// webhook.listen, the source's inbound webhook receiver address.
 		Capabilities: plugin.Capabilities{
-			Egress: []string{"config:base_url", "config:webhook.smee"},
+			Egress: []string{"config:base_url", "config:webhook.smee", "smee.io:443"},
 			Listen: []string{"config:webhook.listen"},
 		},
 	}

@@ -178,7 +178,7 @@ func (datadogPlugin) Describe() plugin.Decl {
 				"api.datadoghq.com:443", "api.datadoghq.eu:443",
 				"api.us3.datadoghq.com:443", "api.us5.datadoghq.com:443",
 				"api.ap1.datadoghq.com:443", "api.ddog-gov.com:443",
-				"config:webhook.smee",
+				"config:webhook.smee", "smee.io:443",
 			},
 			Listen: []string{"config:webhook.listen"},
 		},
