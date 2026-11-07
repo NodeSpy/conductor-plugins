@@ -167,7 +167,7 @@ func (uptimerobotPlugin) Describe() plugin.Decl {
 		// relay this plugin dials out to for the webhook source. Listen is
 		// the webhook receiver's own inbound address (StartSource only).
 		Capabilities: plugin.Capabilities{
-			Egress: []string{"api.uptimerobot.com:443", "config:webhook.smee"},
+			Egress: []string{"api.uptimerobot.com:443", "config:webhook.smee", "smee.io:443"},
 			Listen: []string{"config:webhook.listen"},
 		},
 	}

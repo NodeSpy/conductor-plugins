@@ -185,7 +185,7 @@ func (l *linearPlugin) Describe() plugin.Decl {
 		// plugin dials out to, and webhook.listen is the inbound address it
 		// serves the webhook on.
 		Capabilities: plugin.Capabilities{
-			Egress: []string{"api.linear.app:443", "config:api_base", "config:webhook.smee"},
+			Egress: []string{"api.linear.app:443", "config:api_base", "config:webhook.smee", "smee.io:443"},
 			Listen: []string{"config:webhook.listen"},
 		},
 	}

@@ -73,7 +73,7 @@ func (gitlabPlugin) Describe() plugin.Decl {
 		// replace it. Listen/the smee egress are the webhook source's own
 		// address and optional relay.
 		Capabilities: plugin.Capabilities{
-			Egress: []string{"gitlab.com:443", "config:url", "config:webhook.smee"},
+			Egress: []string{"gitlab.com:443", "config:url", "config:webhook.smee", "smee.io:443"},
 			Listen: []string{"config:webhook.listen"},
 		},
 	}

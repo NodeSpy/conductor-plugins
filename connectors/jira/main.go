@@ -80,7 +80,7 @@ func (jiraPlugin) Describe() plugin.Decl {
 		// relay. Listen is the webhook source's own inbound receiver
 		// address.
 		Capabilities: plugin.Capabilities{
-			Egress: []string{"*.atlassian.net:443", "config:webhook.smee"},
+			Egress: []string{"*.atlassian.net:443", "config:webhook.smee", "smee.io:443"},
 			Listen: []string{"config:webhook.listen"},
 		},
 	}

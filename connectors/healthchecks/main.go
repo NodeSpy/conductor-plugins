@@ -161,7 +161,7 @@ func (p *healthchecksPlugin) Describe() plugin.Decl {
 		Capabilities: plugin.Capabilities{
 			Egress: []string{
 				"healthchecks.io:443", "hc-ping.com:443",
-				"config:api_base", "config:ping_base", "config:webhook.smee",
+				"config:api_base", "config:ping_base", "config:webhook.smee", "smee.io:443",
 			},
 			Listen: []string{"config:webhook.listen"},
 		},
