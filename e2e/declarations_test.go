@@ -5,11 +5,13 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/NodeSpy/conductor-plugins/internal/rpctest"
+	"github.com/NodeSpy/conductor/pkg/plugin"
 )
 
 // Conductor jails every plugin to exactly what it declares (Capabilities)
@@ -43,6 +45,15 @@ func TestEveryDeclarationValidates(t *testing.T) {
 				}
 				if err := decl.Capabilities.Validate(decl.Connection); err != nil {
 					t.Fatalf("declaration refused: %v", err)
+				}
+				// A conductor that does not resolve config: and env: entries
+				// gets the declaration without them.
+				old, err := c.DescribeAs(ctx, &plugin.HostInfo{Version: "dev"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(old.Capabilities, decl.Capabilities.WithoutReferences()) {
+					t.Fatalf("declaration for a conductor that does not resolve references = %+v, want %+v", old.Capabilities, decl.Capabilities.WithoutReferences())
 				}
 			})
 		}
