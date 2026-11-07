@@ -74,7 +74,7 @@ func (alertmanager) Describe() plugin.Decl {
 		// public listen address.
 		Capabilities: plugin.Capabilities{
 			Listen: []string{"config:listen"},
-			Egress: []string{"config:smee", "smee.io:443"},
+			Egress: []string{"config:smee"},
 		},
 	}
 }

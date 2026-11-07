@@ -84,7 +84,7 @@ func (uptimekuma) Describe() plugin.Decl {
 		// it dials when the listener has no public URL.
 		Capabilities: plugin.Capabilities{
 			Listen: []string{"config:listen"},
-			Egress: []string{"config:smee", "smee.io:443"},
+			Egress: []string{"config:smee"},
 		},
 	}
 }

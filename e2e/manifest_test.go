@@ -37,7 +37,7 @@ func TestPluginsDeclareKindAndManifest(t *testing.T) {
 			check: func(t *testing.T, c plugin.Capabilities) {
 				// Inbound only: it serves its listen address, reaches only the
 				// optional smee relay, and spawns nothing.
-				if !reflect.DeepEqual(c.Listen, []string{"config:listen"}) || !reflect.DeepEqual(c.Egress, []string{"config:smee", "smee.io:443"}) || len(c.Commands) != 0 {
+				if !reflect.DeepEqual(c.Listen, []string{"config:listen"}) || !reflect.DeepEqual(c.Egress, []string{"config:smee"}) || len(c.Commands) != 0 {
 					t.Fatalf("a source-only connector should declare its listener and relay only: %+v", c)
 				}
 			},
@@ -48,7 +48,7 @@ func TestPluginsDeclareKindAndManifest(t *testing.T) {
 			check: func(t *testing.T, c plugin.Capabilities) {
 				// Inbound only: it serves its listen address, reaches only the
 				// optional smee relay, and spawns nothing.
-				if !reflect.DeepEqual(c.Listen, []string{"config:listen"}) || !reflect.DeepEqual(c.Egress, []string{"config:smee", "smee.io:443"}) || len(c.Commands) != 0 {
+				if !reflect.DeepEqual(c.Listen, []string{"config:listen"}) || !reflect.DeepEqual(c.Egress, []string{"config:smee"}) || len(c.Commands) != 0 {
 					t.Fatalf("a source-only connector should declare its listener and relay only: %+v", c)
 				}
 			},

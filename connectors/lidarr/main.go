@@ -88,7 +88,7 @@ func (lidarrPlugin) Describe() plugin.Decl {
 		// outbound relay URL this plugin dials out to, and webhook.listen is
 		// the inbound address it serves the webhook on.
 		Capabilities: plugin.Capabilities{
-			Egress: []string{"config:base_url", "config:webhook.smee", "smee.io:443"},
+			Egress: []string{"config:base_url", "config:webhook.smee"},
 			Listen: []string{"config:webhook.listen"},
 		},
 	}
