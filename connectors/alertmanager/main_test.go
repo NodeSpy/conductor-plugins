@@ -164,7 +164,7 @@ func TestDescribe(t *testing.T) {
 	if want := []string{"config:listen"}; !reflect.DeepEqual(d.Capabilities.Listen, want) {
 		t.Errorf("listen: got %v want %v", d.Capabilities.Listen, want)
 	}
-	if want := []string{"config:smee", "smee.io:443"}; !reflect.DeepEqual(d.Capabilities.Egress, want) {
+	if want := []string{"config:smee"}; !reflect.DeepEqual(d.Capabilities.Egress, want) {
 		t.Errorf("egress: got %v want %v", d.Capabilities.Egress, want)
 	}
 	if len(d.Events) != 1 || d.Events[0].Name != "alert" {

@@ -17,15 +17,13 @@ go 1.26.3
 // surface runtimes/jev is built on — Decl.Protocols, ProtocolSystemOneV1,
 // VerbDecide/VerbModels — arrived with conductor v0.54.0's decide: steps.
 //
-// PRE-RELEASE PIN: the plugins declare their capabilities (listen, read,
-// write, exec, keychain, optional "?" paths), which is conductor's SDK-only
-// contract change: pkg/plugin alone, purely additive, so a daemon built
-// from it runs plugins exactly as before. This pseudo-version is that
-// change's head; it MUST be bumped to its release tag before this merges.
-// The plugins are released on that tag BEFORE the conductor that jails
-// them, so every box auto-updates to builds that declare what they need
-// while still unjailed.
-require github.com/NodeSpy/conductor v0.87.0
+// PRE-RELEASE PIN: the SDK that withholds config: and env: capability
+// entries from a conductor that cannot resolve them (up to v0.87 it reads
+// them as literal patterns and denies the plugin every host). This
+// pseudo-version is that change's head; it MUST be bumped to its release
+// tag before this merges, and the plugins with such entries re-released on
+// it.
+require github.com/NodeSpy/conductor v0.89.2-0.20261107081600-873328dc6a1a
 
 // The interpreters the four step engines embed. These are the SAME versions
 // conductor pinned while the engines lived in its binary, so the port is a
