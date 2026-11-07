@@ -20,7 +20,7 @@ func TestDescribe(t *testing.T) {
 	if d.Kind != plugin.KindConnector || d.Type != "jira" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	wantEgress := []string{"*.atlassian.net:443", "config:webhook.smee"}
+	wantEgress := []string{"*.atlassian.net:443", "config:webhook.smee", "smee.io:443"}
 	if !reflect.DeepEqual(d.Capabilities.Egress, wantEgress) {
 		t.Fatalf("capabilities.egress: %#v", d.Capabilities.Egress)
 	}

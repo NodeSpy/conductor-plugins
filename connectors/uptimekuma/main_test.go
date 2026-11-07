@@ -216,7 +216,7 @@ func TestDescribe(t *testing.T) {
 	if len(d.Capabilities.Listen) != 1 || d.Capabilities.Listen[0] != "config:listen" {
 		t.Fatalf("capabilities.Listen: %#v", d.Capabilities.Listen)
 	}
-	if len(d.Capabilities.Egress) != 1 || d.Capabilities.Egress[0] != "config:smee" {
+	if len(d.Capabilities.Egress) != 2 || d.Capabilities.Egress[0] != "config:smee" || d.Capabilities.Egress[1] != "smee.io:443" {
 		t.Fatalf("capabilities.Egress: %#v", d.Capabilities.Egress)
 	}
 	if len(d.Events) != 1 || d.Events[0].Name != "monitor" {

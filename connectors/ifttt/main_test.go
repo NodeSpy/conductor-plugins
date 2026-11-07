@@ -23,7 +23,7 @@ func TestDescribe(t *testing.T) {
 	if d.Kind != plugin.KindConnector || d.Type != "ifttt" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	wantEgress := []string{"maker.ifttt.com:443", "config:base_url", "config:webhook.smee"}
+	wantEgress := []string{"maker.ifttt.com:443", "config:base_url", "config:webhook.smee", "smee.io:443"}
 	if !reflect.DeepEqual(d.Capabilities.Egress, wantEgress) {
 		t.Fatalf("capabilities.egress: %#v", d.Capabilities.Egress)
 	}

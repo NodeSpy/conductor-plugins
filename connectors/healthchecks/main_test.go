@@ -23,7 +23,7 @@ func TestDescribe(t *testing.T) {
 	}
 	wantEgress := map[string]bool{
 		"healthchecks.io:443": true, "hc-ping.com:443": true,
-		"config:api_base": true, "config:ping_base": true, "config:webhook.smee": true,
+		"config:api_base": true, "config:ping_base": true, "config:webhook.smee": true, "smee.io:443": true,
 	}
 	if len(d.Capabilities.Egress) != len(wantEgress) {
 		t.Fatalf("egress: %#v", d.Capabilities.Egress)

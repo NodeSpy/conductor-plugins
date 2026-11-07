@@ -51,7 +51,7 @@ func TestDescribe(t *testing.T) {
 			t.Errorf("Describe missing verb %q", w)
 		}
 	}
-	if want := []string{"config:url", "config:webhook.smee"}; !reflect.DeepEqual(d.Capabilities.Egress, want) {
+	if want := []string{"config:url", "config:webhook.smee", "smee.io:443"}; !reflect.DeepEqual(d.Capabilities.Egress, want) {
 		t.Errorf("egress: got %v want %v", d.Capabilities.Egress, want)
 	}
 	if want := []string{"config:webhook.listen"}; !reflect.DeepEqual(d.Capabilities.Listen, want) {
