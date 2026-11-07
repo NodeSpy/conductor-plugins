@@ -22,7 +22,7 @@ func TestDescribe(t *testing.T) {
 	if d.Kind != plugin.KindConnector || d.Type != "uptimerobot" {
 		t.Fatalf("kind/type: %v %q", d.Kind, d.Type)
 	}
-	wantEgress := []string{"api.uptimerobot.com:443", "config:webhook.smee"}
+	wantEgress := []string{"api.uptimerobot.com:443", "config:webhook.smee", "smee.io:443"}
 	if len(d.Capabilities.Egress) != len(wantEgress) {
 		t.Fatalf("egress: got %#v", d.Capabilities.Egress)
 	}
