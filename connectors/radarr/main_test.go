@@ -389,7 +389,7 @@ func TestDescribe(t *testing.T) {
 	if len(d.Capabilities.Commands) != 0 || d.Capabilities.Spawns {
 		t.Fatalf("capabilities: connector must not spawn/command: %#v", d.Capabilities)
 	}
-	wantEgress := []string{"config:base_url", "config:webhook.smee", "smee.io:443"}
+	wantEgress := []string{"config:base_url", "config:webhook.smee"}
 	if len(d.Capabilities.Egress) != len(wantEgress) || d.Capabilities.Egress[0] != wantEgress[0] || d.Capabilities.Egress[1] != wantEgress[1] {
 		t.Fatalf("capabilities.egress: want %#v, got %#v", wantEgress, d.Capabilities.Egress)
 	}

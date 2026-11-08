@@ -92,7 +92,7 @@ func (prowlarrPlugin) Describe() plugin.Decl {
 		// narrow any of this further per instance, but not widen it
 		// (documented in docs/connectors/prowlarr.md).
 		Capabilities: plugin.Capabilities{
-			Egress: []string{"config:base_url", "config:webhook.smee", "smee.io:443"},
+			Egress: []string{"config:base_url", "config:webhook.smee"},
 			Listen: []string{"config:webhook.listen"},
 		},
 	}

@@ -80,7 +80,7 @@ func (radarrPlugin) Describe() plugin.Decl {
 		Events: []plugin.Event{radarrEvent()},
 		Verbs:  radarrVerbs(),
 		Capabilities: plugin.Capabilities{
-			Egress: []string{"config:base_url", "config:webhook.smee", "smee.io:443"},
+			Egress: []string{"config:base_url", "config:webhook.smee"},
 			Listen: []string{"config:webhook.listen"},
 		},
 	}

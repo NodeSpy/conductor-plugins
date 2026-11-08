@@ -259,9 +259,16 @@ func (c *Client) call(ctx context.Context, method string, params any) (json.RawM
 	}
 }
 
-// Describe issues plugin.describe.
+// Describe issues plugin.describe as a current conductor does: with the
+// semantics it implements, so the plugin returns its full declaration.
 func (c *Client) Describe(ctx context.Context) (*plugin.Decl, error) {
-	raw, err := c.call(ctx, plugin.MethodDescribe, struct{}{})
+	return c.DescribeAs(ctx, &plugin.HostInfo{Version: "rpctest", Semantics: plugin.KnownSemantics()})
+}
+
+// DescribeAs issues plugin.describe as the host described (nil: a conductor
+// that sends no host info).
+func (c *Client) DescribeAs(ctx context.Context, host *plugin.HostInfo) (*plugin.Decl, error) {
+	raw, err := c.call(ctx, plugin.MethodDescribe, plugin.DescribeRequest{Host: host})
 	if err != nil {
 		return nil, err
 	}

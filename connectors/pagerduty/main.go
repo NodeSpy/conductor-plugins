@@ -58,7 +58,7 @@ func (pagerduty) Describe() plugin.Decl {
 		// directly — see internal/relay.
 		Capabilities: plugin.Capabilities{
 			Listen: []string{"config:listen"},
-			Egress: []string{"config:smee", "smee.io:443"},
+			Egress: []string{"config:smee"},
 		},
 	}
 }
