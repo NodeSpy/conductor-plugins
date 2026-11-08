@@ -51,6 +51,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -128,17 +129,22 @@ func (p *smeePlugin) Describe() plugin.Decl {
 		// Egress: the default smee.io relay host, plus whatever host a
 		// self-hosted `smee_base` override names (config:smee_base covers
 		// both createChannel's GET .../new and relay's long-lived SSE GET).
-		// NOT declarable: relayFrame's local POST target. The destination is
-		// `local_addr` (+ `path`), an "open" verb OPTION the engine fills in
-		// per call via the `exposes` semantic (exposurekit.ExposesWithPath)
-		// — never a Connection field — so Capabilities (which only resolves
-		// config:/env: references against the Connection schema) has no way
-		// to name it. The daemon grants no per-call exception for an
-		// exposes-verb's own local_addr either (checked against the SDK this
-		// plugin is pinned to). Until one of those exists, every relayed
-		// delivery's local POST will be refused by the egress proxy under
-		// the jail even though the inbound SSE leg above works fine.
-		Capabilities: plugin.Capabilities{Egress: []string{"smee.io:443", "config:smee_base"}},
+		// config:channel covers a channel pinned on a host other than
+		// smee.io (a self-hosted relay). smee.io stays literal: a conductor
+		// older than the declared jail does not resolve config: references,
+		// and the relay's own default host must reach it.
+		//
+		// ExposeLocal: relayFrame POSTs each delivery to `local_addr`, the
+		// "open" option the engine fills in from the listener it wired to
+		// this connector (a listener's `expose:`). It is not a Connection
+		// field, so no egress entry can name it; expose_local asks the
+		// engine, which decides that address, to grant exactly it from the
+		// jail. A conductor without the capability ignores it (it is not
+		// must-understand), and does not jail plugins either.
+		Capabilities: plugin.Capabilities{
+			Egress:      []string{"smee.io:443", "config:smee_base", "config:channel"},
+			ExposeLocal: true,
+		},
 	}
 }
 
@@ -259,18 +265,37 @@ func createChannel(client *http.Client, base string) (string, error) {
 	return baseURL.ResolveReference(u).String(), nil
 }
 
+// streamTransport carries the long-lived SSE stream with tuned TCP
+// keep-alive. smee sends no application heartbeat, so on a half-open
+// connection (a network blip with no clean close) a plain reader blocks until
+// the kernel's retransmit timeout gives up — many minutes of blindness.
+// Probes (idle 20s, every 15s, ×4) surface a dead peer in ~80s, and since a
+// probe only fails when the peer is really gone, a healthy-but-quiet channel
+// is never reconnected.
+var streamTransport = func() *http.Transport {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.DialContext = (&net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 20 * time.Second,
+		KeepAliveConfig: net.KeepAliveConfig{
+			Enable: true, Idle: 20 * time.Second, Interval: 15 * time.Second, Count: 4,
+		},
+	}).DialContext
+	return tr
+}()
+
 // relay connects to channel and replays every forwarded delivery to target
 // as an HTTP POST, reconnecting with capped exponential backoff until ctx is
-// cancelled. Mirrors conductor's pre-contract-cutover
-// internal/inbound/smee.go (Smee/streamSmee/parseSmeeFrame), generalized to
-// replay over HTTP instead of handing frames to an in-process callback.
-func relay(ctx context.Context, client *http.Client, channel, target string, backoff time.Duration) {
-	if backoff <= 0 {
-		backoff = time.Second
+// cancelled. The backoff starts over once a connection is up, so a drop after
+// a long healthy stream reconnects at once rather than at the last cap.
+func relay(ctx context.Context, client *http.Client, channel, target string, initial time.Duration) {
+	if initial <= 0 {
+		initial = time.Second
 	}
+	backoff := initial
 	const maxBackoff = 30 * time.Second
 	for ctx.Err() == nil {
-		err := relayOnce(ctx, client, channel, target)
+		err := relayOnce(ctx, client, channel, target, func() { backoff = initial })
 		if ctx.Err() != nil {
 			return
 		}
@@ -286,16 +311,19 @@ func relay(ctx context.Context, client *http.Client, channel, target string, bac
 	}
 }
 
-func relayOnce(ctx context.Context, client *http.Client, channel, target string) error {
+func relayOnce(ctx context.Context, client *http.Client, channel, target string, onUp func()) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, channel, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Accept", "text/event-stream")
-	// This request IS the long-lived stream; it must not inherit client's
-	// short per-call timeout.
+	// This request IS the long-lived stream: no per-call timeout, and the
+	// keep-alive-tuned transport (a test's client keeps its own transport).
 	streamClient := *client
 	streamClient.Timeout = 0
+	if streamClient.Transport == nil {
+		streamClient.Transport = streamTransport
+	}
 	resp, err := streamClient.Do(req)
 	if err != nil {
 		return err
@@ -303,6 +331,9 @@ func relayOnce(ctx context.Context, client *http.Client, channel, target string)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("connect: HTTP %d", resp.StatusCode)
+	}
+	if onUp != nil {
+		onUp()
 	}
 
 	sc := bufio.NewScanner(resp.Body)

@@ -17,8 +17,13 @@ traffic aimed at the returned `public_url` arrives at `local_addr`.
 - **Kind:** connector (verbs only — no source events)
 - **Source:** [`connectors/smee/main.go`](../../connectors/smee/main.go)
 - **Provides:** `smee`
-- **Capabilities:** egress `["smee.io:443"]`; spawns nothing (no subprocess
-  — the relay is an in-process HTTP client)
+- **Capabilities:** egress to `smee.io:443` plus the hosts of the configured
+  `smee_base` and `channel` (a pinned channel on a self-hosted smee server);
+  `expose_local` — under conductor's plugin jail, it may POST to the
+  listeners conductor wires to it with `expose:`, and to nothing else on
+  the machine (never one of conductor's own ports, so not the bundled
+  `webhook` connector's listener unless this connector is `trust: full`);
+  spawns nothing (no subprocess — the relay is an in-process HTTP client)
 
 ```yaml
 connectors:
@@ -37,12 +42,29 @@ engine opens the exposure for it automatically, resolving the listener's own
 HTTP path and handing it straight to this plugin's `open` call as the `path`
 option (below) — no vendor-specific code, and no separately configured path,
 in the source plugin at all. The github plugin (`internal/githubkit/ghplugin`
-in this repo) declares `listeners` this way, naming `webhook.path`; check a
-plugin's own docs for whether it has adopted it, and its exact field names,
-before relying on this path for others. Every webhook-consuming plugin here
-still has its own ad hoc `webhook.smee` config field (see e.g.
-[`gitea`](gitea.md)) as a pre-`listeners` alternative that talks to smee.io
-directly, in-process, with no exposure connector involved.
+in this repo) declares `listeners` this way, naming `webhook.path`, and so
+does conductor's bundled `webhook` connector; check a plugin's own docs for
+whether it has adopted it, and its exact field names, before relying on this
+path for others. Several webhook-consuming plugins here still have their own
+ad hoc `webhook.smee` config field (see e.g. [`gitea`](gitea.md)) as a
+pre-`listeners` alternative that talks to smee.io directly, in-process, with
+no exposure connector involved.
+
+```yaml
+connectors:
+  gh:
+    use: github
+    webhook: { listen: "127.0.0.1:8787", path: /webhook, expose: gh-smee, secret: ${GH_WEBHOOK_SECRET} }
+  gh-smee: { use: smee, channel: ${GH_SMEE_URL} }
+```
+
+**Coming from `webhook.smee_url`.** The github plugin's own `smee_url` and
+the bundled `webhook` connector's `smee_url` are retired in favour of this
+connector. Conductor rewrites them at boot (or with
+`conductor config migrate`) into the shape above: a `smee` connector pinned
+to the **same** channel, so the sender keeps posting where it always did,
+and the receiver's `expose:` pointing at it. It installs this plugin before
+writing anything.
 
 **Path precedence.** This plugin's `open` verb declares `exposes.path`
 (conductor docs/design/plugin-contract.md §2.3): when a `listeners`-declaring
@@ -107,6 +129,15 @@ Outputs `public_url` (the channel URL, unchanged — see **Path precedence**), `
 ### `close` — stop relaying
 
 `lease` * (the value `open` returned). Idempotent.
+
+## Relay behaviour
+
+The channel is one long-lived SSE stream. TCP keep-alive probes it (every
+15s after 20s idle, four misses), so a connection a NAT or proxy dropped
+silently is noticed in about a minute and redialed; the retry backoff
+starts over once a connection is up again. A delivery is POSTed to
+`local_addr` + path with the original headers; the relay does not retry a
+local POST that fails.
 
 ## Known limitations
 

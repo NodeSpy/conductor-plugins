@@ -126,9 +126,15 @@ type AppConfig struct {
 // WebhookConfig configures how webhooks arrive: via a smee.io channel, a direct
 // HTTP listener, or both — and how a delivery is authenticated once it does.
 type WebhookConfig struct {
-	SmeeURL string `yaml:"smee_url"` // subscribe to a smee.io SSE channel
-	Listen  string `yaml:"listen"`   // bind a direct HTTP receiver, e.g. "127.0.0.1:8787"
-	Path    string `yaml:"path"`     // HTTP path (default "/webhook")
+	// SmeeURL subscribes to a smee.io SSE channel from inside this plugin.
+	// DEPRECATED: a smee channel is the smee connector's now, an exposure in
+	// front of Listen (`expose: <smee connector>`). Conductor rewrites this
+	// field into that shape at boot; it stays here only so a box whose
+	// conductor has not done so yet keeps receiving webhooks, and goes in the
+	// next major release.
+	SmeeURL string `yaml:"smee_url"`
+	Listen  string `yaml:"listen"` // bind a direct HTTP receiver, e.g. "127.0.0.1:8787"
+	Path    string `yaml:"path"`   // HTTP path (default "/webhook")
 	// Secret is the webhook secret GitHub signs each delivery with (the same
 	// value configured on the App's or the repo's webhook). Required whenever
 	// verification is on.

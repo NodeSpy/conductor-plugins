@@ -598,3 +598,52 @@ func TestChannelPersistsAcrossRestartViaHostState(t *testing.T) {
 		t.Fatalf("new_calls after restart = %d, want still 1 (channel should have been reused)", newCalls)
 	}
 }
+
+// A stream that drops right after connecting is reconnected at the initial
+// backoff every time: a connection that came up resets it, so a box whose
+// channel drops now and then never drifts toward the 30s cap.
+func TestRelayBackoffResetsOnceConnected(t *testing.T) {
+	var conns int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&conns, 1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK) // and close: the stream ends at once
+	}))
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 700*time.Millisecond)
+	defer cancel()
+	relay(ctx, &http.Client{Timeout: time.Second}, srv.URL, "http://127.0.0.1:1/", 50*time.Millisecond)
+	// With the reset: ~one reconnect per 50ms. Without it: 50+100+200+400ms
+	// fits four connections at most.
+	if n := atomic.LoadInt32(&conns); n < 7 {
+		t.Fatalf("%d connections in 700ms — the backoff kept growing across healthy connects", n)
+	}
+}
+
+// A pinned channel on a host other than smee.io is declared through
+// config:channel; smee.io stays literal for conductors that don't resolve
+// config: references.
+func TestEgressDeclaresThePinnedChannel(t *testing.T) {
+	eg := newSmeePlugin().Describe().Capabilities.Egress
+	for _, want := range []string{"smee.io:443", "config:channel", "config:smee_base"} {
+		found := false
+		for _, e := range eg {
+			found = found || e == want
+		}
+		if !found {
+			t.Fatalf("egress %v lacks %q", eg, want)
+		}
+	}
+}
+
+// The relay's local POST goes to the address the engine hands open; jailed,
+// only expose_local lets conductor grant it.
+func TestDeclaresExposeLocal(t *testing.T) {
+	d := newSmeePlugin().Describe()
+	if !d.Capabilities.ExposeLocal {
+		t.Fatal("smee does not declare expose_local: jailed, it cannot deliver to the listener it relays to")
+	}
+	if p := plugin.ValidateSemantics(d); len(p) > 0 {
+		t.Fatalf("the declaration does not hang together: %v", p)
+	}
+}

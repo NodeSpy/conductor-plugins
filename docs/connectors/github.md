@@ -17,8 +17,8 @@ proves the two fire the same triggers ([parity](#parity-with-the-bundled-connect
 - **Kind:** connector (verbs **and** source), connector ABI 1
 - **Source:** [`connectors/github/main.go`](../../connectors/github/main.go)
 - **Provides:** `github`
-- **Capabilities:** egress to `api.github.com:443`, `*.ghe.com:443`, `smee.io:443`,
-  and GitHub's Actions log hosts (`productionresultssa*.blob.core.windows.net:443`,
+- **Capabilities:** egress to `api.github.com:443`, `*.ghe.com:443`,
+  `smee.io:443` (only for the deprecated `webhook.smee_url`), and GitHub's Actions log hosts (`productionresultssa*.blob.core.windows.net:443`,
   `*.actions.githubusercontent.com:443`)
 
 ```yaml
@@ -108,7 +108,7 @@ or through the sweep alone (the default when no webhook is configured).
 | --- | --- |
 | GitHub App name | Globally unique — e.g. `conductor-<your-handle>`. Becomes the bot login. |
 | Homepage URL | Anything valid. |
-| Webhook URL | A smee.io channel URL, or your own listener's public address (see [Webhook transport](#webhook-transport)). |
+| Webhook URL | A smee.io channel URL (relayed by a [`smee`](smee.md) connector), or your own listener's public address (see [Webhook transport](#webhook-transport)). |
 | Webhook secret | A random string — `openssl rand -hex 32`. Store it as `GH_WEBHOOK_SECRET`. |
 
 **2. Set permissions** (before events — GitHub only lists events for granted
@@ -137,18 +137,36 @@ connectors:
       app_id: 123456
       private_key_path: ~/.config/conductor/github-app.pem
     webhook:
-      smee_url: ${GH_SMEE_URL}        # https://smee.io/<channel> — or a direct listener:
-      # listen: "127.0.0.1:8787"
-      # path: /webhook
+      listen: "127.0.0.1:8787"        # the plugin listens locally only
+      path: /webhook
+      expose: gh-smee                 # an exposure connector makes it public
       secret: ${GH_WEBHOOK_SECRET}    # verifies each delivery's HMAC
     identity:
       write_token: ${GH_WRITE_TOKEN}  # writes act as you with this; "gh_auth" (default) = `gh auth token`
     me: { logins: [your-login] }      # optional: discovered from the write identity when unset
+  gh-smee:
+    use: smee
+    channel: ${GH_SMEE_URL}           # https://smee.io/<channel> — the App's Webhook URL
 ```
 
 ### Webhook transport
 
-Set `webhook.smee_url`, `webhook.listen`, or both. Every delivery's
+The plugin receives deliveries on `webhook.listen` (at `webhook.path`,
+default `/webhook`). When GitHub can't reach that address, name an
+**exposure connector** in `webhook.expose` — [`smee`](smee.md) relays a
+smee.io channel to the listener; `cloudflared`, `ngrok`, `tailscale` and the
+others open a real tunnel. Conductor opens the exposure for the listener
+(the `listeners` semantic) and keeps it for the plugin's lifetime.
+
+`webhook.smee_url` — the plugin dialing a smee channel itself — is
+**deprecated**: it still works on 2.x and logs a warning at start, and it
+goes in the next major release. Conductor rewrites it for you (at boot, or
+by hand with `conductor config migrate`) into a `smee` connector pinned to
+the same channel plus `listen`/`path`/`expose` here, so the App's Webhook
+URL doesn't change. Every 2.x release serves `listen` + `expose`, so the
+rewritten config runs on any of them.
+
+Every delivery's
 `X-Hub-Signature-256` is verified against `webhook.secret`; verification is on
 unless `webhook.verify_signature: false`, and a webhook with verification on and
 no secret is refused at start. With no webhook at all, the sweep is the event
@@ -162,7 +180,7 @@ The bundled connector's connection block, key for key:
 |-----|------|---------|
 | `app` | map | GitHub App credentials: `app_id`, `private_key_path` (the retired `app.webhook_secret` / `app.verify_signature` are refused — they live under `webhook:`) |
 | `token` | string | PAT for reads when no App is configured (chain: app → token → `gh auth token`) |
-| `webhook` | map | `smee_url` and/or `listen` (+ `path`, default `/webhook`), `secret`, `verify_signature` (default true) |
+| `webhook` | map | `listen` (+ `path`, default `/webhook`), `expose` (an exposure connector), `secret`, `verify_signature` (default true); `smee_url` is deprecated (see [Webhook transport](#webhook-transport)) |
 | `sweep` | map | catch-up sweep: `enabled` (default true), `interval` (adaptive ceiling, default 1h), `min_interval` (floor / fixed poll, default 2m), `repos` (default: the connector's `repos:`, else every installed repo) |
 | `me` | map | your login(s): `{ logins: [...] }` — defines "you" (your PRs, your reviews); discovered from the write identity when unset |
 | `repos` | list | default repo globs for triggers whose filter names no repo |
@@ -322,8 +340,8 @@ pending review requests, merge conflicts / behind PRs, review feedback still
 waiting on you (`changes_requested`, as above), and comments a dropped webhook missed (`new_comment`,
 within 24h) — each marked catch-up, so conductor skips a PR an agent is already
 working. `SIGUSR1`, `conductor sweep --now`, and the `sweep` verb nudge it
-(conductor calls the plugin's `plugin.nudge`); a smee reconnect resets the
-cadence. `stuck_checks` has its own poller.
+(conductor calls the plugin's `plugin.nudge`); a reconnect of the deprecated
+`webhook.smee_url` relay resets the cadence. `stuck_checks` has its own poller.
 
 ## Verbs
 
@@ -434,7 +452,9 @@ flow on it passes `pr:` and names its own context.
 
 ## Capabilities & security
 
-Declares egress to `api.github.com:443`, `*.ghe.com:443`, and `smee.io:443`,
+Declares egress to `api.github.com:443`, `*.ghe.com:443`, and `smee.io:443`
+(plus the configured `webhook.smee_url` host — both only for the deprecated
+relay; a `smee` connector carries its own egress),
 plus the two hosts GitHub serves Actions job logs from
 (`productionresultssa*.blob.core.windows.net:443` — the results service's
 storage — and `*.actions.githubusercontent.com:443`), which only
