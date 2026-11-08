@@ -47,13 +47,16 @@ func TestEveryDeclarationValidates(t *testing.T) {
 					t.Fatalf("declaration refused: %v", err)
 				}
 				// A conductor that does not resolve config: and env: entries
-				// gets the declaration without them.
+				// gets the declaration without them, and without
+				// expose_local, which it does not grant.
 				old, err := c.DescribeAs(ctx, &plugin.HostInfo{Version: "dev"})
 				if err != nil {
 					t.Fatal(err)
 				}
-				if !reflect.DeepEqual(old.Capabilities, decl.Capabilities.WithoutReferences()) {
-					t.Fatalf("declaration for a conductor that does not resolve references = %+v, want %+v", old.Capabilities, decl.Capabilities.WithoutReferences())
+				want := decl.Capabilities.WithoutReferences()
+				want.ExposeLocal = false
+				if !reflect.DeepEqual(old.Capabilities, want) {
+					t.Fatalf("declaration for a conductor that does not resolve references = %+v, want %+v", old.Capabilities, want)
 				}
 			})
 		}
