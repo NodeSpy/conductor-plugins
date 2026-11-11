@@ -53,9 +53,16 @@ func TestEveryDeclarationValidates(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				// A conductor that grants keyring items is never sent
+				// keychain: true (read-write on macOS) beside them; one
+				// that does not grant them still gets it.
+				if len(decl.Capabilities.Keyring) > 0 && decl.Capabilities.Keychain {
+					t.Fatal("keychain: true sent beside keyring items to a conductor that grants them")
+				}
 				want := decl.Capabilities.WithoutReferences()
 				want.ExposeLocal = false
 				want.Keyring = nil
+				want.Keychain = old.Capabilities.Keychain
 				if !reflect.DeepEqual(old.Capabilities, want) {
 					t.Fatalf("declaration for a conductor that does not resolve references = %+v, want %+v", old.Capabilities, want)
 				}

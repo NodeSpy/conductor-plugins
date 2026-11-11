@@ -22,7 +22,7 @@ go 1.26.3
 // patterns and denies the plugin every host).
 //
 // v0.95.0: listeners default_path (github serves /webhook when listen: has no path:).
-require github.com/NodeSpy/conductor v0.95.1-0.20261111213916-0d1a7bbe9573
+require github.com/NodeSpy/conductor v0.95.1-0.20261111222622-725399b6c91b
 
 // The interpreters the four step engines embed. These are the SAME versions
 // conductor pinned while the engines lived in its binary, so the port is a
