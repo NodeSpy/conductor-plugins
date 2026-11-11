@@ -75,7 +75,10 @@ to (`Egress`), addresses it listens on (`Listen`), paths it reads and writes
 directories those commands run helper programs from (`Exec` — git's
 `git-core`, say), the environment variables it reads (`Env`), the logins in
 your OS keyring that a CLI it runs reads (`Keyring`: each item by the
-attributes it is stored under, such as gh's `service=gh:github.com`), and
+attributes it is stored under, such as gh's `service=gh:github.com`; at least
+one of them says whose item it is (`service`, `server`, `host`, …), and one
+value may name the instance's config or a declared variable,
+`gh:${host:config:api_base}`), and
 whether it reads a login from the macOS Keychain (`Keychain`, which conductors
 before `Keyring` use). Conductor shows it to you
 at install, records it, and runs the plugin jailed to exactly that record. An

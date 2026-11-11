@@ -59,6 +59,7 @@ connector instance.
 | `known_hosts` | string | `ssh -o UserKnownHostsFile=<path>` |
 | `username` | string | HTTPS credential username; `-c credential.username=<username>` (paired with `token`) |
 | `token` | string | HTTPS credential token/password, delivered via a `GIT_ASKPASS` temp script — never placed in argv |
+| `credential_hosts` | list | HTTPS hosts whose login git keeps in your OS keyring; the connector may reach them on 443 and reads those logins (see below) |
 | `user_name` | string | `-c user.name=<value>` |
 | `user_email` | string | `-c user.email=<value>` |
 | `config` | map | additional `-c key=value` flags (sorted), applied before every subcommand |
@@ -104,6 +105,24 @@ child process, and `username` (when set) becomes
 `-c credential.username=<username>` — so the secret is read by git from a
 file descriptor, **never passed as a CLI argument** and never visible in a
 process listing.
+
+**A login git keeps in your OS keyring** (`credential_hosts`):
+
+```yaml
+connectors:
+  repo:
+    use: git
+    credential_hosts: [git.example.com]
+```
+
+With no `token`, git uses its keyring credential helper for these hosts:
+`git-credential-libsecret` on Linux, `osxkeychain` on macOS (unless `config`
+sets `credential.helper`). The plugin declares the item that helper stores
+for each host (`xdg:schema=org.git.Password`, `protocol=https`,
+`server=<host of credential_hosts from its config>`) and nothing else from
+your keyring, and its jail reaches only these hosts. Log in once outside
+conductor (`git credential approve`, or a clone that prompts) so the item
+exists. See [keyring logins](https://github.com/NodeSpy/conductor/blob/main/docs/wiki/Plugins.md#keyring-logins).
 
 **Identity and arbitrary config:**
 
