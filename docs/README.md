@@ -73,8 +73,11 @@ Every plugin declares, in its `Describe`, what it needs: the hosts it connects
 to (`Egress`), addresses it listens on (`Listen`), paths it reads and writes
 (`Read` / `Write`), the commands it runs (`Commands` / `Spawns`), the
 directories those commands run helper programs from (`Exec` — git's
-`git-core`, say), the environment variables it reads (`Env`) and whether it
-reads a login from the macOS Keychain (`Keychain`). Conductor shows it to you
+`git-core`, say), the environment variables it reads (`Env`), the logins in
+your OS keyring that a CLI it runs reads (`Keyring`: each item by the
+attributes it is stored under, such as gh's `service=gh:github.com`), and
+whether it reads a login from the macOS Keychain (`Keychain`, which conductors
+before `Keyring` use). Conductor shows it to you
 at install, records it, and runs the plugin jailed to exactly that record. An
 update that declares more is held until you run `conductor plugin approve`.
 

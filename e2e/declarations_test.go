@@ -48,13 +48,14 @@ func TestEveryDeclarationValidates(t *testing.T) {
 				}
 				// A conductor that does not resolve config: and env: entries
 				// gets the declaration without them, and without
-				// expose_local, which it does not grant.
+				// expose_local and keyring, which it does not grant.
 				old, err := c.DescribeAs(ctx, &plugin.HostInfo{Version: "dev"})
 				if err != nil {
 					t.Fatal(err)
 				}
 				want := decl.Capabilities.WithoutReferences()
 				want.ExposeLocal = false
+				want.Keyring = nil
 				if !reflect.DeepEqual(old.Capabilities, want) {
 					t.Fatalf("declaration for a conductor that does not resolve references = %+v, want %+v", old.Capabilities, want)
 				}

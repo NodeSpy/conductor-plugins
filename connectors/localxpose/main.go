@@ -59,12 +59,16 @@ func (p *localxposePlugin) Describe() plugin.Decl {
 		// its regional tunnel relays (both under *.loclx.io and
 		// *.localxpose.io). `account login` (and a cert loclx may generate)
 		// persist under $HOME/.localxpose — an access token first, trying the
-		// OS keyring (Keychain on macOS), falling back to a file there.
+		// OS keyring (Keychain on macOS), falling back to a file there. Its
+		// keyring item is {service: https://loclx.io, username: token};
+		// Keychain stays for conductors before keyring.
 		Capabilities: plugin.Capabilities{
 			Commands: []string{"loclx"},
 			Egress:   []string{"*.loclx.io:443", "*.localxpose.io:443"},
 			Write:    []string{"~/.localxpose"},
 			Keychain: true,
+			Keyring: []plugin.KeyringItem{{Label: "LocalXpose access token",
+				Attributes: map[string]string{"service": "https://loclx.io", "username": "token"}}},
 		},
 	}
 }

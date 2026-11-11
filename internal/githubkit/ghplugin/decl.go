@@ -104,7 +104,10 @@ func decl() plugin.Decl {
 		// or libexec/git-core (others, Homebrew, Xcode's command line tools).
 		// gh reads its login from its config dir (GH_CONFIG_DIR,
 		// else $XDG_CONFIG_HOME/gh, else ~/.config/gh), or from its token
-		// variables, or on macOS from the Keychain. A GitHub App's private
+		// variables, or from the OS keyring: the item it stores its
+		// github.com login under (service gh:github.com, one per account),
+		// which conductor serves the jail on Linux and grants as the Keychain
+		// on macOS. Keychain stays for conductors before keyring. A GitHub App's private
 		// key is read from app.private_key_path. PC_GITHUB_API_BASE points
 		// the API at a test double.
 		Capabilities: plugin.Capabilities{
@@ -118,6 +121,7 @@ func decl() plugin.Decl {
 			Commands: []string{"gh", "git"},
 			Exec:     []string{"command:git/../../lib/git-core", "command:git/../../libexec/git-core"},
 			Keychain: true,
+			Keyring:  []plugin.KeyringItem{{Label: "gh login for github.com", Attributes: map[string]string{"service": "gh:github.com"}}},
 			Env: []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_HOST", "GH_CONFIG_DIR",
 				"XDG_CONFIG_HOME", "PC_GITHUB_API_BASE"},
 		},

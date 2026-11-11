@@ -153,3 +153,20 @@ func TestDeclarationsAreValid(t *testing.T) {
 		t.Fatalf("ValidateSemantics: %v", p)
 	}
 }
+
+// loclx keeps its access token in the OS keyring under
+// {service: https://loclx.io, username: token} (go-keyring); the
+// declaration names exactly that item.
+func TestDeclaresLoclxKeyringToken(t *testing.T) {
+	c := (&localxposePlugin{}).Describe().Capabilities
+	if err := c.Validate(nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Keyring) != 1 || !c.Keyring[0].Matches(map[string]string{"service": "https://loclx.io", "username": "token"}) ||
+		c.Keyring[0].Matches(map[string]string{"service": "https://loclx.io", "username": "other"}) {
+		t.Fatalf("keyring %+v: want loclx's token item alone", c.Keyring)
+	}
+	if !c.Keychain {
+		t.Fatal("keychain: true is dropped: conductors before keyring lose the macOS login")
+	}
+}

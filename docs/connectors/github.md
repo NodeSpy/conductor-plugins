@@ -90,7 +90,13 @@ the `gh` CLI's stored login.
    workflow verbs). A classic token with the `repo` scope also works.
 2. Put it in `token:` (or omit `token:` and the connector falls back to
    `gh auth token`). The plugin's environment is scrubbed: `gh` finds a login
-   made with `gh auth login` (its config file under `$HOME`), but a token you
+   made with `gh auth login`, whether gh keeps it in your OS keyring (the
+   default: the Secret Service on Linux, the Keychain on macOS) or in its
+   config file under `$HOME` (`--insecure-storage`). The plugin declares gh's
+   keyring item for github.com and nothing else from your keyring (see
+   [keyring logins](https://github.com/NodeSpy/conductor/blob/main/docs/wiki/Plugins.md#keyring-logins)).
+   If your keyring is locked, conductor logs it and does not unlock it: log in
+   to your desktop session. A token you
    give `gh` through the environment (`GH_TOKEN`, `GITHUB_TOKEN`, …) reaches it
    only if the connector grants that variable — `allow_env: [GH_TOKEN]` (the
    plugin declares the variables `gh` reads; a grant beyond them is refused).

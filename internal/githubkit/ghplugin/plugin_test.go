@@ -259,3 +259,23 @@ func TestDeprecatedSmeeKeepsLiteralEgress(t *testing.T) {
 		t.Fatalf("egress %v: while smee_url is accepted, both smee.io:443 and config:webhook.smee_url stay declared", eg)
 	}
 }
+
+// gh keeps its login in the OS keyring by default (gh auth login): the
+// declaration names that item, gh's github.com login, and only it, so a
+// jailed gh reads it on Linux as on macOS. Keychain stays for conductors
+// that do not grant keyring items.
+func TestDeclaresGhKeyringLogin(t *testing.T) {
+	c := Decl().Capabilities
+	if err := c.Validate(Decl().Connection); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Keyring) != 1 || len(c.Keyring[0].Attributes) != 1 || c.Keyring[0].Attributes["service"] != "gh:github.com" {
+		t.Fatalf("keyring %+v: want gh's github.com login, service=gh:github.com, alone", c.Keyring)
+	}
+	if !c.Keyring[0].Matches(map[string]string{"service": "gh:github.com", "username": "someone"}) {
+		t.Fatal("the declared item does not match gh's per-account item")
+	}
+	if !c.Keychain {
+		t.Fatal("keychain: true is dropped: conductors before keyring lose the macOS login")
+	}
+}
