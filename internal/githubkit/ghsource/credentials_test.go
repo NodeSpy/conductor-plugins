@@ -17,7 +17,7 @@ func TestEnsureClientsCredentialChain(t *testing.T) {
 	cfg.App = AppConfig{}
 	cfg.Token = "pat-123"
 	g := newTestIntegration(t, cfg)
-	if err := g.ensureClients(); err != nil {
+	if err := g.ensureClients(context.Background()); err != nil {
 		t.Fatalf("token chain: %v", err)
 	}
 	tok, err := g.app.installationToken(context.Background(), 0)
@@ -31,7 +31,7 @@ func TestEnsureClientsCredentialChain(t *testing.T) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	cfg.Token = ""
 	g2 := newTestIntegration(t, cfg)
-	if err := g2.ensureClients(); err != nil {
+	if err := g2.ensureClients(context.Background()); err != nil {
 		t.Fatalf("gh fallback: %v", err)
 	}
 	tok, _ = g2.app.installationToken(context.Background(), 0)
@@ -42,7 +42,7 @@ func TestEnsureClientsCredentialChain(t *testing.T) {
 	// Empty gh output errors with the configure guidance.
 	os.WriteFile(filepath.Join(dir, "gh"), []byte("#!/usr/bin/env bash\necho\n"), 0o755)
 	g3 := newTestIntegration(t, cfg)
-	if err := g3.ensureClients(); err == nil || !strings.Contains(err.Error(), "no credentials") {
+	if err := g3.ensureClients(context.Background()); err == nil || !strings.Contains(err.Error(), "no credentials") {
 		t.Fatalf("empty gh token: %v", err)
 	}
 }

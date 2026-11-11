@@ -16,7 +16,7 @@ import (
 // comment body, a CI run id) get empty values — force is aimed at PR-state kinds
 // like review_requested / merge_conflict / pr_behind / self_review / merge_ready.
 func (g *Source) Force(ctx context.Context, kind, repo string, number int, emit EmitFunc) (int, error) {
-	if err := g.ensureClients(); err != nil {
+	if err := g.ensureClients(ctx); err != nil {
 		return 0, err
 	}
 	if len(g.actionsFor(repo, kind)) == 0 {

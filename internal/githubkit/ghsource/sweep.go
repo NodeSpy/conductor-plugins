@@ -154,7 +154,7 @@ func (g *Source) sweep(ctx context.Context, emit EmitFunc) error {
 	// Credentials resolve lazily (Start no longer does it up front, so a
 	// webhook-only instance with no app:/token: can still start) — a sweep
 	// is the first thing that actually needs them.
-	if err := g.ensureClients(); err != nil {
+	if err := g.ensureClients(ctx); err != nil {
 		return err
 	}
 	st := &sweepStats{}
@@ -282,7 +282,7 @@ func (g *Source) stuckLoop(ctx context.Context, emit EmitFunc) {
 // per-PR fetch beyond the stuck-run lookup.
 func (g *Source) stuckPass(ctx context.Context, emit EmitFunc) {
 	// Credentials resolve lazily (see sweep's identical guard).
-	if err := g.ensureClients(); err != nil {
+	if err := g.ensureClients(ctx); err != nil {
 		log.Printf("github[%s]: stuck: %v", g.name, err)
 		return
 	}
