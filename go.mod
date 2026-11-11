@@ -22,7 +22,7 @@ go 1.26.3
 // patterns and denies the plugin every host).
 //
 // smee expose_local (pseudo-version of #240's merge; moves to v0.91.0 after that tag).
-require github.com/NodeSpy/conductor v0.90.1-0.20261108061822-875ad83e1ba9
+require github.com/NodeSpy/conductor v0.94.2-0.20261111203415-a53a157d40f8
 
 // The interpreters the four step engines embed. These are the SAME versions
 // conductor pinned while the engines lived in its binary, so the port is a

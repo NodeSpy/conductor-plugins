@@ -54,7 +54,7 @@ no exposure connector involved.
 connectors:
   gh:
     use: github
-    webhook: { listen: "127.0.0.1:8787", path: /webhook, expose: gh-smee, secret: ${GH_WEBHOOK_SECRET} }
+    webhook: { expose: gh-smee, secret: ${GH_WEBHOOK_SECRET} }   # listen/path optional: conductor picks them
   gh-smee: { use: smee, channel: ${GH_SMEE_URL} }
 ```
 

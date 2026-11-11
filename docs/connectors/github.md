@@ -137,8 +137,6 @@ connectors:
       app_id: 123456
       private_key_path: ~/.config/conductor/github-app.pem
     webhook:
-      listen: "127.0.0.1:8787"        # the plugin listens locally only
-      path: /webhook
       expose: gh-smee                 # an exposure connector makes it public
       secret: ${GH_WEBHOOK_SECRET}    # verifies each delivery's HMAC
     identity:
@@ -158,13 +156,26 @@ smee.io channel to the listener; `cloudflared`, `ngrok`, `tailscale` and the
 others open a real tunnel. Conductor opens the exposure for the listener
 (the `listeners` semantic) and keeps it for the plugin's lifetime.
 
+With `webhook.expose` set, `webhook.listen` and `webhook.path` are optional:
+
+- **Neither** — the hop from the exposure is conductor's own: a conductor
+  that supports it picks a local `127.0.0.1` port for the listener and the
+  path itself. An older conductor disables the connector, saying
+  `webhook.expose is set with no webhook.listen`; set `listen` (and
+  `path: /webhook`) there.
+- **`listen` set** — the exposure delivers to it, and the listener stays
+  reachable at that address for anything else you point at it. With no
+  `path`, the exposure delivers to `/webhook`, the default this plugin
+  declares (from this release, on a conductor that reads it); on an older
+  release or conductor set `path: /webhook` too.
+
 `webhook.smee_url` — the plugin dialing a smee channel itself — is
 **deprecated**: it still works on 2.x and logs a warning at start, and it
 goes in the next major release. Conductor rewrites it for you (at boot, or
 by hand with `conductor config migrate`) into a `smee` connector pinned to
-the same channel plus `listen`/`path`/`expose` here, so the App's Webhook
-URL doesn't change. Every 2.x release serves `listen` + `expose`, so the
-rewritten config runs on any of them.
+the same channel plus `expose` here (an earlier conductor wrote
+`listen`/`path` too, and those configs keep working), so the App's Webhook
+URL doesn't change.
 
 Every delivery's
 `X-Hub-Signature-256` is verified against `webhook.secret`; verification is on
