@@ -41,6 +41,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/NodeSpy/conductor-plugins/internal/githubkit"
 )
 
 // Config is one source instance's configuration.
@@ -400,7 +402,7 @@ func (g *Source) ensureClients(ctx context.Context) error {
 		app = newStaticAuth(g.cfg.Token)
 	default:
 		// App-less, token-less: fall back to the gh CLI's stored login.
-		tok, err := ghAuthToken(ctx)
+		tok, err := ghAuthToken(ctx, g.cfg.APIBase)
 		if err != nil {
 			return fmt.Errorf("github[%s]: no credentials — configure app: or token:, or log in with `gh auth login`: %w", g.name, err)
 		}
@@ -434,8 +436,14 @@ func (g *Source) restClient() *restClient {
 
 // ghAuthToken shells out to `gh auth token` — the last link of the App-less
 // credential chain (app → token → gh).
-func ghAuthToken(ctx context.Context) (string, error) {
-	out, err := exec.CommandContext(ctx, "gh", "auth", "token").Output()
+// apiBase picks the host (githubkit.GhHost): a GitHub Enterprise api_base
+// reads gh's login for that host.
+func ghAuthToken(ctx context.Context, apiBase string) (string, error) {
+	args := []string{"auth", "token"}
+	if h := githubkit.GhHost(apiBase); h != "" {
+		args = append(args, "--hostname", h)
+	}
+	out, err := exec.CommandContext(ctx, "gh", args...).Output()
 	if err != nil {
 		return "", fmt.Errorf("gh auth token: %w", err)
 	}
@@ -466,7 +474,7 @@ func (g *Source) discoverSelf(ctx context.Context) error {
 	}
 	tok := g.cfg.Identity.WriteToken
 	if tok == "" || tok == "gh_auth" {
-		t, err := ghAuthToken(ctx)
+		t, err := ghAuthToken(ctx, g.cfg.APIBase)
 		if err != nil {
 			return fmt.Errorf("auto-discovery unavailable (%w)", err)
 		}

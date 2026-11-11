@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -261,19 +262,42 @@ func TestDeprecatedSmeeKeepsLiteralEgress(t *testing.T) {
 }
 
 // gh keeps its login in the OS keyring by default (gh auth login): the
-// declaration names that item, gh's github.com login, and only it, so a
-// jailed gh reads it on Linux as on macOS. Keychain stays for conductors
-// that do not grant keyring items.
+// declaration names that item for github.com, for a GitHub Enterprise
+// api_base's host and for GH_HOST, and nothing else, so a jailed gh reads it
+// on Linux as on macOS. Keychain stays for conductors that do not grant
+// keyring items.
 func TestDeclaresGhKeyringLogin(t *testing.T) {
 	c := Decl().Capabilities
 	if err := c.Validate(Decl().Connection); err != nil {
 		t.Fatal(err)
 	}
-	if len(c.Keyring) != 1 || len(c.Keyring[0].Attributes) != 1 || c.Keyring[0].Attributes["service"] != "gh:github.com" {
-		t.Fatalf("keyring %+v: want gh's github.com login, service=gh:github.com, alone", c.Keyring)
+	g, err := c.Resolve(plugin.ResolveEnv{
+		Conns: []map[string]any{{"api_base": "https://ghe.example.test/api/v3"}, {}},
+		Getenv: func(n string) (string, bool) {
+			return map[string]string{"GH_HOST": "acme.ghe.com"}[n], n == "GH_HOST"
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !c.Keyring[0].Matches(map[string]string{"service": "gh:github.com", "username": "someone"}) {
-		t.Fatal("the declared item does not match gh's per-account item")
+	var got []string
+	for _, it := range g.Keyring {
+		if len(it.Attributes) != 1 {
+			t.Fatalf("item %+v: want service alone", it)
+		}
+		got = append(got, it.Attributes["service"])
+	}
+	sort.Strings(got)
+	if want := []string{"gh:acme.ghe.com", "gh:ghe.example.test", "gh:github.com"}; strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("resolved keyring services %v, want %v", got, want)
+	}
+	if !g.Keyring[0].Matches(map[string]string{"service": g.Keyring[0].Attributes["service"], "username": "someone"}) {
+		t.Fatal("a declared item does not match gh's per-account item")
+	}
+	// No api_base and no GH_HOST: github.com's login alone.
+	g, err = c.Resolve(plugin.ResolveEnv{Conns: []map[string]any{{}}, Getenv: func(string) (string, bool) { return "", false }})
+	if err != nil || len(g.Keyring) != 1 || g.Keyring[0].Attributes["service"] != "gh:github.com" {
+		t.Fatalf("default keyring %+v %v: want gh:github.com alone", g.Keyring, err)
 	}
 	if !c.Keychain {
 		t.Fatal("keychain: true is dropped: conductors before keyring lose the macOS login")

@@ -545,8 +545,9 @@ func TestDescribe(t *testing.T) {
 	if !contains(d.Capabilities.Commands, "git") || !contains(d.Capabilities.Commands, "ssh") {
 		t.Fatalf("capabilities: %#v", d.Capabilities)
 	}
-	if len(d.Capabilities.Egress) != 0 {
-		t.Fatalf("expected no declared egress, got %#v", d.Capabilities.Egress)
+	// The only egress is the credential_hosts the config names.
+	if !reflect.DeepEqual(d.Capabilities.Egress, []string{"config:credential_hosts:443"}) {
+		t.Fatalf("egress %#v: want credential_hosts alone", d.Capabilities.Egress)
 	}
 	want := []string{
 		"clone", "init", "fetch", "pull", "push", "checkout", "switch", "add",
@@ -648,4 +649,54 @@ func asPluginError(err error, target **plugin.Error) bool {
 		*target = pe
 	}
 	return ok
+}
+
+// credential_hosts names the HTTPS hosts whose git-credential-libsecret login
+// (org.git.Password, protocol https, server <host>) the connector reads, and
+// may reach; none configured, none read. git uses the keyring helper for
+// them unless a token or config's own credential.helper is set.
+func TestDeclaresCredentialHostsKeyring(t *testing.T) {
+	d := gitPlugin{}.Describe()
+	if err := d.Capabilities.Validate(d.Connection); err != nil {
+		t.Fatal(err)
+	}
+	g, err := d.Capabilities.Resolve(plugin.ResolveEnv{Conns: []map[string]any{
+		{"credential_hosts": []any{"git.example.test", "https://Other.example.test:8443/x"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var servers []string
+	for _, it := range g.Keyring {
+		if it.Attributes["xdg:schema"] != "org.git.Password" || it.Attributes["protocol"] != "https" {
+			t.Fatalf("item %+v: want libsecret's org.git.Password https item", it)
+		}
+		servers = append(servers, it.Attributes["server"])
+	}
+	if strings.Join(servers, " ") != "git.example.test other.example.test" {
+		t.Fatalf("servers %v", servers)
+	}
+	if !g.Keyring[0].Matches(map[string]string{"xdg:schema": "org.git.Password", "protocol": "https", "server": "git.example.test", "user": "me"}) {
+		t.Fatal("the item git-credential-libsecret stores does not match")
+	}
+	if g, err := d.Capabilities.Resolve(plugin.ResolveEnv{Conns: []map[string]any{{}}}); err != nil || len(g.Keyring) != 0 {
+		t.Fatalf("no credential_hosts: keyring %+v %v", g.Keyring, err)
+	}
+
+	want := "libsecret"
+	if runtime.GOOS == "darwin" {
+		want = "osxkeychain"
+	}
+	for name, c := range map[string]struct {
+		conn gitConn
+		want string
+	}{
+		"hosts":           {gitConn{credentialHosts: []string{"git.example.test"}}, want},
+		"no hosts":        {gitConn{}, ""},
+		"config's helper": {gitConn{credentialHosts: []string{"git.example.test"}, config: map[string]string{"credential.helper": "store"}}, ""},
+	} {
+		if got := keyringHelper(c.conn); got != c.want {
+			t.Errorf("%s: helper %q, want %q", name, got, c.want)
+		}
+	}
 }

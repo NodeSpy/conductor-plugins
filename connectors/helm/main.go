@@ -41,6 +41,7 @@ func (helmPlugin) Describe() plugin.Decl {
 			"binary":       {Type: "string", Desc: "override the CLI binary path (default helm)"},
 			"env":          {Type: "map", Desc: "default process environment for every invocation"},
 			"timeout":      {Type: "duration", Desc: "default per-verb timeout (default 10m); a verb's timeout option overrides it"},
+			"registries":   {Type: "list", Desc: "OCI registry hosts whose `helm registry login` the docker credential helper keeps in your OS keyring (credsStore secretservice on Linux, osxkeychain on macOS). The connector reads those logins"},
 		},
 		Verbs: helmVerbs(),
 		// Like kubectl, the cluster's API server host lives inside the
@@ -51,10 +52,14 @@ func (helmPlugin) Describe() plugin.Decl {
 		// writes its repo cache, plugin list and local chart cache under
 		// ~/.cache/helm, ~/.config/helm and ~/.local/share/helm (XDG dirs).
 		Capabilities: plugin.Capabilities{
-			Commands: []string{"helm"},
-			Egress:   []string{"*:443", "*:6443", "*:80"},
-			Read:     []string{"config:kubeconfig"},
-			Write:    []string{"~/.kube", "~/.cache/helm", "~/.config/helm", "~/.local/share/helm"},
+			Commands: []string{"helm", "docker-credential-secretservice", "docker-credential-osxkeychain"},
+			// The registries' logins, as the docker credential helper keeps
+			// them (the Keychain on macOS).
+			Keyring: []plugin.KeyringItem{{Label: "registry login for a registry in its registries",
+				Attributes: map[string]string{"xdg:schema": "io.docker.Credentials", "docker_cli": "1", "server": "${host:config:registries}"}}},
+			Egress: []string{"*:443", "*:6443", "*:80"},
+			Read:   []string{"config:kubeconfig"},
+			Write:  []string{"~/.kube", "~/.cache/helm", "~/.config/helm", "~/.local/share/helm"},
 		},
 	}
 }

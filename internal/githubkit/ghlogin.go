@@ -2,6 +2,7 @@ package githubkit
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,8 +16,9 @@ import (
 // how it is mounted in conductor's plugin jail; reading the file it would have
 // read needs nothing more than what the plugin already declares (gh's config
 // dir and GH_CONFIG_DIR/XDG_CONFIG_HOME/GH_HOST). A login kept in a system
-// keyring is not in the file, and is not found here.
-func ghHostsToken() (string, error) {
+// keyring is not in the file, and is not found here. host is gh's default
+// host (GH_HOST, else github.com) when empty.
+func ghHostsToken(host string) (string, error) {
 	dir := ghConfigDir()
 	if dir == "" {
 		return "", fmt.Errorf("no gh config dir")
@@ -36,7 +38,9 @@ func ghHostsToken() (string, error) {
 	if err := yaml.Unmarshal(b, &hosts); err != nil {
 		return "", fmt.Errorf("%s: %w", filepath.Join(dir, "hosts.yml"), err)
 	}
-	host := strings.TrimSpace(os.Getenv("GH_HOST"))
+	if host == "" {
+		host = strings.TrimSpace(os.Getenv("GH_HOST"))
+	}
 	if host == "" {
 		host = "github.com"
 	}
@@ -67,4 +71,27 @@ func ghConfigDir() string {
 		return ""
 	}
 	return filepath.Join(home, ".config", "gh")
+}
+
+// GhHost is the host gh keeps the login for the API at apiBase under: empty
+// (gh's default host) for api.github.com or no apiBase; the host of a GitHub
+// Enterprise Server API (https://ghe.example/api/v3 → ghe.example); and
+// SUBDOMAIN.ghe.com for GitHub Enterprise Cloud's api.SUBDOMAIN.ghe.com.
+func GhHost(apiBase string) string {
+	apiBase = strings.TrimSpace(apiBase)
+	if apiBase == "" {
+		return ""
+	}
+	u, err := url.Parse(apiBase)
+	if err != nil || u.Hostname() == "" {
+		return ""
+	}
+	h := strings.ToLower(u.Hostname())
+	switch {
+	case h == "api.github.com":
+		return ""
+	case strings.HasPrefix(h, "api.") && strings.HasSuffix(h, ".ghe.com"):
+		return strings.TrimPrefix(h, "api.")
+	}
+	return h
 }
