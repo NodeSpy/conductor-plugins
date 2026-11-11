@@ -382,7 +382,7 @@ func (g *Source) Name() string { return g.name }
 // is guarded by clientMu rather than left racing. A failure leaves g.app nil
 // under the lock, so the NEXT call (from either goroutine) retries the build
 // rather than latching a permanent failure.
-func (g *Source) ensureClients() error {
+func (g *Source) ensureClients(ctx context.Context) error {
 	g.clientMu.Lock()
 	defer g.clientMu.Unlock()
 	if g.app != nil {
@@ -400,7 +400,7 @@ func (g *Source) ensureClients() error {
 		app = newStaticAuth(g.cfg.Token)
 	default:
 		// App-less, token-less: fall back to the gh CLI's stored login.
-		tok, err := ghAuthToken()
+		tok, err := ghAuthToken(ctx)
 		if err != nil {
 			return fmt.Errorf("github[%s]: no credentials — configure app: or token:, or log in with `gh auth login`: %w", g.name, err)
 		}
@@ -434,8 +434,8 @@ func (g *Source) restClient() *restClient {
 
 // ghAuthToken shells out to `gh auth token` — the last link of the App-less
 // credential chain (app → token → gh).
-func ghAuthToken() (string, error) {
-	out, err := exec.Command("gh", "auth", "token").Output()
+func ghAuthToken(ctx context.Context) (string, error) {
+	out, err := exec.CommandContext(ctx, "gh", "auth", "token").Output()
 	if err != nil {
 		return "", fmt.Errorf("gh auth token: %w", err)
 	}
@@ -459,14 +459,14 @@ func (g *Source) discoverSelf(ctx context.Context) error {
 	if g.hasSelf() {
 		return nil
 	}
-	if err := g.ensureClients(); err != nil {
+	if err := g.ensureClients(ctx); err != nil {
 		// No credentials yet (a webhook-only instance with no app:/token:
 		// configured, say) — nothing to discover from until one resolves.
 		return fmt.Errorf("no credentials yet (%w)", err)
 	}
 	tok := g.cfg.Identity.WriteToken
 	if tok == "" || tok == "gh_auth" {
-		t, err := ghAuthToken()
+		t, err := ghAuthToken(ctx)
 		if err != nil {
 			return fmt.Errorf("auto-discovery unavailable (%w)", err)
 		}
@@ -525,7 +525,7 @@ func (g *Source) Translate(ctx context.Context, eventType string, body []byte) [
 
 // SweepOnce runs a single catch-up sweep (for the `sweep` command).
 func (g *Source) SweepOnce(ctx context.Context, emit EmitFunc) error {
-	if err := g.ensureClients(); err != nil {
+	if err := g.ensureClients(ctx); err != nil {
 		return err
 	}
 	return g.sweep(ctx, emit)
@@ -534,7 +534,7 @@ func (g *Source) SweepOnce(ctx context.Context, emit EmitFunc) error {
 // AppToken mints a fresh App installation token for the given installation id.
 // Used to re-mint the (short-lived) token when a persisted workflow resumes.
 func (g *Source) AppToken(ctx context.Context, instID int64) (string, error) {
-	if err := g.ensureClients(); err != nil {
+	if err := g.ensureClients(ctx); err != nil {
 		return "", err
 	}
 	return g.appAuth().installationToken(ctx, instID)

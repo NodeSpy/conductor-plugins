@@ -52,7 +52,7 @@ func newStreamClient() *http.Client {
 // g.sweep/stuckPass in their own loops — each retries ensureClients itself
 // and logs rather than blocking on failure.
 func (g *Source) Start(ctx context.Context, emit EmitFunc) error {
-	if err := g.ensureClients(); err != nil {
+	if err := g.ensureClients(ctx); err != nil {
 		if !g.cfg.Webhook.Configured() {
 			// No webhook either: the sweep (if enabled) is the ONLY possible
 			// event source, so a credential is mandatory now, not optional.

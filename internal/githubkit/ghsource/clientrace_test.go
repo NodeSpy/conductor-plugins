@@ -1,6 +1,7 @@
 package ghsource
 
 import (
+	"context"
 	"sync"
 	"testing"
 )
@@ -28,7 +29,7 @@ func TestEnsureClientsConcurrentIsRaceFree(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			errs[i] = g.ensureClients()
+			errs[i] = g.ensureClients(context.Background())
 		}(i)
 	}
 	wg.Wait()
@@ -79,7 +80,7 @@ func TestEnsureClientsRetriesAfterFailure(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := g.ensureClients(); err == nil {
+			if err := g.ensureClients(context.Background()); err == nil {
 				t.Error("ensureClients: want an error (bad key path), got nil")
 			}
 		}()
@@ -93,7 +94,7 @@ func TestEnsureClientsRetriesAfterFailure(t *testing.T) {
 	// permanently failed.
 	g.cfg.App = AppConfig{}
 	g.cfg.Token = "pat-now-configured"
-	if err := g.ensureClients(); err != nil {
+	if err := g.ensureClients(context.Background()); err != nil {
 		t.Fatalf("ensureClients after fixing credentials: %v", err)
 	}
 	if g.appAuth() == nil {

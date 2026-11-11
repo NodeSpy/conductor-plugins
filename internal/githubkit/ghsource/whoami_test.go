@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -137,11 +140,14 @@ func TestDiscoverSelfLoopRecovers(t *testing.T) {
 }
 
 // TestDiscoverSelfLoopStopsOnCancel: a permanently failing discovery doesn't
-// leak the retry goroutine past the source's lifetime.
+// leak the retry goroutine past the source's lifetime. PATH holds no `gh`, so
+// the credential chain fails at once and never reaches the host's own gh
+// login (or the network).
 func TestDiscoverSelfLoopStopsOnCancel(t *testing.T) {
 	oldMin := selfRetryMin
 	selfRetryMin = time.Millisecond
 	t.Cleanup(func() { selfRetryMin = oldMin })
+	t.Setenv("PATH", t.TempDir())
 	g := newTestIntegration(t, Config{Identity: Identity{WriteToken: "literal-write-tok"}}) // no credentials at all
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -155,5 +161,44 @@ func TestDiscoverSelfLoopStopsOnCancel(t *testing.T) {
 	}
 	if g.hasSelf() {
 		t.Fatal("self must stay empty without credentials")
+	}
+}
+
+// TestDiscoverSelfLoopStopsOnCancelMidAttempt: cancellation also ends an
+// attempt in flight. Before, `gh auth token` ran without the context, so a
+// slow or hung gh (a locked keyring, a loaded host) held the loop past
+// cancel for as long as gh took.
+func TestDiscoverSelfLoopStopsOnCancelMidAttempt(t *testing.T) {
+	oldMin := selfRetryMin
+	selfRetryMin = time.Millisecond
+	t.Cleanup(func() { selfRetryMin = oldMin })
+	sleep, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Skip("no sleep binary")
+	}
+	dir := t.TempDir()
+	started := filepath.Join(dir, "started")
+	os.WriteFile(filepath.Join(dir, "gh"), []byte("#!/bin/sh\n: > "+started+"\nexec "+sleep+" 600\n"), 0o755)
+	t.Setenv("PATH", dir)
+	g := newTestIntegration(t, Config{Identity: Identity{WriteToken: "literal-write-tok"}})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { g.discoverSelfLoop(ctx); close(done) }()
+	for {
+		if _, err := os.Stat(started); err == nil {
+			break
+		}
+		select {
+		case <-done:
+			t.Fatal("discoverSelfLoop returned before cancel")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("discoverSelfLoop waited on an in-flight gh past cancel")
 	}
 }
