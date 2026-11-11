@@ -155,7 +155,13 @@ func connSemantics() *plugin.ConnSemantics {
 		// configuration of its own: the exposure connector learns the path
 		// from THIS declaration, not from a separately operator-maintained
 		// field kept in sync by hand.
-		Listeners: []plugin.Listener{{Listen: "webhook.listen", Expose: "webhook.expose", URLTo: "webhook.public_url", Path: "webhook.path"}},
+		//
+		// DefaultPath is ghsource's own default for an unset webhook.path,
+		// declared so a relay delivers there with only listen + expose set
+		// (a conductor that does not read it is not sent it). With expose
+		// and no listen at all, conductor picks the listener's address and
+		// writes it, and this path, into the config itself.
+		Listeners: []plugin.Listener{{Listen: "webhook.listen", Expose: "webhook.expose", URLTo: "webhook.public_url", Path: "webhook.path", DefaultPath: "/webhook"}},
 	}
 }
 

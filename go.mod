@@ -21,8 +21,8 @@ go 1.26.3
 // a conductor that cannot resolve them (up to v0.87 it reads them as literal
 // patterns and denies the plugin every host).
 //
-// smee expose_local (pseudo-version of #240's merge; moves to v0.91.0 after that tag).
-require github.com/NodeSpy/conductor v0.90.1-0.20261108061822-875ad83e1ba9
+// v0.95.0: listeners default_path (github serves /webhook when listen: has no path:).
+require github.com/NodeSpy/conductor v0.95.0
 
 // The interpreters the four step engines embed. These are the SAME versions
 // conductor pinned while the engines lived in its binary, so the port is a
