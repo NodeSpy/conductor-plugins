@@ -364,3 +364,69 @@ func TestPRSnapshotCloneBase(t *testing.T) {
 		}
 	}
 }
+
+// A pr_snapshot whose call is cancelled stops: git and anything git started
+// (git-remote-https, index-pack) are killed, and the call returns at once —
+// even when a helper of git's holds git's stderr open, as git-remote-https
+// does. Left running, an abandoned clone holds the plugin's bandwidth and the
+// staging dir long after the daemon gave up on it.
+func TestPRSnapshotStopsWhenTheCallIsCancelled(t *testing.T) {
+	if _, err := exec.LookPath("sleep"); err != nil {
+		t.Skip("no sleep")
+	}
+	dir := t.TempDir()
+	started, helperPid := filepath.Join(dir, "started"), filepath.Join(dir, "helper.pid")
+	// init/remote/check-ref-format succeed; fetch starts a helper that keeps
+	// stderr open (like git-remote-https), then blocks like a stalled remote.
+	script := "#!/bin/sh\ncase \" $* \" in *\" fetch \"*) " +
+		"sleep 120 & echo $! > '" + helperPid + "'; : > '" + started + "'; sleep 120;; esac\nexit 0\n"
+	bin := filepath.Join(dir, "git")
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := gitBinary
+	gitBinary = bin
+	t.Cleanup(func() { gitBinary = old })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := cloneClient(t, t.TempDir()).PRSnapshot(ctx, map[string]any{"repo": "acme/w", "pr": 7}, t.TempDir())
+		done <- err
+	}()
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if _, err := os.Stat(started); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the fetch never started")
+		}
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("a cancelled snapshot must fail")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("pr_snapshot kept running 10s after its call was cancelled")
+	}
+	b, _ := os.ReadFile(helperPid)
+	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil {
+		t.Fatalf("helper pid: %v", err)
+	}
+	// The helper is git's child, reaped by init once killed; give it a moment.
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		if _, err := os.Stat(filepath.Join("/proc", strconv.Itoa(pid))); err != nil {
+			break
+		}
+		if s, _ := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat")); strings.Contains(string(s), ") Z ") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("a helper git started outlived the cancelled call")
+		}
+	}
+}
