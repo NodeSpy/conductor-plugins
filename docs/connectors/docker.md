@@ -55,6 +55,7 @@ connector instance.
 | `cert_path` | string | sets `DOCKER_CERT_PATH` (client certs for a `tcp://` engine) |
 | `env` | map | default process environment for every invocation |
 | `timeout` | duration | default per-verb timeout (default `10m`); a verb's `timeout` option overrides it |
+| `registries` | list | registries whose login the CLI's keyring credential helper keeps (`credsStore: secretservice` on Linux, `osxkeychain` on macOS), each as the CLI names it: a registry host, or `https://index.docker.io/v1/` for Docker Hub |
 
 ### Local, remote, and Podman
 
@@ -72,6 +73,17 @@ connectors:
 > **Podman note:** `compose` and every lifecycle verb work on both engines
 > (`podman compose …`). `buildx` and `bake` are **docker-only** — invoking them
 > with `engine: podman` returns an error instead of shelling out.
+
+### Registry logins in your OS keyring
+
+With `"credsStore": "secretservice"` (Linux) or `"osxkeychain"` (macOS) in
+`~/.docker/config.json`, `docker login` keeps each registry's login in your
+OS keyring. Name the registries in `registries` and the plugin reads those
+logins (the helper's `io.docker.Credentials` item with `docker_cli=1` and
+`server=<registries from its config>`) and nothing else from your keyring;
+the helper, `docker-credential-secretservice` or
+`docker-credential-osxkeychain`, runs in the jail when it is installed. See
+[keyring logins](https://github.com/NodeSpy/conductor/blob/main/docs/wiki/Plugins.md#keyring-logins).
 
 ## Common output shape
 

@@ -39,6 +39,9 @@ func TestGithubDeclIsTheBundledDecl(t *testing.T) {
 	if want.ProtocolVersion == 0 {
 		want.ProtocolVersion = got.ProtocolVersion // stamped by Serve
 	}
+	// Serve withholds keychain: true from a conductor that grants keyring
+	// items (it reads them read-only); Decl() keeps it for older ones.
+	want.Capabilities.Keychain = want.Capabilities.Keychain && len(want.Capabilities.Keyring) == 0
 	gb, _ := json.Marshal(got)
 	wb, _ := json.Marshal(want)
 	if string(gb) != string(wb) {

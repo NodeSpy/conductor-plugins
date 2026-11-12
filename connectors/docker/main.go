@@ -43,6 +43,7 @@ func (dockerPlugin) Describe() plugin.Decl {
 			"cert_path":   {Type: "string", Desc: "sets DOCKER_CERT_PATH (client certs for a tcp:// engine)"},
 			"env":         {Type: "map", Desc: "default process environment for every invocation"},
 			"timeout":     {Type: "duration", Desc: "default per-verb timeout (default 10m); a verb's timeout option overrides it"},
+			"registries":  {Type: "list", Desc: "registries whose login the CLI's credential helper keeps in your OS keyring (credsStore secretservice on Linux, osxkeychain on macOS), each as the CLI names it: a registry host, or https://index.docker.io/v1/ for Docker Hub. The connector reads those logins"},
 		},
 		Verbs: dockerVerbs(),
 		// Shells out to docker/podman. The default local socket (or podman's
@@ -55,7 +56,11 @@ func (dockerPlugin) Describe() plugin.Decl {
 		// declaring it either way would hard-fail every instance using the OTHER
 		// shape. Remote engines are therefore unsupported under the jail.
 		Capabilities: plugin.Capabilities{
-			Commands: []string{"docker", "podman"},
+			Commands: []string{"docker", "podman", "docker-credential-secretservice", "docker-credential-osxkeychain"},
+			// The registries' logins, as the CLI's keyring credential helper
+			// keeps them (the Keychain on macOS).
+			Keyring: []plugin.KeyringItem{{Label: "registry login for a registry in its registries",
+				Attributes: map[string]string{"xdg:schema": "io.docker.Credentials", "docker_cli": "1", "server": "${config:registries}"}}},
 			// docker's CLI plugins (buildx, compose) and podman's helpers
 			// (conmon, netavark) live beside them, by platform.
 			Exec: []string{

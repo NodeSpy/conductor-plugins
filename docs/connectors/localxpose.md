@@ -8,7 +8,7 @@ output.
 - **Kind:** connector (verbs only — no source events)
 - **Source:** [`connectors/localxpose/main.go`](../../connectors/localxpose/main.go)
 - **Provides:** `localxpose`
-- **Capabilities:** spawns `loclx`
+- **Capabilities:** spawns `loclx`; connects to `*.loclx.io` and `*.localxpose.io`; writes `~/.localxpose`; reads the access token `loclx account login` keeps in your OS keyring (the item `service=https://loclx.io, username=token`; served to the jail on Linux, the Keychain on macOS)
 
 ```yaml
 connectors:

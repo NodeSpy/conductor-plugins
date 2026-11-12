@@ -340,3 +340,31 @@ func asPluginError(err error, target **plugin.Error) bool {
 	}
 	return ok
 }
+
+// registries names the registries whose login the docker credential helper
+// keeps in the keyring (io.docker.Credentials, docker_cli 1, server <name>);
+// none configured, none read.
+func TestDeclaresRegistriesKeyring(t *testing.T) {
+	d := dockerPlugin{}.Describe()
+	if err := d.Capabilities.Validate(d.Connection); err != nil {
+		t.Fatal(err)
+	}
+	g, err := d.Capabilities.Resolve(plugin.ResolveEnv{Conns: []map[string]any{{"registries": []any{"https://index.docker.io/v1/", "other.example.test"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(g.Keyring) != 2 {
+		t.Fatalf("keyring %+v: want one item per registry", g.Keyring)
+	}
+	stored := map[string]string{"xdg:schema": "io.docker.Credentials", "docker_cli": "1", "server": "https://index.docker.io/v1/", "username": "me", "label": "x"}
+	if !g.Keyring[0].Matches(stored) && !g.Keyring[1].Matches(stored) {
+		t.Fatalf("keyring %+v: the helper's item for %s does not match", g.Keyring, "https://index.docker.io/v1/")
+	}
+	stored["docker_cli"] = ""
+	if g.Keyring[0].Matches(stored) || g.Keyring[1].Matches(stored) {
+		t.Fatal("an item the docker CLI did not store matches")
+	}
+	if g, err := d.Capabilities.Resolve(plugin.ResolveEnv{Conns: []map[string]any{{}}}); err != nil || len(g.Keyring) != 0 {
+		t.Fatalf("no registries: keyring %+v %v", g.Keyring, err)
+	}
+}

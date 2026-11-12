@@ -419,8 +419,8 @@ func TestEveryResponseValidatesAgainstGitHubsSchema(t *testing.T) {
 	gone := f.Push("acme/w", "to-delete", "me", "a merged head", "x.txt")
 	call("delete_branch", map[string]any{"branch": "to-delete", "expect_sha": gone})
 	lintRun, _ := f.CheckWith("acme/w", head, "lint", CheckOpts{Conclusion: "failure",
-		Steps: []JobStep{{Name: "Set up job", Conclusion: "success"}, {Name: "golangci-lint", Conclusion: "failure"}},
-		Log:   "2026-11-02T10:00:00.0000000Z ##[group]Run golangci-lint run\n2026-11-02T10:00:01.0000000Z main.go:3: unused\n2026-11-02T10:00:01.1000000Z ##[error]Process completed with exit code 1.\n",
+		Steps:       []JobStep{{Name: "Set up job", Conclusion: "success"}, {Name: "golangci-lint", Conclusion: "failure"}},
+		Log:         "2026-11-02T10:00:00.0000000Z ##[group]Run golangci-lint run\n2026-11-02T10:00:01.0000000Z main.go:3: unused\n2026-11-02T10:00:01.1000000Z ##[error]Process completed with exit code 1.\n",
 		Annotations: []Annotation{{Path: "main.go", StartLine: 3, EndLine: 3, Level: "failure", Message: "unused"}}})
 	f.CheckWith("acme/w", head, "external-ci", CheckOpts{Conclusion: "failure", App: "external-ci",
 		Output: CheckOutput{Title: "2 failed", Summary: "TestA, TestB"}})

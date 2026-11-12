@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -47,6 +48,7 @@ func (gitPlugin) Describe() plugin.Decl {
 			"known_hosts":              {Type: "string", Desc: "ssh -o UserKnownHostsFile=<path>"},
 			"username":                 {Type: "string", Desc: "HTTPS credential username; -c credential.username=<username> (paired with token)"},
 			"token":                    {Type: "string", Desc: "HTTPS credential token/password, delivered via a GIT_ASKPASS temp script — never placed in argv"},
+			"credential_hosts":         {Type: "list", Desc: "HTTPS hosts whose login git keeps in your OS keyring (git-credential-libsecret on Linux, osxkeychain on macOS): the connector may reach them, and reads those logins. Used when no token is set; credential.helper is set to the keyring helper unless config sets it"},
 			"user_name":                {Type: "string", Desc: "-c user.name=<value>"},
 			"user_email":               {Type: "string", Desc: "-c user.email=<value>"},
 			"config":                   {Type: "map", Desc: "additional -c key=value flags (sorted), applied before every subcommand"},
@@ -59,10 +61,14 @@ func (gitPlugin) Describe() plugin.Decl {
 			// git's helper programs (its exec path): lib/git-core or
 			// libexec/git-core beside the git binary, by platform.
 			Exec: []string{"command:git/../../lib/git-core", "command:git/../../libexec/git-core"},
-			// No declared egress: a git remote's host is a VERB OPTION (clone's
-			// url, remote add's url, ...), not a connection field, so there is
-			// no capability reference to grant it — this connector cannot reach
-			// any remote under the jail (report, don't hack around it).
+			// A git remote's host is a VERB OPTION (clone's url, remote add's
+			// url, ...), not a connection field: the only remotes the jail
+			// reaches are the HTTPS hosts named in credential_hosts.
+			Egress: []string{"config:credential_hosts:443"},
+			// Their logins, as git's keyring helpers keep them: libsecret's
+			// org.git.Password items (the Keychain on macOS).
+			Keyring: []plugin.KeyringItem{{Label: "git login for a host in its credential_hosts",
+				Attributes: map[string]string{"xdg:schema": "org.git.Password", "protocol": "https", "server": "${host:config:credential_hosts}"}}},
 			Write: []string{"config:dir"},
 			Read:  []string{"config:ssh_key_path", "config:known_hosts"},
 			Env:   []string{"HOME"},
@@ -341,6 +347,7 @@ type gitConn struct {
 	knownHosts            string
 	username              string
 	token                 string
+	credentialHosts       []string
 	userName              string
 	userEmail             string
 	config                map[string]string
@@ -358,6 +365,7 @@ func parseConn(m map[string]any) (gitConn, error) {
 		knownHosts:            str(m["known_hosts"]),
 		username:              str(m["username"]),
 		token:                 str(m["token"]),
+		credentialHosts:       strList(m["credential_hosts"]),
 		userName:              str(m["user_name"]),
 		userEmail:             str(m["user_email"]),
 		config:                strMap(m["config"]),
@@ -370,6 +378,22 @@ func parseConn(m map[string]any) (gitConn, error) {
 		c.timeout = d
 	}
 	return c, nil
+}
+
+// keyringHelper is the credential helper that reads the credential_hosts
+// logins from the OS keyring: none when there are none, or when config sets
+// credential.helper itself.
+func keyringHelper(c gitConn) string {
+	if len(c.credentialHosts) == 0 {
+		return ""
+	}
+	if _, set := c.config["credential.helper"]; set {
+		return ""
+	}
+	if runtime.GOOS == "darwin" {
+		return "osxkeychain"
+	}
+	return "libsecret"
 }
 
 // globalConfigFlags builds the `-c key=value` flags that PRECEDE the
@@ -463,6 +487,8 @@ func (gitPlugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeResult, error) {
 		if conn.username != "" {
 			configFlags = append(configFlags, "-c", "credential.username="+conn.username)
 		}
+	} else if h := keyringHelper(conn); h != "" {
+		configFlags = append(configFlags, "-c", "credential.helper="+h)
 	}
 
 	full := make([]string, 0, len(configFlags)+len(args))

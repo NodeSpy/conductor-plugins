@@ -52,6 +52,7 @@ connector instance.
 | `binary` | string | override the CLI binary path (default `helm`) |
 | `env` | map | default process environment for every invocation |
 | `timeout` | duration | default per-verb timeout (default `10m`); a verb's `timeout` option overrides it |
+| `registries` | list | OCI registry hosts whose `helm registry login` the docker credential helper keeps in your OS keyring |
 
 ```yaml
 connectors:
@@ -62,6 +63,15 @@ connectors:
 
 > **Note:** these connection flags precede the subcommand in the argv Helm
 > sees, exactly as `helm --kubeconfig … --kube-context … -n … <verb> …`.
+
+### OCI registry logins in your OS keyring
+
+When `helm registry login` stores its login through a docker credential
+helper (`credsStore: secretservice` on Linux, `osxkeychain` on macOS), name
+the registry hosts in `registries`: the plugin reads the helper's item for
+each (`io.docker.Credentials`, `docker_cli=1`, `server=<host of registries
+from its config>`) and nothing else from your keyring. See
+[keyring logins](https://github.com/NodeSpy/conductor/blob/main/docs/wiki/Plugins.md#keyring-logins).
 
 ## Common output shape
 

@@ -116,7 +116,8 @@ func NewClient(cfg Config) (*Client, error) {
 	}
 	ghToken := cfg.GhToken
 	if ghToken == nil {
-		ghToken = GhAuthToken
+		host := GhHost(cfg.APIBase)
+		ghToken = func() (string, error) { return GhAuthTokenFor(host) }
 	}
 	ttl := cfg.CacheTTL
 	if ttl <= 0 {
@@ -149,13 +150,21 @@ func (c *Client) base() string {
 	return APIBaseURL()
 }
 
-// GhAuthToken shells out to `gh auth token` — the last link of the
-// write_token → gh → token credential chain. When gh itself fails, the login
-// it saved in hosts.yml is read directly (ghHostsToken).
-func GhAuthToken() (string, error) {
-	out, err := exec.Command("gh", "auth", "token").Output()
+// GhAuthToken is GhAuthTokenFor gh's default host.
+func GhAuthToken() (string, error) { return GhAuthTokenFor("") }
+
+// GhAuthTokenFor shells out to `gh auth token` — the last link of the
+// write_token → gh → token credential chain — for host (gh's default host,
+// GH_HOST or github.com, when empty). When gh itself fails, the login it
+// saved in hosts.yml is read directly (ghHostsToken).
+func GhAuthTokenFor(host string) (string, error) {
+	args := []string{"auth", "token"}
+	if host != "" {
+		args = append(args, "--hostname", host)
+	}
+	out, err := exec.Command("gh", args...).Output()
 	if err != nil {
-		if tok, herr := ghHostsToken(); herr == nil {
+		if tok, herr := ghHostsToken(host); herr == nil {
 			return tok, nil
 		}
 		return "", fmt.Errorf("gh auth token: %w", err)
