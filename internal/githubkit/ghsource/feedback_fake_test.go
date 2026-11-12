@@ -324,3 +324,33 @@ func TestFoldLeavesOutWhatIsNotWaitingOnYou(t *testing.T) {
 		t.Fatalf("author = %v, want the human with changes outstanding", a)
 	}
 }
+
+// A reviewer who approved and then left a comment-only review: GitHub keeps
+// the approval as their latest opinion, but the later review's threads are
+// new feedback and wait on you. Their threads from before the approval stay
+// signed off.
+func TestCommentReviewAfterApprovalIsWaitingOnYou(t *testing.T) {
+	r := newFakeRig(t)
+	_, before := r.f.SubmitReview("acme/w", r.n, "rev", "APPROVED", "ship it", ghfake.InlineComment{Body: "nit before"})
+	_, after := r.f.SubmitReview("acme/w", r.n, "rev", "COMMENTED", "one more thing", ghfake.InlineComment{Body: "bug after"})
+	r.f.Flush()
+
+	var got []Trigger
+	if err := r.g.sweep(context.Background(), func(_ context.Context, tr Trigger) {
+		if tr.Kind == "changes_requested" {
+			got = append(got, tr)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("want 1 changes_requested, got %d", len(got))
+	}
+	ids := commentIDs(got[0])
+	if !ids[after[0]] {
+		t.Error("the comment made after the approval is waiting on you, but is missing from the run")
+	}
+	if ids[before[0]] {
+		t.Error("the comment the approval signed off rides the run")
+	}
+}

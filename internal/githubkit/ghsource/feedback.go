@@ -22,7 +22,10 @@ import (
 //   - an unresolved thread whose most recent comments are not yours: the
 //     comments after your last reply in it (a thread you answered last is
 //     waiting on the reviewer, not on you). A thread opened by a reviewer
-//     whose latest review approved is left out: they signed off.
+//     whose latest review approved is left out when nothing in it is newer
+//     than that approval: they signed off. A comment-only review after the
+//     approval (GitHub keeps the approval as their latest opinion) is new
+//     feedback, and its threads are waiting on you.
 //   - a reviewer's latest review requesting changes, submitted on the PR's
 //     current head: nothing has been pushed since it asked.
 //   - a review that commented with a body and no inline comments (a review
@@ -269,14 +272,22 @@ func (f *fold) empty() bool { return len(f.Comments) == 0 && len(f.Reviews) == 0
 // foldFeedback applies the package note's rules to what prFeedback read.
 func (g *Source) foldFeedback(fb prFeedback) fold {
 	var out fold
-	approved := map[string]bool{}
+	// approvedAt: when each reviewer whose latest opinionated review is an
+	// approval submitted it. Their feedback from before it is signed off;
+	// anything they submitted after it (a COMMENTED review does not replace
+	// the approval as their latest opinion) is not.
+	approvedAt := map[string]time.Time{}
 	for _, r := range fb.Latest {
 		if r.State == "APPROVED" {
-			approved[strings.ToLower(r.Author)] = true
+			approvedAt[strings.ToLower(r.Author)] = r.SubmittedAt
 		}
 	}
+	signedOff := func(author string, at time.Time) bool {
+		t, ok := approvedAt[strings.ToLower(author)]
+		return ok && !at.After(t)
+	}
 	for _, th := range fb.Threads {
-		if th.Resolved || approved[strings.ToLower(th.Opener.Author)] {
+		if th.Resolved {
 			continue
 		}
 		// The tail: the comments after your last one. (A thread longer than
@@ -289,6 +300,9 @@ func (g *Source) foldFeedback(fb prFeedback) fold {
 			}
 		}
 		if len(tail) == 0 {
+			continue
+		}
+		if newest := tail[len(tail)-1].SubmittedAt; signedOff(th.Opener.Author, newest) {
 			continue
 		}
 		out.Threads = append(out.Threads, th.ID)
@@ -326,7 +340,7 @@ func (g *Source) foldFeedback(fb prFeedback) fold {
 	}
 	for _, r := range fb.Submitted {
 		a := strings.ToLower(r.Author)
-		if !r.bodyOnlyComment() || latest[a].ID != r.ID || g.isSelf(r.Author) || approved[a] ||
+		if !r.bodyOnlyComment() || latest[a].ID != r.ID || g.isSelf(r.Author) || signedOff(a, r.SubmittedAt) ||
 			(fb.Head != "" && r.Commit != fb.Head) {
 			continue
 		}
