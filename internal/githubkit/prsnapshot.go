@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/NodeSpy/conductor-plugins/internal/exposurekit"
 )
 
 // pr_snapshot makes a pull request's tree for a step that hands it to others
@@ -49,6 +51,10 @@ const (
 )
 
 var prCloneBackoff = 2 * time.Second
+
+// gitWaitDelay is how long a git cut off by its ctx gets to let go of its
+// output pipes before the call stops waiting for them.
+const gitWaitDelay = 5 * time.Second
 
 // prCloneTimeout bounds the whole clone, retries and deepening included.
 const prCloneTimeout = 20 * time.Minute
@@ -205,7 +211,9 @@ func tarTree(w io.Writer, root string) error {
 func gitEnv(base, tok string) []string {
 	var env []string
 	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "GIT_") {
+		// SSH_ASKPASS too: git runs it for a credential before it would
+		// prompt on a terminal, and a desktop askpass waits for a person.
+		if !strings.HasPrefix(kv, "GIT_") && !strings.HasPrefix(kv, "SSH_ASKPASS=") {
 			env = append(env, kv)
 		}
 	}
@@ -218,7 +226,7 @@ func gitEnv(base, tok string) []string {
 		cfg = append(cfg, [2]string{"http." + base + "/.extraHeader",
 			"Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:"+tok))})
 	}
-	env = append(env, "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0",
+	env = append(env, "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=",
 		"GIT_CONFIG_COUNT="+strconv.Itoa(len(cfg)))
 	for i, kv := range cfg {
 		env = append(env, fmt.Sprintf("GIT_CONFIG_KEY_%d=%s", i, kv[0]), fmt.Sprintf("GIT_CONFIG_VALUE_%d=%s", i, kv[1]))
@@ -235,6 +243,14 @@ type prGit struct {
 func (g *prGit) run(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, gitBinary, append([]string{"-C", g.dir}, args...)...)
 	cmd.Env = g.env
+	// git fetch runs helpers (git-remote-https, index-pack) that inherit its
+	// stdout and stderr. Killing only git when ctx ends leaves them running,
+	// holding the pipes open, and Run waiting on them: so git gets its own
+	// process group, the whole group is killed, and Run stops waiting for the
+	// pipes soon after.
+	exposurekit.SetNewProcessGroup(cmd)
+	cmd.Cancel = func() error { exposurekit.KillProcessGroup(cmd); return nil }
+	cmd.WaitDelay = gitWaitDelay
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
