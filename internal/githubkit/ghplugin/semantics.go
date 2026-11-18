@@ -140,8 +140,10 @@ func connSemantics() *plugin.ConnSemantics {
 		// added by conductor's egress proxy and never given to the agent.
 		// Read only: a push is refused there. Optional: an older host
 		// ignores it.
-		GitFetch: []plugin.GitFetch{{Credential: "read", Hosts: []string{"github.com"}, Username: "x-access-token",
-			Repos: []string{"{{.repo_owner}}/"}}},
+		// The host is the instance's: github.com, or its api_base's
+		// (a GitHub Enterprise Server, api.<sub>.ghe.com). Which
+		// repositories the credential covers is conductor's (learned).
+		GitFetch: []plugin.GitFetch{{Credential: "read", Hosts: []string{"github.com"}, HostFrom: "api_base", Username: "x-access-token"}},
 		Optional: []string{"git_fetch"},
 		Scope:    &plugin.ConnScope{Dimension: "repo", Option: "repos", Consent: true},
 		Poll:  &plugin.PollSemantics{VerbName: "sweep"},

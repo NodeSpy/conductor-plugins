@@ -311,7 +311,7 @@ func TestDeclaresGhKeyringLogin(t *testing.T) {
 func TestDeclDeclaresGitFetch(t *testing.T) {
 	d := Decl()
 	sem := d.Semantics
-	want := []plugin.GitFetch{{Credential: "read", Hosts: []string{"github.com"}, Username: "x-access-token", Repos: []string{"{{.repo_owner}}/"}}}
+	want := []plugin.GitFetch{{Credential: "read", Hosts: []string{"github.com"}, HostFrom: "api_base", Username: "x-access-token"}}
 	if sem == nil || !reflect.DeepEqual(sem.GitFetch, want) {
 		t.Fatalf("git_fetch = %+v", sem)
 	}

@@ -6,6 +6,8 @@ github.com/NodeSpy/conductor v0.96.0 h1:oXL6zRKv9AP3xImgkzuQSf2m3Z6PX/28mWb07499
 github.com/NodeSpy/conductor v0.96.0/go.mod h1:at43/+gt1B/litesqeMmUpGJ45tTP7/QeuzzxMuvIuE=
 github.com/NodeSpy/conductor v0.102.1-0.20261118185442-24167f861002 h1:DaQzf+Y82EUxqAM/l7UKlss34cr7sAY8J8pV9FPqzs8=
 github.com/NodeSpy/conductor v0.102.1-0.20261118185442-24167f861002/go.mod h1:at43/+gt1B/litesqeMmUpGJ45tTP7/QeuzzxMuvIuE=
+github.com/NodeSpy/conductor v0.102.1-0.20261118223721-6a37cb2fedf9 h1:FKbO4yt99AgNBK42lJZ6VLIL8u8+KqO3dV0xVB7qmH4=
+github.com/NodeSpy/conductor v0.102.1-0.20261118223721-6a37cb2fedf9/go.mod h1:at43/+gt1B/litesqeMmUpGJ45tTP7/QeuzzxMuvIuE=
 github.com/a8m/envsubst v1.4.3 h1:kDF7paGK8QACWYaQo6KtyYBozY2jhQrTuNNuUxQkhJY=
 github.com/a8m/envsubst v1.4.3/go.mod h1:4jjHWQlZoaXPoLQUb7H2qT4iLkZDdmEQiOUogdUmqVU=
 github.com/agext/levenshtein v1.2.1 h1:QmvMAjj2aEICytGiWzmxoE0x2KZvE0fvmqMOfy2tjT8=
