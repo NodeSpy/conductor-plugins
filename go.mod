@@ -24,7 +24,7 @@ go 1.26.3
 // v0.95.0: listeners default_path (github serves /webhook when listen: has no path:).
 //
 // v0.96.0: keyring items (a jailed plugin reads only the keyring logins it declares).
-require github.com/NodeSpy/conductor v0.96.0
+require github.com/NodeSpy/conductor v0.102.1-0.20261118185442-24167f861002
 
 // The interpreters the four step engines embed. These are the SAME versions
 // conductor pinned while the engines lived in its binary, so the port is a

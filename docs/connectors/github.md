@@ -491,6 +491,17 @@ An installed build is confined to that list; narrow it per instance with
 declaration — see [gaps](#known-gaps). Write attribution is
 `identity.write_token` and the per-call `as: me|bot`.
 
+**Private git dependencies in the agent sandbox** *(conductor with
+`git_fetch`; an older conductor ignores it)*. The read credential
+(`identity.read_token`) is declared as the git fetch credential for
+`github.com`, scoped to every repository of the dispatched repository's
+owner. A dependency named by its SSH URL (`git+ssh://git@github.com/acme/dep.git`
+in a `package.json`) is fetched over HTTPS inside the sandbox, and
+conductor's egress proxy adds the token to those fetches only. The agent never
+holds the token, and a push to github.com from the sandbox is refused. A
+repository of another owner is not covered. `sandbox.git_fetch: false` in
+conductor turns it off.
+
 ## Parity with the bundled connector
 
 The bundled connector and this plugin run one implementation, and conductor's
