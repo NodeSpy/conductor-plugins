@@ -139,7 +139,7 @@ func decl() plugin.Decl {
 			"sweep":           {Type: "map", Desc: "catch-up sweep: enabled, interval, min_interval, repos"},
 			"me":              {Type: "map", Desc: "your GitHub login(s): { logins: [...] } — defines \"you\""},
 			"repos":           {Type: "list", Desc: "default repo globs for triggers whose filter names no repo"},
-			"identity":        {Type: "map", Desc: "credential policy: read_token, write_token, commit_author"},
+			"identity":        {Type: "map", Desc: "credential policy: read_token, write_token, commit_author, git_fetch (self|app: whose credential authenticates agents' git fetches; default self)"},
 			"retry":           {Type: "map", Desc: "transient dispatch retry: max, backoff"},
 			"project_map":     {Type: "map", Desc: "repo -> paseo project checkout remap"},
 			"project_rewrite": {Type: "map", Desc: "blanket owner/org rewrite for checkouts"},
@@ -347,6 +347,12 @@ func decl() plugin.Decl {
 			{
 				Name: "write_token", Desc: "the write credential agents receive (identity.write_token: your gh login by default)",
 				Semantics: &plugin.VerbSemantics{HostOnly: true, MintsCredential: &plugin.MintsCredential{Credential: "write"}},
+				Options:   plugin.Schema{"repo": {Type: "string", Required: true, Scope: "repo"}},
+				Outputs:   plugin.Schema{"token": {Type: "string"}},
+			},
+			{
+				Name: "git_token", Desc: "the git fetch credential (identity.git_fetch: your own login by default, or the read credential with app); added to agents' git fetches by conductor's egress proxy, never given to the agent",
+				Semantics: &plugin.VerbSemantics{HostOnly: true, MintsCredential: &plugin.MintsCredential{Credential: "git"}},
 				Options:   plugin.Schema{"repo": {Type: "string", Required: true, Scope: "repo"}},
 				Outputs:   plugin.Schema{"token": {Type: "string"}},
 			},

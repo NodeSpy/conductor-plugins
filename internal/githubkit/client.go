@@ -39,6 +39,12 @@ type Config struct {
 	// token (the static token when App-less), "gh_auth" for the write chain,
 	// or a literal token. It is what the read credential mints.
 	ReadToken string
+	// GitFetch is identity.git_fetch: which credential authenticates an
+	// agent's git fetches (the git credential). "" / "self" mints the write
+	// credential (your own login: identity.write_token); "app" mints the read
+	// credential (identity.read_token: the App's installation token by
+	// default).
+	GitFetch string
 	// GhToken resolves a token via `gh auth token` (or a test stub). Defaults
 	// to shelling out to the real `gh` CLI.
 	GhToken func() (string, error)
@@ -76,6 +82,7 @@ type Client struct {
 	token      string
 	writeToken string
 	readToken  string
+	gitFetch   string
 	ghToken    func() (string, error)
 	app        *AppAuth // nil when App-less (no `bot` identity)
 
@@ -124,7 +131,7 @@ func NewClient(cfg Config) (*Client, error) {
 		ttl = DefaultCacheTTL
 	}
 	c := &Client{
-		token: cfg.Token, writeToken: cfg.WriteToken, readToken: cfg.ReadToken, ghToken: ghToken,
+		token: cfg.Token, writeToken: cfg.WriteToken, readToken: cfg.ReadToken, gitFetch: cfg.GitFetch, ghToken: ghToken,
 		httpc: httpc, CacheTTL: ttl, apiBase: cfg.APIBase, gitBase: cfg.GitBase,
 		getCache: map[string]*cacheEntry{}, logins: map[string]string{}, rlRemaining: -1,
 	}
@@ -209,12 +216,26 @@ func (c *Client) TokenFor(ctx context.Context, as, repo string) (string, error) 
 	return "", fmt.Errorf("as: must be me|bot, got %q", as)
 }
 
+// identity.git_fetch values: whose credential authenticates an agent's git
+// fetches.
+const (
+	GitFetchSelf = "self" // your own login: the write credential (default)
+	GitFetchApp  = "app"  // the read credential (the App's installation token by default)
+)
+
 // MintCredential resolves one of the credentials the github connector declares
 // for agents (plugin-contract.md §2.4): "read" by identity.read_token (default:
 // the App's installation token for repo, the static token when App-less),
 // "write" by identity.write_token (default: the `me` chain; "app" for the
-// App's token).
+// App's token), "git" by identity.git_fetch (default "self": the write
+// credential; "app": the read credential).
 func (c *Client) MintCredential(ctx context.Context, which, repo string) (string, error) {
+	if which == "git" {
+		which = "write"
+		if c.gitFetch == GitFetchApp {
+			which = "read"
+		}
+	}
 	policy := c.writeToken
 	if which == "read" {
 		policy = c.readToken

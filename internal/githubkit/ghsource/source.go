@@ -97,10 +97,15 @@ type Config struct {
 //     token (e.g. a PAT via ${GH_PAT}) used verbatim for posts. Writes are always
 //     you, never the bot, so "app" is not a write option.
 //   - CommitAuthor: "self" (default) — commits/pushes carry your git identity.
+//   - GitFetch: which credential authenticates an agent's git fetches from the
+//     instance's GitHub host (the declared git_fetch). "self" (default) — your
+//     own login, the write credential; "app" — the read credential (the App's
+//     installation token by default). API reads are unaffected.
 type Identity struct {
 	ReadToken    string `yaml:"read_token" json:"read_token,omitempty"`
 	WriteToken   string `yaml:"write_token" json:"write_token,omitempty"`
 	CommitAuthor string `yaml:"commit_author" json:"commit_author,omitempty"`
+	GitFetch     string `yaml:"git_fetch" json:"git_fetch,omitempty"`
 }
 
 // ProjectRewrite derives a paseo project name from a repo (owner/name) without
@@ -321,6 +326,9 @@ func New(name string, cfg Config) (*Source, error) {
 	}
 	if cfg.Identity.CommitAuthor == "" {
 		cfg.Identity.CommitAuthor = "self"
+	}
+	if cfg.Identity.GitFetch == "" {
+		cfg.Identity.GitFetch = "self"
 	}
 	g := &Source{name: name, cfg: cfg,
 		projectMap: map[string]string{}, renew: make(chan struct{}, 1)}
@@ -574,6 +582,9 @@ func (g *Source) Validate() error {
 		if _, err := os.Stat(expandHome(g.cfg.App.PrivateKeyPath)); err != nil {
 			return fmt.Errorf("github[%s]: private key not readable: %w", g.name, err)
 		}
+	}
+	if gf := g.cfg.Identity.GitFetch; gf != "" && gf != "self" && gf != "app" {
+		return fmt.Errorf("github[%s]: identity.git_fetch must be self or app, got %q", g.name, gf)
 	}
 	hasWebhook := g.cfg.Webhook.SmeeURL != "" || g.cfg.Webhook.Listen != ""
 	if hasWebhook && g.cfg.Webhook.Verify() && g.cfg.Webhook.Secret == "" {

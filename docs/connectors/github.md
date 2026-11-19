@@ -208,7 +208,7 @@ The bundled connector's connection block, key for key:
 | `sweep` | map | catch-up sweep: `enabled` (default true), `interval` (adaptive ceiling, default 1h), `min_interval` (floor / fixed poll, default 2m), `repos` (default: the connector's `repos:`, else every installed repo) |
 | `me` | map | your login(s): `{ logins: [...] }` — defines "you" (your PRs, your reviews); discovered from the write identity when unset |
 | `repos` | list | default repo globs for triggers whose filter names no repo |
-| `identity` | map | `read_token` (`app` default), `write_token` (`gh_auth` default, or a literal), `commit_author` (`self`) — also the credentials conductor hands the agents this connector's events dispatch |
+| `identity` | map | `read_token` (`app` default), `write_token` (`gh_auth` default, or a literal), `commit_author` (`self`) — also the credentials conductor hands the agents this connector's events dispatch; `git_fetch` (`self` default, or `app`) — whose credential authenticates agents' git fetches ([below](#private-git-dependencies-in-the-agent-sandbox)) |
 | `retry` | map | transient dispatch retry: `max`, `backoff` |
 | `project_map` | map | repo → paseo project checkout remap |
 | `project_rewrite` | map | blanket `org:` rewrite for checkouts |
@@ -491,20 +491,50 @@ An installed build is confined to that list; narrow it per instance with
 declaration — see [gaps](#known-gaps). Write attribution is
 `identity.write_token` and the per-call `as: me|bot`.
 
-**Private git dependencies in the agent sandbox** *(conductor with
-`git_fetch`; an older conductor ignores it)*. The read credential
-(`identity.read_token`) is declared as the git fetch credential for the
-instance's GitHub host: `github.com`, or the host of `api_base` when set (a
-GitHub Enterprise Server's, or `<sub>.ghe.com` for `api.<sub>.ghe.com`). A
-dependency named by its SSH URL (`git+ssh://git@github.com/acme/dep.git` in
-a `package.json`) is fetched over HTTPS inside the sandbox, and conductor's
-egress proxy adds the token to those fetches only. Which repositories it
-covers is conductor's, not the plugin's: the dispatched repository plus the
-dependencies its default branch's cache warm fetched (learned scope — see
-conductor's Isolation page). The agent never holds the token, and a push from
-the sandbox is refused. `sandbox.git_fetch: false` in conductor turns it off.
-Declaring it admits the host to agents' egress for those fetches, so
-conductor holds this build for `conductor plugin approve`.
+### Private git dependencies in the agent sandbox
+
+*(conductor with `git_fetch`; an older conductor ignores it)*. The plugin
+declares a git fetch credential for the instance's GitHub host: `github.com`,
+or the host of `api_base` when set (a GitHub Enterprise Server's, or
+`<sub>.ghe.com` for `api.<sub>.ghe.com`). A dependency named by its SSH URL
+(`git+ssh://git@github.com/acme/dep.git` in a `package.json`) is fetched over
+HTTPS inside the sandbox, and conductor's egress proxy adds the credential to
+those fetches only. Which repositories it covers is conductor's, not the
+plugin's: the dispatched repository plus the dependencies its default
+branch's cache warm fetched (learned scope — see conductor's Isolation page).
+The agent never holds the credential (it is in no env var and no template),
+and a push from the sandbox is refused. `sandbox.git_fetch: false` in
+conductor turns it off.
+
+`identity.git_fetch` picks whose credential it is *(since 2.16.0)*:
+
+| value | credential | reads |
+|---|---|---|
+| `self` (default) | the write credential: your own login (`identity.write_token`: `gh auth token`, or a literal token) | every repository you can read |
+| `app` | the read credential (`identity.read_token`: the App's installation token by default) | only the repositories the App is installed on |
+
+`self` is the default because an App installed on "selected repositories"
+does not cover a private dependency that is not selected, and GitHub answers
+those fetches "Repository not found". Your login reads what you can read. The
+token is the one your agents already get as `GH_TOKEN`; here conductor only
+ever sends it on fetches, to the repositories above. With `app`, add each
+dependency to the App's installation. Both use the basic-auth username
+`x-access-token`, which GitHub accepts with an installation token, an OAuth
+token (`gh`'s) and a personal access token. `identity.git_fetch` changes only
+the git fetch credential: API reads, `pr_snapshot` and what agents get in
+their environment stay on `identity.read_token` / `identity.write_token`.
+
+```yaml
+connectors:
+  gh:
+    use: NodeSpy/conductor-plugins/connectors/github
+    identity:
+      git_fetch: app   # fetch dependencies with the App's token instead of yours
+```
+
+Declaring git fetch admits the host to agents' egress for those fetches, so
+conductor holds a build that adds or changes it for `conductor plugin approve`
+(2.16.0 changes it: the credential is now `git`, minted by `git_token`).
 
 ## Parity with the bundled connector
 
