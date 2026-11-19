@@ -304,14 +304,19 @@ func TestDeclaresGhKeyringLogin(t *testing.T) {
 	}
 }
 
-// The read credential authenticates agents' git fetches from github.com of
-// the same owner's repositories (a git+ssh dependency in the sandbox),
-// declared optional so an older conductor loads the plugin without it, and
-// valid for the host.
+// The git credential authenticates agents' git fetches from github.com (a
+// git+ssh dependency in the sandbox), declared optional so an older
+// conductor loads the plugin without it, and valid for the host. It is
+// never handed to an agent: no env, no template.
 func TestDeclDeclaresGitFetch(t *testing.T) {
 	d := Decl()
 	sem := d.Semantics
-	want := []plugin.GitFetch{{Credential: "read", Hosts: []string{"github.com"}, HostFrom: "api_base", Username: "x-access-token"}}
+	for _, cr := range sem.Credentials {
+		if cr.Name == "git" && (cr.Role != "read" || cr.Mint.Verb != "git_token" || len(cr.Env) > 0 || cr.Template != "" || cr.Guidance != "") {
+			t.Fatalf("git credential reaches the agent or mints elsewhere: %+v", cr)
+		}
+	}
+	want := []plugin.GitFetch{{Credential: "git", Hosts: []string{"github.com"}, HostFrom: "api_base", Username: "x-access-token"}}
 	if sem == nil || !reflect.DeepEqual(sem.GitFetch, want) {
 		t.Fatalf("git_fetch = %+v", sem)
 	}

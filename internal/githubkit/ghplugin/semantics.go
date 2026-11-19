@@ -132,21 +132,26 @@ func connSemantics() *plugin.ConnSemantics {
 			{Name: "write", Role: "write", Mint: plugin.CredentialMint{Verb: "write_token", Args: repo},
 				Env: []string{"GH_TOKEN", "GITHUB_TOKEN", "PC_GH_WRITE_TOKEN"}, Template: "gh_token", Refresh: "resume",
 				Guidance: identityGuidance},
+			// The git fetch credential: no env, no template — an agent never
+			// holds it. Whose it is is identity.git_fetch (git_token): your
+			// own login by default, the read credential with "app".
+			{Name: "git", Role: "read", Mint: plugin.CredentialMint{Verb: "git_token", Args: repo}},
 		},
-		// The read credential also authenticates an agent's git fetches
-		// from github.com: a dependency on another private repository of
-		// the same owner, named by its SSH URL (git+ssh in a package.json),
-		// is fetched over HTTPS by the agent's sandbox, the credential
-		// added by conductor's egress proxy and never given to the agent.
-		// Read only: a push is refused there. Optional: an older host
-		// ignores it.
+		// The git credential authenticates an agent's git fetches from
+		// github.com: a dependency on another private repository, named by
+		// its SSH URL (git+ssh in a package.json), is fetched over HTTPS by
+		// the agent's sandbox, the credential added by conductor's egress
+		// proxy and never given to the agent. Read only: a push is refused
+		// there. Optional: an older host ignores it.
 		// The host is the instance's: github.com, or its api_base's
 		// (a GitHub Enterprise Server, api.<sub>.ghe.com). Which
 		// repositories the credential covers is conductor's (learned).
-		GitFetch: []plugin.GitFetch{{Credential: "read", Hosts: []string{"github.com"}, HostFrom: "api_base", Username: "x-access-token"}},
+		// Role read is the use, not the token: with identity.git_fetch self
+		// it is your own login, which conductor only ever sends on fetches.
+		GitFetch: []plugin.GitFetch{{Credential: "git", Hosts: []string{"github.com"}, HostFrom: "api_base", Username: "x-access-token"}},
 		Optional: []string{"git_fetch"},
 		Scope:    &plugin.ConnScope{Dimension: "repo", Option: "repos", Consent: true},
-		Poll:  &plugin.PollSemantics{VerbName: "sweep"},
+		Poll:     &plugin.PollSemantics{VerbName: "sweep"},
 		Translate: &plugin.TranslateSemantics{Env: map[string]string{
 			"event_path": "GITHUB_EVENT_PATH", "event_name": "GITHUB_EVENT_NAME"}},
 		// The webhook listener (webhook.listen) can be given a public URL by
