@@ -303,3 +303,26 @@ func TestDeclaresGhKeyringLogin(t *testing.T) {
 		t.Fatal("keychain: true is dropped: conductors before keyring lose the macOS login")
 	}
 }
+
+// The read credential authenticates agents' git fetches from github.com of
+// the same owner's repositories (a git+ssh dependency in the sandbox),
+// declared optional so an older conductor loads the plugin without it, and
+// valid for the host.
+func TestDeclDeclaresGitFetch(t *testing.T) {
+	d := Decl()
+	sem := d.Semantics
+	want := []plugin.GitFetch{{Credential: "read", Hosts: []string{"github.com"}, HostFrom: "api_base", Username: "x-access-token"}}
+	if sem == nil || !reflect.DeepEqual(sem.GitFetch, want) {
+		t.Fatalf("git_fetch = %+v", sem)
+	}
+	found := false
+	for _, o := range sem.Optional {
+		found = found || o == "git_fetch"
+	}
+	if !found {
+		t.Fatal("git_fetch is not optional")
+	}
+	if p := plugin.ValidateSemantics(d); len(p) != 0 {
+		t.Fatalf("semantics problems: %v", p)
+	}
+}

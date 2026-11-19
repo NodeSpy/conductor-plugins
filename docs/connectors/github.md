@@ -491,6 +491,21 @@ An installed build is confined to that list; narrow it per instance with
 declaration — see [gaps](#known-gaps). Write attribution is
 `identity.write_token` and the per-call `as: me|bot`.
 
+**Private git dependencies in the agent sandbox** *(conductor with
+`git_fetch`; an older conductor ignores it)*. The read credential
+(`identity.read_token`) is declared as the git fetch credential for the
+instance's GitHub host: `github.com`, or the host of `api_base` when set (a
+GitHub Enterprise Server's, or `<sub>.ghe.com` for `api.<sub>.ghe.com`). A
+dependency named by its SSH URL (`git+ssh://git@github.com/acme/dep.git` in
+a `package.json`) is fetched over HTTPS inside the sandbox, and conductor's
+egress proxy adds the token to those fetches only. Which repositories it
+covers is conductor's, not the plugin's: the dispatched repository plus the
+dependencies its default branch's cache warm fetched (learned scope — see
+conductor's Isolation page). The agent never holds the token, and a push from
+the sandbox is refused. `sandbox.git_fetch: false` in conductor turns it off.
+Declaring it admits the host to agents' egress for those fetches, so
+conductor holds this build for `conductor plugin approve`.
+
 ## Parity with the bundled connector
 
 The bundled connector and this plugin run one implementation, and conductor's
