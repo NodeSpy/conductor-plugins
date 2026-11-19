@@ -68,8 +68,17 @@ var (
 // Describe returns the github declaration.
 func (p *Plugin) Describe() plugin.Decl { return Decl() }
 
-// Invoke runs one verb with the instance's credentials.
+// Invoke runs one verb with the instance's credentials, with no way to stop
+// it early; Serve calls InvokeContext instead.
 func (p *Plugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeResult, error) {
+	return p.InvokeContext(context.Background(), req)
+}
+
+// InvokeContext runs one verb with the instance's credentials until ctx ends:
+// the SDK cancels ctx when the daemon stops waiting for the call (its
+// call_timeout passed) or goes away, and the verb's API calls and git
+// processes stop with it instead of running on, unanswered, in the plugin.
+func (p *Plugin) InvokeContext(ctx context.Context, req plugin.InvokeRequest) (plugin.InvokeResult, error) {
 	if req.Verb == "sweep" {
 		// The daemon answers the declared poll verb itself and never sends it
 		// here; an older daemon does: nudge this process's own sources, which
@@ -92,9 +101,9 @@ func (p *Plugin) Invoke(req plugin.InvokeRequest) (plugin.InvokeResult, error) {
 	if req.Verb == "pr_snapshot" {
 		// A read, as the read credential agents get (identity.read_token),
 		// not the call's `as`; the archive goes to the call's staging dir.
-		out, err = kit.PRSnapshot(context.Background(), req.Options, req.Staging)
+		out, err = kit.PRSnapshot(ctx, req.Options, req.Staging)
 	} else {
-		out, err = kit.Invoke(context.Background(), req.Verb, req.Options)
+		out, err = kit.Invoke(ctx, req.Verb, req.Options)
 	}
 	if err != nil {
 		// A verb call that answered with one of the contract's own codes

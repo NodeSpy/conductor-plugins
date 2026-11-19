@@ -303,3 +303,54 @@ func TestDeclaresGhKeyringLogin(t *testing.T) {
 		t.Fatal("keychain: true is dropped: conductors before keyring lose the macOS login")
 	}
 }
+
+// The SDK cancels a call's ctx when the daemon stops waiting for it (its
+// call_timeout passed); a verb must stop then, not run on against an API or a
+// git remote that is not answering. The plugin takes that ctx
+// (plugin.ContextInvoker) and hands it to the verb.
+func TestACancelledCallStops(t *testing.T) {
+	released := make(chan struct{})
+	reached := make(chan struct{}, 1)
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case reached <- struct{}{}:
+		default:
+		}
+		select { // an API that never answers
+		case <-r.Context().Done():
+		case <-released:
+		}
+	}))
+	t.Cleanup(api.Close)
+	t.Cleanup(func() { close(released) }) // runs before api.Close
+	conn := map[string]any{"token": "tok", "api_base": api.URL, "identity": map[string]any{"write_token": "w"},
+		"webhook": map[string]any{"listen": freeAddr(t), "secret": "s"}, "sweep": map[string]any{"enabled": false}}
+	var h plugin.Handler = New()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		req := plugin.InvokeRequest{Instance: "gh", Verb: "set_status", Connection: conn,
+			Options: map[string]any{"repo": "o/r", "sha": "abc", "state": "pending", "context": "c"}}
+		var err error
+		if ci, ok := h.(plugin.ContextInvoker); ok { // as the SDK's Serve dispatches
+			_, err = ci.InvokeContext(ctx, req)
+		} else {
+			_, err = h.Invoke(req)
+		}
+		done <- err
+	}()
+	select {
+	case <-reached:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the verb never reached the API")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("a cancelled call must fail")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the verb kept running 5s after its call was cancelled")
+	}
+}
