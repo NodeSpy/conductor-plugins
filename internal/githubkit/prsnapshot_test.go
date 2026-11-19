@@ -239,6 +239,31 @@ func TestPRSnapshotGitEnvironment(t *testing.T) {
 	}
 }
 
+// A snapshot fetch starts no automatic maintenance: git would run it
+// detached, still repacking objects/pack while tarTree walks the clone.
+func TestPRSnapshotFetchStartsNoMaintenance(t *testing.T) {
+	root, _, _ := prRemote(t, 3, 2)
+	dir := t.TempDir()
+	gitIn(t, dir, "init", "-q")
+	trace := filepath.Join(t.TempDir(), "trace")
+	g := &prGit{dir: dir, env: append(gitEnv("file://", ""), "GIT_TRACE2_EVENT="+trace)}
+	if err := g.fetch(context.Background(), "file://"+filepath.Join(root, "acme", "w.git"), "main"); err != nil {
+		t.Fatal(err)
+	}
+	ev, err := os.ReadFile(trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(ev), `"event":"child_start"`) {
+		t.Fatalf("trace recorded no child processes, so it can't show maintenance is off:\n%s", ev)
+	}
+	for _, bad := range []string{`"git","maintenance"`, `"git","gc"`} {
+		if strings.Contains(string(ev), bad) {
+			t.Errorf("fetch started automatic maintenance (%s):\n%s", bad, ev)
+		}
+	}
+}
+
 // A fetch that failed on the network is retried; one the remote refused
 // is not, and a failed clone leaves nothing behind or in its error.
 func TestPRSnapshotRetriesOnlyNetworkFailures(t *testing.T) {

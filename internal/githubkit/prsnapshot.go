@@ -211,9 +211,13 @@ func gitEnv(base, tok string) []string {
 	}
 	scheme, _, _ := strings.Cut(base, "://")
 	// A stalled transfer (under 1 KB/s for a minute) fails, as a network
-	// failure, instead of holding the step.
+	// failure, instead of holding the step. No automatic maintenance: each
+	// fetch would otherwise start a detached repack that can still be
+	// renaming files under objects/pack while tarTree walks the clone, and
+	// the clone is thrown away once archived anyway.
 	cfg := [][2]string{{"protocol.allow", "never"}, {"protocol." + scheme + ".allow", "always"},
-		{"http.lowSpeedLimit", "1000"}, {"http.lowSpeedTime", "60"}}
+		{"http.lowSpeedLimit", "1000"}, {"http.lowSpeedTime", "60"},
+		{"maintenance.auto", "false"}, {"gc.auto", "0"}}
 	if tok != "" {
 		cfg = append(cfg, [2]string{"http." + base + "/.extraHeader",
 			"Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:"+tok))})
