@@ -505,8 +505,11 @@ func TestDescribe(t *testing.T) {
 	if d.Type != "google-calendar" {
 		t.Errorf("type: got %q", d.Type)
 	}
-	if len(d.Events) != 0 {
-		t.Errorf("expected no events (verb-only, no source), got %v", d.Events)
+	if len(d.Events) != 1 || d.Events[0].Name != "changed" {
+		t.Errorf("expected exactly the changed source event, got %v", d.Events)
+	}
+	if d.Semantics == nil || len(d.Semantics.Listeners) != 1 || d.Semantics.Listeners[0].Expose != "watch.expose" || d.Semantics.Listeners[0].URLTo != "watch.public_url" {
+		t.Errorf("listener semantics: %#v", d.Semantics)
 	}
 	if d.Connection["calendar_id"].Type != "string" || d.Connection["calendar_id"].Required {
 		t.Errorf("connection.calendar_id: %#v", d.Connection["calendar_id"])

@@ -3,13 +3,14 @@
 Google Calendar as a connector: the user's calendar list, events (list, get,
 create, update, delete), quick-add natural-language events, free/busy
 queries, and a raw `api` escape hatch, over the Calendar API v3
-(`https://www.googleapis.com/calendar/v3`). Built on the standard library's
-`net/http` only.
+(`https://www.googleapis.com/calendar/v3`). It also has a `changed` source,
+fed by Google push notifications, that fires when the calendar's events
+change. Built on the standard library's `net/http` only.
 
-- **Kind:** connector (verbs only — no source)
-- **Source:** [`connectors/google-calendar/main.go`](../../connectors/google-calendar/main.go)
+- **Kind:** connector (verbs + the `changed` source)
+- **Source:** [`connectors/google-calendar/main.go`](../../connectors/google-calendar/main.go), [`watch.go`](../../connectors/google-calendar/watch.go)
 - **Provides:** `google-calendar`
-- **Capabilities:** egress `["www.googleapis.com:443"]`
+- **Capabilities:** egress `["www.googleapis.com:443"]`; listen `config:watch.listen` (the push receiver)
 
 ## Managed OAuth2 — this plugin never talks to Google's OAuth2 endpoints
 
@@ -88,6 +89,7 @@ connectors:
 |-----|------|---------|
 | `calendar_id` | string | Default calendar for every verb. Optional — defaults to `"primary"`. A verb's own `calendar_id` option overrides it for that call. |
 | `api_base` | string | Overrides `https://www.googleapis.com/calendar/v3` (tests only). |
+| `watch` | map | The `changed` source. Only needed when a trigger uses it. See [Source: `changed`](#source-changed). |
 
 The `auth:` block (grant, client credentials, token vault) is daemon-managed
 configuration, not a connection field this plugin ever sees — it is not part
@@ -124,6 +126,64 @@ Required options are marked `*`.
 ### Escape hatch
 
 - **`api`** — raw escape hatch: any Google Calendar API v3 endpoint (enables writes). `method` (HTTP method, default GET), `path`* (path under `https://www.googleapis.com/calendar/v3`, e.g. `/users/me/calendarList`), `query` (map of query string parameters), `body` (JSON request body). → `result` (object response) or `items` (array response).
+
+## Source: `changed`
+
+Fires when the connection's `calendar_id` has changed events. Google push
+notifications say **that** a calendar changed, never **what** changed, so
+this event is a signal to re-read the calendar (`events` verb). It does not
+carry the change itself.
+
+```yaml
+connectors:
+  cal_work:
+    use: google-calendar
+    calendar_id: me@work.example
+    auth: { type: oauth2, grant: authorization_code, client_id: ..., client_secret: ..., token_vault: calsync }
+    watch:
+      listen: 127.0.0.1:8411
+      expose: funnel          # an exposure connector (tailscale funnel, cloudflared, ngrok, smee, ...)
+      # address: https://hooks.example.com/gcal   # instead of expose, if you route it yourself
+
+triggers:
+  - name: calendar-changed
+    "on": cal_work.changed
+    steps: [...]
+```
+
+| `watch.` key | default | purpose |
+|---|---|---|
+| `listen` | (required) | Address of the local push receiver. |
+| `path` | `/gcal` | Receiver path. |
+| `expose` | | An exposure connector. Conductor opens it at start and fills `public_url`. |
+| `address` | | The public `https://` URL Google posts to, if you don't use `expose`. |
+| `debounce` | `5s` | Notifications for one calendar within this window are combined into one event. Google often sends several for a single edit. |
+| `renew_before` | `24h` | How long before expiry to replace the channel. |
+| `ttl` | `168h` | Channel lifetime requested from Google. Google's maximum is about 7 days. |
+
+**Event context:** `calendar_id`, `notifications` (how many pushes this
+event combines), `at` (RFC3339).
+
+The source manages the `events.watch` channel itself, so you don't need a
+setup workflow or a renewal cron:
+
+- **Start:** it reuses the channel saved in `host.state` if that channel is
+  for the same calendar and address and isn't close to expiring. Otherwise
+  it opens a new channel with a random id and secret token. A saved channel
+  for a different calendar or address is stopped.
+- **Receive:** a push is accepted only if its `X-Goog-Channel-Id` is the
+  current channel and its `X-Goog-Channel-Token` matches that channel's
+  secret (constant-time compare). Google's `sync` handshake is dropped.
+- **Renew:** `renew_before` ahead of expiry it opens the replacement channel
+  first, then stops the old one, so there's no gap in coverage.
+- **Shutdown:** the channel is left open, so a restart within its lifetime
+  reuses it.
+- **Failures** (Google down, token revoked) are retried with a capped backoff
+  and logged to the daemon log. A 401 is retried once with a refreshed token.
+
+Push delivery is best-effort: Google can drop notifications, and none arrive
+while conductor is down. Pair this trigger with a periodic `cron` sweep that
+runs the same workflow, so a missed push costs latency, not a missed change.
 
 ## Capabilities & security
 
