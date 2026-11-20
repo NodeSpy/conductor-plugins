@@ -1,8 +1,9 @@
-// Command conductor-google-calendar is a verb-only conductor connector for
+// Command conductor-google-calendar is a conductor connector for
 // Google Calendar (API v3, https://www.googleapis.com/calendar/v3): calendar
 // list, events (list/get/create/update/delete), quick-add natural-language
 // events, free/busy queries, and a raw `api` escape hatch for anything a
-// first-class verb does not cover. Built ONLY against the public SDK
+// first-class verb does not cover — plus a `changed` source fed by Google
+// push notifications (watch.go), which manages its own events.watch channel. Built ONLY against the public SDK
 // (pkg/plugin) — no other dependency.
 //
 // Authentication is conductor's MANAGED OAuth2 (pkg/plugin v0.15.0+): this
@@ -24,6 +25,9 @@
 //
 //	calendar_id: "primary"      # optional; default calendar for every verb (default "primary")
 //	api_base: "https://..."     # optional test override, default https://www.googleapis.com/calendar/v3
+//	watch:                      # optional; only for the `changed` source
+//	  listen: 127.0.0.1:8411    # push receiver
+//	  expose: funnel            # an exposure connector -> public https URL (or set address:)
 //
 // Every verb's outputs include `status_code`; collection verbs (`calendars`,
 // `events`) hoist Google's `items` array into `items`; single-resource verbs
@@ -54,6 +58,7 @@ const defaultAPIBase = "https://www.googleapis.com/calendar/v3"
 
 type googleCalendarPlugin struct {
 	client *http.Client
+	host   *plugin.HostConn // set by SetHost; the changed source needs it
 }
 
 func newGoogleCalendarPlugin() *googleCalendarPlugin {
@@ -68,6 +73,19 @@ func (p *googleCalendarPlugin) Describe() plugin.Decl {
 		Connection: plugin.Schema{
 			"calendar_id": {Type: "string", Desc: "default calendar id for every verb (default \"primary\"); a verb's own calendar_id option overrides it", Scope: "calendar"},
 			"api_base":    {Type: "string", Desc: "override https://www.googleapis.com/calendar/v3 (tests only)"},
+			"watch":       {Type: "map", Desc: "the `changed` source (push notifications): { listen, path (default /gcal), expose | address, debounce (default 5s), renew_before (default 24h), ttl (default 168h) }. Google posts only to a public https:// URL: set `address`, or `expose` to an exposure connector and conductor fills `public_url`. The plugin opens, renews and persists the events.watch channel itself."},
+		},
+		Events: []plugin.Event{{
+			Name: "changed",
+			Desc: "the calendar's events changed (a Google push notification; a burst within `debounce` is one event). It says THAT something changed, not what — re-read with the events verb",
+			Context: plugin.Schema{
+				"calendar_id":   {Type: "string", Desc: "the watched calendar"},
+				"notifications": {Type: "integer", Desc: "how many notifications this event folds together"},
+				"at":            {Type: "string", Desc: "RFC3339 time the event fired"},
+			},
+		}},
+		Semantics: &plugin.ConnSemantics{
+			Listeners: []plugin.Listener{{Listen: "watch.listen", Expose: "watch.expose", URLTo: "watch.public_url", Path: "watch.path", DefaultPath: defaultWatchPath}},
 		},
 		Verbs: []plugin.Verb{
 			{
@@ -166,7 +184,11 @@ func (p *googleCalendarPlugin) Describe() plugin.Decl {
 		// Conductor performs the OAuth2 token exchange with Google's own
 		// endpoints on this plugin's behalf; the plugin itself only ever
 		// calls www.googleapis.com.
-		Capabilities: plugin.Capabilities{Egress: []string{"www.googleapis.com:443"}},
+		// Listen is the push receiver (the changed source only).
+		Capabilities: plugin.Capabilities{
+			Egress: []string{"www.googleapis.com:443"},
+			Listen: []string{"config:watch.listen"},
+		},
 		Auth: &plugin.AuthSpec{
 			Grants:   []string{"authorization_code"},
 			TokenURL: "https://oauth2.googleapis.com/token",
