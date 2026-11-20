@@ -380,12 +380,16 @@ func isStepStart(line string) bool {
 }
 
 // logExcerpt reads a raw Actions job log and returns, within limit bytes, the
-// part that shows the failure: the step that printed the first ##[error] line
-// — from its "Run …" header through the line before the next step starts —
-// keeping its END when it does not fit (the header stays, the middle goes).
-// A log with no ##[error] line gives its last limit bytes. Lines are cleaned
-// (cleanLogLine) and ##[endgroup] markers dropped. cut reports that anything
-// of the chosen part was left out.
+// part that shows the failure: the LAST step before the post phase that
+// printed an ##[error] line — from its "Run …" header through the line before
+// the next step starts — keeping its END when it does not fit (the header
+// stays, the middle goes). The last, not the first: a failing step stops the
+// job, so the step that failed it is the last to run, while a step that logs
+// errors and carries on (a cache restore's tar warnings, continue-on-error)
+// comes earlier and would hide the real failure. Errors only in the post phase
+// give the first such step there. A log with no ##[error] line gives its last
+// limit bytes. Lines are cleaned (cleanLogLine) and ##[endgroup] markers
+// dropped. cut reports that anything of the chosen part was left out.
 func logExcerpt(r io.Reader, limit int) (excerpt string, cut bool, err error) {
 	if limit <= 0 {
 		return "", false, nil
@@ -393,7 +397,17 @@ func logExcerpt(r io.Reader, limit int) (excerpt string, cut bool, err error) {
 	whole := newLineTail(limit)   // the log's tail, for a log with no error
 	section := newLineTail(limit) // the current step's tail
 	header := ""
-	errSeen, longLine := false, false
+	errSeen, longLine := false, false // errSeen: the current step printed an error
+	var best *lineTail                // the chosen errored step so far
+	bestHeader, post := "", false
+	keep := func() {
+		if errSeen {
+			best, bestHeader = section, header
+		}
+	}
+	done := func() (string, bool, error) {
+		return best.render(bestHeader, limit), best.dropped > 0 || longLine, nil
+	}
 	br := bufio.NewReaderSize(r, 64<<10)
 	for {
 		raw, rerr := readLogLine(br, limit+1)
@@ -404,13 +418,22 @@ func logExcerpt(r io.Reader, limit int) (excerpt string, cut bool, err error) {
 			}
 			switch {
 			case line == "##[endgroup]":
-			case isStepStart(line) && errSeen:
-				// The failed step ended: everything after it is cleanup.
-				return section.render(header, limit), section.dropped > 0 || longLine, nil
-			default:
-				if isStepStart(line) {
-					section, header = newLineTail(limit), line
+			case isStepStart(line):
+				if post && errSeen {
+					// The first failed post step ended.
+					keep()
+					return done()
 				}
+				keep()
+				if line == "Post job cleanup." && best != nil {
+					// The main phase is over and a step in it failed.
+					return done()
+				}
+				post = post || line == "Post job cleanup."
+				section, header, errSeen = newLineTail(limit), line, false
+				whole.add(line)
+				section.add(line)
+			default:
 				whole.add(line)
 				section.add(line)
 				if strings.HasPrefix(line, "##[error]") {
@@ -425,8 +448,9 @@ func logExcerpt(r io.Reader, limit int) (excerpt string, cut bool, err error) {
 			return "", false, rerr
 		}
 	}
-	if errSeen {
-		return section.render(header, limit), section.dropped > 0 || longLine, nil
+	keep()
+	if best != nil {
+		return done()
 	}
 	return whole.render("", limit), whole.dropped > 0 || longLine, nil
 }
