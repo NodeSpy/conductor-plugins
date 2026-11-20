@@ -39,6 +39,7 @@ require (
 
 require (
 	cel.dev/cel-go v0.32.0
+	filippo.io/age v1.2.1
 	github.com/coder/websocket v1.8.15
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/fsnotify/fsnotify v1.10.1
@@ -84,6 +85,7 @@ require (
 	github.com/zclconf/go-cty v1.19.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.6 // indirect
+	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948 // indirect
 	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
