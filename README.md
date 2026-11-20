@@ -121,6 +121,7 @@ Named-vendor counterparts to conductor's own vendor-neutral `lan`/`tunnel` expos
 
 ### Business & media
 - **[xero](docs/connectors/xero.md)** — Xero accounting: invoices, contacts, accounts, payments, bank transactions.  *(managed OAuth2)*
+- **[backup](docs/connectors/backup.md)** — versioned snapshots to a local directory with daily/weekly/monthly retention.
 - **[ffmpeg](docs/connectors/ffmpeg.md)** — media via `ffmpeg`/`ffprobe`: transcode, thumbnail, trim, concat, probe.
 
 ### Development & testing
