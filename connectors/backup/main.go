@@ -2,6 +2,8 @@
 // across one or more storage TIERS, each with its own driver and retention:
 //
 //	local   a directory (any mounted path)            — age encryption optional
+//	sftp    any SSH server, native client (no tools)  — age encryption required unless opted out
+//	s3      any S3-compatible store, native client    — age encryption required unless opted out
 //	rclone  any rclone backend (S3-compatible, SFTP, B2, WebDAV, SMB, Drive, …)
 //	                                                  — age encryption required unless opted out
 //	restic  any restic repository (path, sftp:, s3:, b2:, rest:, rclone:)
@@ -55,10 +57,11 @@ func (p *backupPlugin) Describe() plugin.Decl {
 	return plugin.Decl{
 		Kind: plugin.KindConnector,
 		Type: "backup",
-		Desc: "Versioned backups across storage tiers (local dir, rclone, restic, borg) with per-tier daily/weekly/monthly retention, encryption, dedup and restore verification.",
+		Desc: "Versioned backups across storage tiers (local dir, sftp, s3, rclone, restic, borg) with per-tier daily/weekly/monthly retention, encryption, dedup and restore verification.",
 		Connection: plugin.Schema{
-			"tiers": {Type: "list", Desc: "destinations, each {name, driver: local|rclone|restic|borg, keep_daily/weekly/monthly, encrypt, …driver fields}: " +
-				"local {dir, age_recipients, age_identity}; rclone {remote, env, ssh, age_recipients, age_identity}; " +
+			"tiers": {Type: "list", Desc: "destinations, each {name, driver: local|sftp|s3|rclone|restic|borg, keep_daily/weekly/monthly, encrypt, …driver fields}: " +
+				"local {dir, age_recipients, age_identity}; sftp {target: user@host:/dir, ssh, age_recipients, age_identity} (native, no tools); " +
+				"s3 {bucket, prefix, endpoint, region, access_key_id, secret_access_key, path_style, create_bucket, age_recipients, age_identity} (native, no tools); rclone {remote, env, ssh, age_recipients, age_identity}; " +
 				"restic {repo, password, env, ssh, init, check_read_data}; borg {repo, passphrase, env, ssh, init, check_data}. " +
 				"ssh: {key, known_hosts, port, insecure_accept_host_key}. Put secrets in the vault."},
 			"dir":          {Type: "string", Desc: "shorthand for a single local tier at this path"},

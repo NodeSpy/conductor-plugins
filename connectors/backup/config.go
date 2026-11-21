@@ -27,6 +27,8 @@ type tier struct {
 	store  store
 	file   *fileTier // set for local/rclone: needed to read sha/size metadata
 	local  bool      // data never leaves this machine
+
+	remoteHost string // host:port a native driver (sftp, s3) connects to
 }
 
 // conf is a parsed connection.
@@ -150,6 +152,45 @@ func parseConf(cfg map[string]any) (*conf, []problem) {
 			}
 			t.file = &fileTier{objects: rcloneObjects{remote: remote, env: env, ssh: sc}, recipients: ars, identity: identity}
 			t.store = t.file
+		case "sftp":
+			target := str(m["target"])
+			if sc == nil {
+				add(p+".ssh", "required: {key, known_hosts | insecure_accept_host_key}")
+				sc = &sshCfg{}
+			} else if sc.Key == "" {
+				add(p+".ssh.key", "required (a private key; keep it in the vault)")
+			}
+			addr, user, dir, err := parseSFTPTarget(target, sc.Port)
+			if err != nil {
+				add(p+".target", "%v", err)
+			}
+			if len(ars) == 0 && !(encryptSet && !encrypt) {
+				add(p+".age_recipients", "an sftp tier leaves this machine: set age_recipients (or encrypt: false)")
+			}
+			t.remoteHost = addr
+			t.file = &fileTier{objects: sftpObjects{addr: addr, user: user, dir: dir, ssh: sc}, recipients: ars, identity: identity}
+			t.store = t.file
+		case "s3":
+			bucket, endpoint, region := str(m["bucket"]), str(m["endpoint"]), str(m["region"])
+			key, secret := str(m["access_key_id"]), str(m["secret_access_key"])
+			pathStyle := m["path_style"] == nil && endpoint != "" || boolv(m["path_style"])
+			if bucket == "" {
+				add(p+".bucket", "required")
+			}
+			if key == "" || secret == "" {
+				add(p+".access_key_id", "access_key_id and secret_access_key are required (keep them in the vault)")
+			}
+			if endpoint != "" {
+				if u, err := url.Parse(endpoint); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+					add(p+".endpoint", "an http(s):// URL, e.g. https://s3.example.com")
+				}
+			}
+			if len(ars) == 0 && !(encryptSet && !encrypt) {
+				add(p+".age_recipients", "an s3 tier leaves this machine: set age_recipients (or encrypt: false, e.g. with server-side encryption you trust)")
+			}
+			t.remoteHost = s3Host(endpoint, region, bucket, pathStyle)
+			t.file = &fileTier{objects: newS3(endpoint, region, bucket, str(m["prefix"]), key, secret, pathStyle, m["create_bucket"] == nil || boolv(m["create_bucket"])), recipients: ars, identity: identity}
+			t.store = t.file
 		case "restic":
 			repo, pw := str(m["repo"]), str(m["password"])
 			if repo == "" {
@@ -174,14 +215,20 @@ func parseConf(cfg map[string]any) (*conf, []problem) {
 			t.local = strings.HasPrefix(repo, "/")
 			t.store = &borgStore{repo: repo, passphrase: pp, encryption: enc, env: env, ssh: sc, autoInit: autoInit, checkData: boolv(m["check_data"])}
 		default:
-			add(p+".driver", "%q: one of local, restic, rclone, borg", t.driver)
+			add(p+".driver", "%q: one of local, sftp, s3, rclone, restic, borg", t.driver)
 			continue
+		}
+		if t.remoteHost != "" && str(m["repo"]) == "" && str(m["remote"]) == "" && !contains(c.allowHosts, t.remoteHost) {
+			add(p, "%s is not in allow_hosts (the plugin's jail lets it reach only those)", t.remoteHost)
 		}
 		if sc != nil && sc.KnownHosts == "" && !sc.InsecureAccept {
 			add(p+".ssh.known_hosts", "required (the server's host key line), or insecure_accept_host_key: true")
 		}
 		for _, loc := range []string{str(m["repo"]), str(m["remote"])} {
 			h := hostOf(t.driver, loc)
+			if t.remoteHost != "" {
+				h = t.remoteHost
+			}
 			if h == "" && t.driver == "rclone" {
 				h = rcloneSFTPHost(loc)
 			}

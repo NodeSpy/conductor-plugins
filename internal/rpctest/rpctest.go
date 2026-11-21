@@ -54,6 +54,16 @@ func Build(t *testing.T, kind, name string) string {
 	return bin
 }
 
+// BuildConnectorWithPATH builds with buildPATH (so go is found) even when
+// the test's own PATH is narrowed for the plugin process it then starts.
+func BuildConnectorWithPATH(t *testing.T, name, buildPATH string) string {
+	t.Helper()
+	cur := os.Getenv("PATH")
+	os.Setenv("PATH", buildPATH)
+	defer os.Setenv("PATH", cur)
+	return Build(t, "connectors", name)
+}
+
 // BuildConnector, BuildRuntime and BuildEngine name the kind at the call site,
 // so an e2e test reads as what it is.
 func BuildConnector(t *testing.T, name string) string { return Build(t, "connectors", name) }
