@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	plugin "github.com/NodeSpy/conductor/pkg/plugin"
@@ -582,4 +583,53 @@ func indexOf(s, sub string) int {
 		}
 	}
 	return -1
+}
+
+func TestEventsFollowsPagesAndPassesFilters(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		checkBearer(t, r)
+		calls++
+		q := r.URL.Query()
+		if got := q["privateExtendedProperty"]; len(got) != 2 || got[0] != "a=1" || got[1] != "b=2" {
+			t.Errorf("privateExtendedProperty: %v", got)
+		}
+		if q.Get("showDeleted") != "true" {
+			t.Errorf("showDeleted: %q", q.Get("showDeleted"))
+		}
+		switch q.Get("pageToken") {
+		case "":
+			writeJSON(w, 200, map[string]any{"items": []any{map[string]any{"id": "e1"}}, "nextPageToken": "p2"})
+		case "p2":
+			writeJSON(w, 200, map[string]any{"items": []any{map[string]any{"id": "e2"}}})
+		default:
+			t.Errorf("pageToken: %q", q.Get("pageToken"))
+		}
+	}))
+	defer srv.Close()
+
+	res, err := newGoogleCalendarPlugin().Invoke(plugin.InvokeRequest{
+		Verb: "events", Connection: testConn(srv),
+		Options: map[string]any{"showDeleted": true, "privateExtendedProperty": []any{"a=1", "b=2"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := res.Outputs["items"].([]any)
+	if calls != 2 || len(items) != 2 || items[1].(map[string]any)["id"] != "e2" {
+		t.Fatalf("calls=%d items=%#v", calls, items)
+	}
+}
+
+func TestEventsRefusesPastMaxPages(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]any{"items": []any{}, "nextPageToken": "again"})
+	}))
+	defer srv.Close()
+	_, err := newGoogleCalendarPlugin().Invoke(plugin.InvokeRequest{
+		Verb: "events", Connection: testConn(srv), Options: map[string]any{"max_pages": 3},
+	})
+	if err == nil || !strings.Contains(err.Error(), "more than 3 pages") {
+		t.Fatalf("err: %v", err)
+	}
 }
