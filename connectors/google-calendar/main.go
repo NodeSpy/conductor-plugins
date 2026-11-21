@@ -98,15 +98,18 @@ func (p *googleCalendarPlugin) Describe() plugin.Decl {
 				Name: "events", Desc: "list events on a calendar",
 				Usage: "GET /calendars/{calendar_id}/events",
 				Options: plugin.Schema{
-					"calendar_id":  {Type: "string", Desc: "override the connection's calendar_id for this call", Scope: "calendar"},
-					"timeMin":      {Type: "string", Desc: "RFC3339 lower bound (inclusive) on event end time"},
-					"timeMax":      {Type: "string", Desc: "RFC3339 upper bound (exclusive) on event start time"},
-					"q":            {Type: "string", Desc: "free text search terms"},
-					"maxResults":   {Type: "integer", Desc: "max events per page (Google default 250, max 2500)"},
-					"singleEvents": {Type: "boolean", Desc: "expand recurring events into single instances"},
-					"orderBy":      {Type: "string", Desc: "\"startTime\" (requires singleEvents=true) or \"updated\""},
+					"calendar_id":             {Type: "string", Desc: "override the connection's calendar_id for this call", Scope: "calendar"},
+					"timeMin":                 {Type: "string", Desc: "RFC3339 lower bound (inclusive) on event end time"},
+					"timeMax":                 {Type: "string", Desc: "RFC3339 upper bound (exclusive) on event start time"},
+					"q":                       {Type: "string", Desc: "free text search terms"},
+					"maxResults":              {Type: "integer", Desc: "max events per page (Google default 250, max 2500)"},
+					"singleEvents":            {Type: "boolean", Desc: "expand recurring events into single instances"},
+					"orderBy":                 {Type: "string", Desc: "\"startTime\" (requires singleEvents=true) or \"updated\""},
+					"showDeleted":             {Type: "boolean", Desc: "include cancelled events"},
+					"privateExtendedProperty": {Type: "list", Desc: "propertyName=value filters on private extended properties (all must match)"},
+					"max_pages":               {Type: "integer", Desc: "fail rather than follow more than this many result pages (default 50); every page is followed and merged into items"},
 				},
-				Outputs: plugin.Schema{"items": {Type: "list"}, "status_code": {Type: "integer"}},
+				Outputs: plugin.Schema{"items": {Type: "list", Desc: "every page's events, merged"}, "status_code": {Type: "integer"}},
 			},
 			{
 				Name: "event_get", Desc: "get one event",
@@ -300,17 +303,49 @@ func (p *googleCalendarPlugin) events(conn gcalConn, token string, o map[string]
 	if v := str(o["orderBy"]); v != "" {
 		q.Set("orderBy", v)
 	}
+	if v, ok := o["showDeleted"]; ok {
+		q.Set("showDeleted", boolStr(v))
+	}
+	for _, p := range strList(o["privateExtendedProperty"]) {
+		q.Add("privateExtendedProperty", p)
+	}
 	path := "/calendars/" + url.PathEscape(calendarID(conn, o)) + "/events"
-	status, body, err := p.do(token, http.MethodGet, conn.apiBase+path, q, nil)
-	if err != nil {
-		return plugin.InvokeResult{}, err
+	// Follow nextPageToken: a caller asking for "the events in this window"
+	// wants all of them, not whichever 250 Google put on page one. Bounded so
+	// an unbounded query on a huge calendar cannot run forever.
+	maxPages := maxEventPages
+	if n, err := strconv.Atoi(intStr(o["max_pages"])); err == nil && n > 0 {
+		maxPages = n
 	}
-	decoded, derr := decodeJSON(body)
-	if derr != nil {
-		return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, derr.Error())
+	items := []any{}
+	status := 0
+	for page := 0; ; page++ {
+		s, body, err := p.do(token, http.MethodGet, conn.apiBase+path, q, nil)
+		if err != nil {
+			return plugin.InvokeResult{}, err
+		}
+		status = s
+		decoded, derr := decodeJSON(body)
+		if derr != nil {
+			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError, derr.Error())
+		}
+		items = append(items, hoist(decoded)...)
+		m, _ := decoded.(map[string]any)
+		next := str(m["nextPageToken"])
+		if next == "" {
+			break
+		}
+		if page+1 >= maxPages {
+			return plugin.InvokeResult{}, plugin.Errorf(plugin.CodeInternalError,
+				fmt.Sprintf("events: more than %d pages; narrow timeMin/timeMax or raise max_pages", maxPages))
+		}
+		q.Set("pageToken", next)
 	}
-	return plugin.InvokeResult{Outputs: map[string]any{"items": hoist(decoded), "status_code": status}}, nil
+	return plugin.InvokeResult{Outputs: map[string]any{"items": items, "status_code": status}}, nil
 }
+
+// maxEventPages bounds the events verb's page following by default.
+const maxEventPages = 50
 
 func (p *googleCalendarPlugin) eventGet(conn gcalConn, token string, o map[string]any) (plugin.InvokeResult, error) {
 	id := str(o["event_id"])
