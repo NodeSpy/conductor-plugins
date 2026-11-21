@@ -60,6 +60,7 @@ func requireBackupE2E(t *testing.T) *backupEnv {
 		t.Setenv(k, "")
 		os.Unsetenv(k)
 	}
+	t.Setenv("ORIG_PATH_FOR_BUILD", os.Getenv("PATH"))
 	if tools := os.Getenv("BACKUP_E2E_TOOLS"); tools != "" {
 		t.Setenv("PATH", tools+string(os.PathListSeparator)+os.Getenv("PATH"))
 	}
@@ -464,4 +465,68 @@ func startConnectProxy(t *testing.T, allow func(string) bool) string {
 		}
 	}()
 	return l.Addr().String()
+}
+
+// TestBackupNativeDriversNeedNoTools: the sftp and s3 drivers work with NO
+// restic/rclone/borg/ssh on PATH, directly and through the egress proxy.
+func TestBackupNativeDriversNeedNoTools(t *testing.T) {
+	e := requireBackupE2E(t)
+	// Start a plugin process whose PATH has none of the tools.
+	empty := t.TempDir()
+	t.Setenv("PATH", empty)
+	e.c = rpctest.Start(t, rpctest.BuildConnectorWithPATH(t, "backup", os.Getenv("ORIG_PATH_FOR_BUILD")))
+
+	id, _ := age.GenerateX25519Identity()
+	_, sshPort, _ := net.SplitHostPort(e.sshHost)
+	sshb := e.sshBlock()
+	sshb["port"] = sshPort
+	conn := map[string]any{
+		"allow_hosts": []any{e.sshHost, e.s3},
+		"tiers": []any{
+			map[string]any{"name": "sftp", "driver": "sftp", "target": "bk@127.0.0.1:/home/bk/native", "ssh": sshb, "age_identity": id.String()},
+			map[string]any{"name": "s3", "driver": "s3", "endpoint": "http://" + e.s3, "bucket": "native-bucket", "prefix": "conductor",
+				"access_key_id": rfAccess, "secret_access_key": rfSecret, "age_identity": id.String(), "keep_daily": 2, "keep_weekly": 0, "keep_monthly": 0},
+			map[string]any{"name": "s3-plain", "driver": "s3", "endpoint": "http://" + e.s3, "bucket": "native-plain",
+				"access_key_id": rfAccess, "secret_access_key": rfSecret, "encrypt": false},
+		},
+	}
+	statuses := []string{}
+	for _, c := range []string{"v1", "v1", "v2"} {
+		out := e.must(conn, "put", map[string]any{"set": "n", "text": c, "ext": "ics"})
+		statuses = append(statuses, out["tiers"].([]any)[0].(map[string]any)["status"].(string))
+		time.Sleep(1100 * time.Millisecond)
+	}
+	if strings.Join(statuses, ",") != "written,unchanged,written" {
+		t.Errorf("dedup on the sftp tier: %v", statuses)
+	}
+	for _, tier := range []string{"sftp", "s3", "s3-plain"} {
+		items := e.must(conn, "list", map[string]any{"set": "n", "tier": tier})["items"].([]any)
+		// v1, v1 (deduped), v2 all today: daily retention keeps the newest.
+		if len(items) != 1 {
+			t.Errorf("%s: retention keeps the newest of today, got %d: %v", tier, len(items), items)
+		}
+		if got := e.must(conn, "read", map[string]any{"set": "n", "tier": tier}); got["content"] != "v2" {
+			t.Errorf("%s restore: %v", tier, got["content"])
+		}
+		if v := e.must(conn, "verify", map[string]any{"set": "n", "tiers": []any{tier}, "mode": "both", "sample": 0}); v["ok"] != true {
+			t.Errorf("%s verify: %v", tier, v)
+		}
+	}
+	// Through an allow-listing CONNECT proxy, as under conductor's jail.
+	proxy := startConnectProxy(t, func(dst string) bool { return dst == e.sshHost || dst == e.s3 })
+	t.Setenv("HTTPS_PROXY", "http://"+proxy)
+	t.Setenv("HTTP_PROXY", "http://"+proxy)
+	e.c = rpctest.Start(t, rpctest.BuildConnectorWithPATH(t, "backup", os.Getenv("ORIG_PATH_FOR_BUILD")))
+	e.must(conn, "put", map[string]any{"set": "np", "text": "proxied", "tiers": []any{"sftp", "s3"}})
+	if v := e.must(conn, "verify", map[string]any{"set": "np", "tiers": []any{"sftp", "s3"}}); v["ok"] != true {
+		t.Fatalf("verify through proxy: %v", v)
+	}
+	// Wrong host key is refused by the native client too.
+	bad := e.sshBlock()
+	bad["known_hosts"] = strings.Replace(e.knownHosts, "AAAA", "AAAB", 1)
+	badConn := map[string]any{"allow_hosts": []any{e.sshHost}, "tiers": []any{
+		map[string]any{"driver": "sftp", "target": "bk@127.0.0.1:/home/bk/x", "ssh": bad, "encrypt": false}}}
+	if _, err := e.invoke(badConn, "put", map[string]any{"set": "x", "text": "x"}); err == nil {
+		t.Fatal("sftp with a wrong host key must fail")
+	}
 }

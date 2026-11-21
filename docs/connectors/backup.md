@@ -16,12 +16,17 @@ tier's retention. `verify` proves the backups restore.
 | driver | where | encryption | dedup |
 |---|---|---|---|
 | `local` | a directory (any mounted path) | optional [age](https://age-encryption.org) | skip-if-unchanged |
+| `sftp` | any SSH server, **built in** (no tools to install) | age (**required** unless `encrypt: false`) | skip-if-unchanged |
+| `s3` | any S3-compatible store (AWS, RustFS, B2, R2, Wasabi, …), **built in** | age (**required** unless `encrypt: false`) | skip-if-unchanged |
 | `rclone` | any rclone backend: S3-compatible, SFTP, B2, WebDAV, SMB, Drive, … | age (**required** unless `encrypt: false`, e.g. for an rclone `crypt` remote) | skip-if-unchanged |
 | `restic` | any restic repo: path, `sftp:`, `s3:`, `b2:`, `rest:`, `rclone:` | restic's own (repo password) | restic's content-defined chunking + skip-if-unchanged |
 | `borg` | a path or `ssh://user@host[:port]/path` (borg on the server) | borg `repokey-blake2` (passphrase), or `encrypt: false` | borg's chunking + skip-if-unchanged |
 
-The tool for each driver you use must be installed on the conductor host.
-Tested with restic 0.18, rclone 1.71 and borg 1.4.
+`local`, `sftp` and `s3` are built into the plugin and need nothing
+installed. `rclone`, `restic` and `borg` run those tools, which must be
+installed on the conductor host (tested with rclone 1.71, restic 0.18 and
+borg 1.4). Use them for their extra backends or for restic/borg's
+chunk-level dedup.
 
 ## Connection
 
@@ -47,9 +52,12 @@ connectors:
           key: '{{ vault "house" "backup_ssh_key" }}'
           known_hosts: "nas.lan ssh-ed25519 AAAA..."
       - name: offsite
-        driver: rclone
-        remote: ":s3,provider=Other,endpoint='https://s3.example.com',env_auth=true:my-bucket/conductor"
-        env: { AWS_ACCESS_KEY_ID: ..., AWS_SECRET_ACCESS_KEY: ... }
+        driver: s3                                 # built in: nothing to install
+        endpoint: https://s3.example.com
+        bucket: my-bucket
+        prefix: conductor
+        access_key_id: '{{ vault "house" "s3_key" }}'
+        secret_access_key: '{{ vault "house" "s3_secret" }}'
         age_recipients: [age1...]                  # public key only: this host can write, not read
         keep_daily: 0
         keep_monthly: 12
@@ -65,6 +73,13 @@ connectors:
 | `driver` | all | `local`, `rclone`, `restic` or `borg`. |
 | `keep_daily` / `keep_weekly` / `keep_monthly` | all | Retention for this tier. |
 | `dir` | local | Absolute directory. |
+| `target` | sftp | `user@host:/dir` or `sftp://user@host[:port]/dir`. Needs `ssh.key`. |
+| `bucket`, `prefix` | s3 | Bucket, and an optional key prefix inside it. |
+| `endpoint` | s3 | `https://…` for a non-AWS store (path-style addressing is the default then). Omit for AWS. |
+| `region` | s3 | Default `us-east-1`. |
+| `access_key_id`, `secret_access_key` | s3 | Credentials (vault). |
+| `path_style` | s3 | Force path-style (`true`) or virtual-hosted (`false`) addressing. |
+| `create_bucket` | s3 | Create the bucket on first write if missing (default `true`). |
 | `remote` | rclone | An rclone path: a named remote (configure it with `env: {RCLONE_CONFIG_<NAME>_TYPE: ..., ...}`) or an on-the-fly one (`:s3,provider=...:bucket`). |
 | `repo` | restic, borg | Repository location. |
 | `password` | restic | Repository password. |
@@ -73,7 +88,7 @@ connectors:
 | `age_identity` | local, rclone | Private key. Needed to `read`/`verify` an encrypted tier (and to dedup against it). If set without `age_recipients`, its public key is used for writing. |
 | `encrypt` | local, rclone, borg | `false` opts out (rclone: when the remote is a `crypt` remote; borg: `--encryption none`). |
 | `env` | rclone, restic, borg | Extra environment for the tool (S3 credentials, rclone remote config). |
-| `ssh` | rclone (sftp), restic (sftp), borg (ssh) | `{key, known_hosts, port, insecure_accept_host_key}`. `known_hosts` is required unless you opt into `insecure_accept_host_key`. |
+| `ssh` | sftp, rclone (sftp), restic (sftp), borg (ssh) | `{key, known_hosts, port, insecure_accept_host_key}`. `known_hosts` is required unless you opt into `insecure_accept_host_key`. |
 | `init` | restic, borg | Create the repository on first use (default `true`). |
 | `check_read_data` | restic | `verify mode: check` also reads this subset of pack data, e.g. `5%`. |
 | `check_data` | borg | `verify mode: check` also runs `--verify-data`. |
@@ -81,7 +96,8 @@ connectors:
 Keep passwords, passphrases, keys and S3 credentials in the vault.
 
 **Under the plugin jail:** network goes through conductor's egress proxy.
-S3 and other HTTP backends use it via the proxy env. rclone's sftp backend
+The built-in `sftp` driver dials through it directly, and the built-in `s3`
+driver and other HTTP backends use it via the proxy env. rclone's sftp backend
 uses its `http_proxy` option. For restic and borg, ssh tunnels through this
 plugin's own binary as a CONNECT `ProxyCommand`. Only `allow_hosts` are
 reachable, and validation flags a tier whose host isn't listed.
@@ -91,7 +107,7 @@ reachable, and validation flags a tier whose host isn't listed.
 Each snapshot is named `<set>-<UTC stamp>.<ext>` and records the sha256 and
 size of its plaintext:
 
-- **local / rclone:** an object (`.age` suffix when encrypted) plus a
+- **local / sftp / s3 / rclone:** an object (`.age` suffix when encrypted) plus a
   `.<name>.meta` sidecar. The sidecar is encrypted too, so an encrypted tier
   doesn't leak content hashes. The meta is written first, so a half-finished
   put is never listed. Local writes are temp-file plus rename.
